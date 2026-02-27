@@ -3,83 +3,88 @@ import path from "node:path";
 import sharp from "sharp";
 import pngToIco from "png-to-ico";
 
-const SVG_CONTENT = `
-<svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" width="512" height="512">
-    <defs>
-        <linearGradient id="shieldFill" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#ff6600" stop-opacity="0.2" />
-            <stop offset="50%" stop-color="#ff1a1a" stop-opacity="0.05" />
-            <stop offset="100%" stop-color="#000000" stop-opacity="0.5" />
-        </linearGradient>
-        <linearGradient id="shieldEdge" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#ffea00" />
-            <stop offset="50%" stop-color="#ff6600" />
-            <stop offset="100%" stop-color="#ff1a1a" />
-        </linearGradient>
-        <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#fff" />
-            <stop offset="50%" stop-color="#ffea00" />
-            <stop offset="100%" stop-color="#ff6600" />
-        </linearGradient>
-        <filter id="megaGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="8" result="blur1" />
-            <feGaussianBlur stdDeviation="15" result="blur2" />
-            <feMerge>
-                <feMergeNode in="blur2" />
-                <feMergeNode in="blur1" />
-                <feMergeNode in="SourceGraphic" />
-            </feMerge>
-        </filter>
-    </defs>
-    <!-- Outer Rings -->
-    <circle cx="100" cy="100" r="90" stroke="#ff6600" stroke-width="1.5" stroke-dasharray="4 12 20 12" fill="none" opacity="0.8" />
-    <circle cx="100" cy="100" r="75" stroke="#ff1a1a" stroke-width="2.5" stroke-dasharray="50 40 10 40" fill="none" opacity="0.9" />
-    
-    <!-- Shield Geometry with glow -->
-    <g filter="url(#megaGlow)">
-        <path d="M100 20 L160 45 V100 C160 145 100 180 100 180 C100 180 40 145 40 100 V45 L100 20 Z" fill="url(#shieldFill)" stroke="url(#shieldEdge)" stroke-width="4" stroke-linejoin="round" />
-        <path d="M100 40 L140 60 V100 C140 130 100 155 100 155 C100 155 60 130 60 100 V60 L100 40 Z" fill="none" stroke="#ff6600" stroke-width="2" stroke-dasharray="6 6" opacity="0.9" />
-        <g stroke="#ff1a1a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M100 40 V155 M60 70 L90 70 L100 80 M140 70 L110 70 L100 80 M70 120 L85 120 L100 135 M130 120 L115 120 L100 135" />
-            <circle cx="60" cy="70" r="3" fill="#ffea00" />
-            <circle cx="140" cy="70" r="3" fill="#ffea00" />
-            <circle cx="70" cy="120" r="3" fill="#ffea00" />
-            <circle cx="130" cy="120" r="3" fill="#ffea00" />
-        </g>
-        <circle cx="100" cy="100" r="14" fill="url(#coreGrad)" />
-        <circle cx="100" cy="100" r="6" fill="#ffffff" />
-    </g>
-</svg>
-`;
-
 async function main() {
     const rootDir = path.resolve();
+    const srcLogoPath = path.join(rootDir, "..", "..", "..", "..", "new logo.png");
     const tmpDir = path.join(rootDir, "packaging", "scripts", "tmp-icons");
+    const assetsDir = path.join(rootDir, "renderer", "public", "assets");
+    const installerDir = path.join(rootDir, "packaging", "installer", "assets");
 
     await fs.mkdir(tmpDir, { recursive: true });
 
-    const svgPath = path.join(tmpDir, "logo.svg");
-    await fs.writeFile(svgPath, SVG_CONTENT);
+    try {
+        await fs.access(srcLogoPath);
+    } catch {
+        console.error(`Source logo not found at: ${srcLogoPath}`);
+        return;
+    }
 
-    console.log("Generating 256x256 PNG...");
-    const pngPath = path.join(tmpDir, "logo.png");
-    await sharp(svgPath)
-        .resize(256, 256)
-        .png()
-        .toFile(pngPath);
+    const srcMeta = await sharp(srcLogoPath).metadata();
+    console.log(`Source: ${srcMeta.width}x${srcMeta.height} ${srcMeta.format}`);
 
-    console.log("Generating ICO files...");
-    const icoData = await pngToIco(pngPath);
+    // ─────────────────────────────────────────────────────────
+    // Используем СТРОГО оригинал без обрезки/искажения.
+    // contain = вписываем в квадрат, сохраняя пропорции.
+    // Прозрачный фон заполняет оставшееся пространство.
+    // ─────────────────────────────────────────────────────────
 
-    const destIcon1 = path.join(rootDir, "renderer", "public", "assets", "icon.ico");
-    const destIcon2 = path.join(rootDir, "packaging", "installer", "assets", "installerHeaderIcon.ico");
+    // ─── 1. MULTI-SIZE ICO ───
+    console.log("Generating multi-size ICO (original, no crop)...");
+    const icoSizes = [16, 32, 48, 64, 128, 256];
+    const icoPngs = await Promise.all(
+        icoSizes.map(async (size) => {
+            const p = path.join(tmpDir, `ico-${size}.png`);
+            await sharp(srcLogoPath)
+                .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .png({ quality: 100 })
+                .toFile(p);
+            return p;
+        })
+    );
+    const icoData = await pngToIco(icoPngs);
+    await fs.writeFile(path.join(assetsDir, "icon.ico"), icoData);
+    await fs.writeFile(path.join(installerDir, "installerHeaderIcon.ico"), icoData);
 
-    await fs.writeFile(destIcon1, icoData);
-    await fs.writeFile(destIcon2, icoData);
+    // ─── 2. HIGH-RES PNG (1024x1024) ───
+    console.log("Generating 1024x1024 PNG...");
+    const pngBuf1024 = await sharp(srcLogoPath)
+        .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png({ quality: 100 })
+        .toBuffer();
+    await fs.writeFile(path.join(assetsDir, "shield-logo.png"), pngBuf1024);
+    await fs.writeFile(path.join(assetsDir, "egoist-logo.png"), pngBuf1024);
 
-    console.log("Icons updated successfully!");
+    // Копируем оригинал как есть
+    await fs.copyFile(srcLogoPath, path.join(assetsDir, "logo-original.png"));
 
+    // ─── 3. FAVICON ICO ───
+    console.log("Generating favicon.ico...");
+    const favSizes = [16, 32, 48];
+    const favPngs = await Promise.all(
+        favSizes.map(async (size) => {
+            const p = path.join(tmpDir, `fav-${size}.png`);
+            await sharp(srcLogoPath)
+                .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .png()
+                .toFile(p);
+            return p;
+        })
+    );
+    const faviconIcoData = await pngToIco(favPngs);
+    await fs.writeFile(path.join(assetsDir, "favicon.ico"), faviconIcoData);
+
+    // ─── 4. TRAY ICONS (32x32) ───
+    console.log("Generating tray icons (32x32)...");
+    const trayBase = sharp(srcLogoPath).resize(32, 32, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } });
+
+    await trayBase.clone().modulate({ brightness: 0.85 }).png().toFile(path.join(assetsDir, "tray-default.png"));
+    await trayBase.clone().modulate({ brightness: 1.2, saturation: 1.3 }).png().toFile(path.join(assetsDir, "tray-connected.png"));
+    await trayBase.clone().grayscale().modulate({ brightness: 0.55 }).png().toFile(path.join(assetsDir, "tray-disconnected.png"));
+    await trayBase.clone().tint({ r: 255, g: 0, b: 0 }).modulate({ brightness: 0.75 }).png().toFile(path.join(assetsDir, "tray-error.png"));
+
+    // ─── Cleanup ───
     await fs.rm(tmpDir, { recursive: true, force: true });
+    console.log("✅ All icons generated (original proportions, no crop)!");
 }
 
 main().catch(console.error);

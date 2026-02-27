@@ -4,41 +4,64 @@
 
 /*
  * ═══════════════════════════════════════════
- *  EgoistShield — Design Tokens
+ *  EgoistShield — Design Tokens v2
  * ═══════════════════════════════════════════
  */
 
 /* ── Dark Theme (default) ── */
 :root,
 [data-theme="dark"] {
-  --es-brand: 249 115 22;
-  --es-brand-light: 251 146 60;
-  --es-brand-hot: 239 68 68;
-  --es-success: 52 211 153;
-  --es-danger: 239 68 68;
-  --es-warning: 251 191 36;
+  /* Brand */
+  --es-brand: 255 102 0; /* #FF6600 — primary оранжевый */
+  --es-brand-light: 255 140 0; /* #FF8C00 — light оранжевый */
+  --es-brand-hot: 255 26 26; /* #FF1A1A — горячий красный */
+  --es-brand-accent: 255 234 0; /* #FFEA00 — неоновый жёлтый */
+  --es-brand-amber: 255 179 0; /* #FFB300 — янтарный */
 
-  --es-bg-app: 5 8 13;
-  --es-bg-surface: 11 14 20;
-  --es-bg-card: 15 19 28;
-  --es-bg-elevated: 20 25 38;
+  /* Semantic */
+  --es-success: 52 211 153; /* Green */
+  --es-danger: 255 26 26; /* Hot Red */
+  --es-warning: 255 179 0; /* Amber */
 
-  --es-text-primary: 255 255 255;
-  --es-text-secondary: 148 163 184;
-  --es-text-muted: 100 116 139;
+  /* Backgrounds */
+  --es-bg-app: 10 10 10; /* #0A0A0A — глубокий чёрный */
+  --es-bg-surface: 26 26 26; /* #1A1A1A — тёмный серый */
+  --es-bg-card: 30 30 30; /* #1E1E1E */
+  --es-bg-elevated: 37 37 37; /* #252525 */
 
+  /* Text */
+  --es-text-primary: 255 255 255; /* #FFFFFF */
+  --es-text-secondary: 170 170 170; /* #AAAAAA */
+  --es-text-muted: 119 119 119; /* #777777 */
+
+  /* Borders */
   --es-border: 255 255 255;
   --es-border-alpha: 0.08;
+  --es-border-subtle: rgba(255, 102, 0, 0.15);
+  --es-border-active: rgba(255, 102, 0, 0.4);
 
+  /* Layout */
   --es-topbar-h: 32px;
   --es-bottomnav-h: 76px;
 
+  /* Animation */
   --es-ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --es-ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --es-duration-fast: 150ms;
   --es-duration-normal: 250ms;
+  --es-duration-slow: 450ms;
 
+  /* Shadows / Glow */
   --es-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  --es-glow: 0 0 20px rgba(249, 115, 22, 0.15);
+  --es-shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
+  --es-glow: 0 0 20px rgba(255, 102, 0, 0.15);
+  --es-glow-strong: 0 0 30px rgba(255, 102, 0, 0.35);
+
+  /* Glassmorphism */
+  --es-glass-blur: 20px;
+  --es-glass-bg: rgba(26, 26, 26, 0.6);
+  --es-glass-border: rgba(255, 255, 255, 0.06);
+  --es-noise-opacity: 0.03;
 
   color-scheme: dark;
 }
@@ -63,10 +86,10 @@ body {
     color var(--es-duration-normal) var(--es-ease-spring);
 }
 
-/* ── Custom scrollbar ── */
+/* ── Custom scrollbar (auto-hide) ── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -74,12 +97,13 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(var(--es-text-secondary), 0.2);
+  background: rgba(var(--es-brand), 0.3);
   border-radius: 3px;
+  transition: background 0.3s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--es-text-secondary), 0.35);
+  background: rgba(var(--es-brand), 0.6);
 }
 
 /* ── Focus ring ── */
@@ -93,4 +117,79 @@ body {
   background: rgba(var(--es-brand), 0.3);
 }
 
+/* ═══════════════════════════════════════════
+   Utility Classes — Glassmorphism & Effects
+   ═══════════════════════════════════════════ */
 
+@layer utilities {
+  .glass-card {
+    background: var(--es-glass-bg);
+    backdrop-filter: blur(var(--es-glass-blur));
+    -webkit-backdrop-filter: blur(var(--es-glass-blur));
+    border: 1px solid var(--es-glass-border);
+    border-radius: 20px;
+  }
+
+  .noise-overlay {
+    position: relative;
+  }
+  .noise-overlay::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: var(--es-noise-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    background-size: 128px 128px;
+    pointer-events: none;
+    border-radius: inherit;
+    z-index: 1;
+  }
+
+  .text-glow-brand {
+    text-shadow: 0 0 20px rgba(255, 102, 0, 0.4);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   Micro-Animation Keyframes
+   ═══════════════════════════════════════════ */
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(255, 102, 0, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(255, 102, 0, 0.35);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

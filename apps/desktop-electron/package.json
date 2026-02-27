@@ -1,7 +1,7 @@
 {
   "name": "egoistshield-desktop-electron",
   "productName": "EgoistShield",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "EgoistShield next-gen universal VPN client for Windows",
   "main": ".vite/build/main.js",
   "private": true,
@@ -15,6 +15,7 @@
   },
   "scripts": {
     "dev": "electron-forge start",
+    "generate-icons": "node packaging/scripts/generate-icons.mjs",
     "ensure:runtime": "powershell -ExecutionPolicy Bypass -File ./packaging/scripts/ensure-xray-runtime.ps1 && powershell -ExecutionPolicy Bypass -File ./packaging/scripts/ensure-singbox-runtime.ps1",
     "package": "npm run ensure:runtime && electron-forge package",
     "make": "npm run ensure:runtime && electron-forge make",
@@ -40,7 +41,7 @@
     "autoprefixer": "^10.4.24",
     "electron": "36.5.0",
     "electron-builder": "25.1.8",
-    "electron-vite": "^5.0.0",
+
     "jsdom": "^28.1.0",
     "png-to-ico": "^3.0.1",
     "postcss": "^8.5.6",

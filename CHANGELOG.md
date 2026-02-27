@@ -5,6 +5,34 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.0.4] — 2026-02-27
+
+### ✨ UI/UX Модернизация
+
+- **Glassmorphism** — все карточки Dashboard, Settings и SplitTunnel используют glass-card стиль с backdrop-blur
+- **Noise overlay** — текстурированный шум на SettingsCard для глубины
+- **Расширенные дизайн-токены** — `--es-glass-*`, `--es-ease-out-expo`, `--es-duration-slow`, `--es-shadow-lg`
+- **Micro-animations** — pulse-glow, shimmer, float, fade-in-up keyframes + Tailwind animation presets
+- **TitleBar** — Framer Motion масштабирование кнопок, gradient фон, hover glow на Close
+- **BottomNav** — pulse-glow на Shield кнопке при connected, анимированный кольцевой индикатор
+- **SplashScreen** — GPU-ускорение (will-change, transform-gpu), shimmer на progress bar, badge v1.0.4
+- **SpeedGraph** — SVG glow filter, пульсирующая endpoint точка, усиленный gradient fill, useMemo мемоизация
+- **Dashboard** — text-glow для статуса, glass-card на все info-карточки, GPU-ускорение floating particles
+- **Settings** — glassmorphism + noise-overlay на SettingsCard
+- **Motion presets** — добавлены `glassCard`, `buttonPulse`, `toggleSwitch`, `shimmerEffect`
+
+### 🔧 Фиксы
+
+- 5 пустых `catch {}` в main.ts → информативные `console.warn`
+- Дублирование `before-quit` обработчиков → объединено в один
+- Хардкод портов (9090, 10085) → константы `SINGBOX_TRAFFIC_URL`, `XRAY_API_PORT`
+- Удалён несуществующий тип Screen `'logs'`
+- Удалена неиспользуемая зависимость `electron-vite`
+
+### 📦 Инфраструктура
+
+- Версия обновлена до 1.0.4
+
 ## [1.0.1] — 2026-02-27
 
 Первый публичный релиз EgoistShield — десктопный VPN-клиент для Windows.

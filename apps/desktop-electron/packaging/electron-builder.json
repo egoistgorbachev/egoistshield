@@ -1,6 +1,7 @@
 {
   "appId": "com.egoistshield.desktop",
   "productName": "EgoistShield",
+  "compression": "maximum",
   "directories": {
     "output": "out/make/nsis"
   },
@@ -25,6 +26,7 @@
     "shortcutName": "EgoistShield",
     "runAfterFinish": true,
     "deleteAppDataOnUninstall": true,
+    "unicode": true,
     "installerIcon": "renderer/public/assets/icon.ico",
     "uninstallerIcon": "renderer/public/assets/icon.ico",
     "installerSidebar": "packaging/installer/assets/installerSidebar.bmp",

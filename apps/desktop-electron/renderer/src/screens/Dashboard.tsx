@@ -115,7 +115,7 @@ export function Dashboard() {
             style={{ WebkitAppRegion: 'drag' } as any}
         >
             {/* Animated Background Glow */}
-            <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none w-full h-full">
+                <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none w-full h-full">
                 <motion.div
                     animate={!isHidden ? {
                         scale: isConnected ? [1.1, 1.2, 1.1] : [1, 1.05, 1],
@@ -125,7 +125,7 @@ export function Dashboard() {
                     transition={!isHidden ? { duration: 4, ease: "easeInOut", repeat: Infinity } : { duration: 0 }}
                     className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[70%] rounded-full blur-[120px] mix-blend-screen will-change-transform transform-gpu"
                 />
-                <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(rgba(255,255,255,1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,1)_1px,transparent_1px)] bg-[size:40px_40px]" />
+                <div className="absolute inset-0 opacity-[0.02] bg-[linear-gradient(rgba(255,255,255,1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,1)_1px,transparent_1px)] bg-[size:40px_40px]" />
             </div>
 
             {/* Main Adaptive Layout */}
@@ -163,7 +163,7 @@ export function Dashboard() {
                             {[...Array(6)].map((_, i) => (
                                 <motion.div
                                     key={i}
-                                    className="absolute w-1 h-1 rounded-full bg-orange-400/60 pointer-events-none z-0"
+                                    className="absolute w-1 h-1 rounded-full bg-orange-400/60 pointer-events-none z-0 will-change-transform transform-gpu"
                                     animate={{
                                         x: [0, Math.cos(i * 60 * Math.PI / 180) * 140],
                                         y: [0, Math.sin(i * 60 * Math.PI / 180) * 140],
@@ -240,7 +240,7 @@ export function Dashboard() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -8 }}
                             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                            className="text-2xl font-black tracking-[0.2em] text-white"
+                            className="text-2xl font-black tracking-[0.2em] text-white text-glow-brand"
                         >
                             {isDisconnecting ? "ОТКЛЮЧЕНИЕ..." : isConnecting ? "ПОДКЛЮЧЕНИЕ..." : isConnected ? "ЗАЩИЩЕНО" : "ОТКЛЮЧЕНО"}
                         </motion.h1>
@@ -308,7 +308,7 @@ export function Dashboard() {
                     <motion.div
                         variants={cardVariants}
                         className={cn(
-                            "flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-xl shadow-lg transition-all duration-500 relative overflow-hidden cursor-default",
+                            "flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-xl shadow-lg transition-all duration-500 relative overflow-hidden cursor-default glass-card",
                             isConnected ? "bg-white/[0.04] border-white/10" : "bg-white/[0.02] border-white/5"
                         )}
                     >
@@ -360,7 +360,7 @@ export function Dashboard() {
                         onClick={() => setScreen('servers')}
                         role="button"
                         className={cn(
-                            "flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-xl shadow-lg transition-all duration-300 relative overflow-hidden cursor-pointer group",
+                            "flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-xl shadow-lg transition-all duration-300 relative overflow-hidden cursor-pointer group glass-card",
                             isConnected ? "bg-orange-500/5 border-orange-500/20 hover:bg-orange-500/10" : "bg-white/[0.02] border-white/5 hover:bg-white/[0.05]"
                         )}
                     >
@@ -390,7 +390,7 @@ export function Dashboard() {
                     <motion.div
                         variants={cardVariants}
                         className={cn(
-                            "col-span-2 relative px-5 pt-4 pb-2 rounded-[24px] border backdrop-blur-xl shadow-lg transition-all duration-500 overflow-hidden cursor-default",
+                            "col-span-2 relative px-5 pt-4 pb-2 rounded-[24px] border backdrop-blur-xl shadow-lg transition-all duration-500 overflow-hidden cursor-default glass-card",
                             isConnected && traffic.down > 0 ? "bg-emerald-500/[0.03] border-emerald-500/15" : "bg-white/[0.02] border-white/5"
                         )}
                     >

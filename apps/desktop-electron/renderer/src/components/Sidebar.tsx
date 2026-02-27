@@ -25,8 +25,8 @@ export function Sidebar() {
                 />
                 <NavItem
                     icon={<History />}
-                    active={currentScreen === 'logs'}
-                    onClick={() => setScreen('logs')}
+                    active={currentScreen === 'servers'}
+                    onClick={() => setScreen('servers')}
                 />
             </div>
 

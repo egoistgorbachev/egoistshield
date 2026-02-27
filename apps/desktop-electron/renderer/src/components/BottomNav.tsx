@@ -22,7 +22,7 @@ export function BottomNav() {
     const tunMode = useAppStore(s => s.tunMode);
 
     return (
-        <div className="relative z-20 w-full bg-surface-app/80 backdrop-blur-2xl border-t border-white/[0.06]">
+        <div className="relative z-20 w-full bg-surface-app/70 backdrop-blur-3xl border-t border-white/[0.04]">
             <nav aria-label="Основная навигация" className="max-w-[605px] mx-auto h-20 flex items-center justify-between px-6">
                 {navItems.map(item => {
                     const isSplitDisabled = item.id === 'split-tunnel' && !tunMode;
@@ -41,16 +41,27 @@ export function BottomNav() {
 
                 {/* Central Shield button */}
                 <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.92 }}
                     onClick={() => setScreen('dashboard')}
                     aria-label="Щит — на главную"
-                    className="relative -top-6 w-[72px] h-[72px] rounded-[1.8rem] bg-gradient-to-br from-orange-400 to-red-600 p-[2px] shadow-[0_10px_25px_rgba(251,146,36,0.3)] flex items-center justify-center transition-all duration-300 group"
+                    className={cn(
+                        "relative -top-6 w-[72px] h-[72px] rounded-[1.8rem] bg-gradient-to-br from-orange-400 to-red-600 p-[2px] shadow-[0_10px_25px_rgba(251,146,36,0.3)] flex items-center justify-center transition-all duration-500 group",
+                        isConnected && "animate-pulse-glow"
+                    )}
                 >
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#0a0f16] to-[#121824] m-[2px] rounded-[1.7rem] z-0 group-hover:from-orange-950/40 group-hover:to-red-950/40 transition-colors" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#0a0f16] to-[#121824] m-[2px] rounded-[1.7rem] z-0 group-hover:from-orange-950/40 group-hover:to-red-950/40 transition-colors duration-300" />
                     <div className="absolute inset-0 p-3 z-10">
                         <ShieldLogo isConnected={isConnected} className="w-full h-full drop-shadow-xl" />
                     </div>
+                    {/* Connected indicator ring */}
+                    {isConnected && (
+                        <motion.div
+                            className="absolute inset-[-3px] rounded-[2rem] border border-orange-500/30 pointer-events-none"
+                            animate={{ opacity: [0.3, 0.7, 0.3] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                        />
+                    )}
                 </motion.button>
 
                 {navItemsRight.map(item => (

@@ -4,7 +4,7 @@
 import type { StateCreator } from 'zustand';
 import { getAPI } from '../../lib/api';
 
-export type Screen = 'dashboard' | 'split-tunnel' | 'servers' | 'logs' | 'settings';
+export type Screen = 'dashboard' | 'split-tunnel' | 'servers' | 'settings';
 export type Protocol = 'xray' | 'singbox';
 
 export interface App {

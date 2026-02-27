@@ -215,13 +215,13 @@ function SettingsCard({ title, icon, children, className }: { title: string; ico
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
             className={cn(
-                "group bg-black/20 border border-white/5 hover:border-white/10 rounded-3xl p-6 backdrop-blur-xl shadow-lg transition-colors duration-500 relative",
+                "group glass-card bg-black/20 border border-white/5 hover:border-white/10 rounded-3xl p-6 shadow-card transition-all duration-500 relative noise-overlay",
                 className
             )}
         >
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.02] rounded-full blur-[40px] pointer-events-none" />
-            <h3 className="text-base font-black text-white flex items-center gap-3 mb-6 opacity-90 tracking-widest uppercase">
-                <div className="p-2 bg-white/5 rounded-xl border border-white/10">{icon}</div>
+            <h3 className="text-base font-black text-white flex items-center gap-3 mb-6 opacity-90 tracking-widest uppercase relative z-10">
+                <div className="p-2 bg-white/5 rounded-xl border border-white/10 group-hover:border-white/15 transition-colors">{icon}</div>
                 {title}
             </h3>
             <div className="flex flex-col gap-2 relative z-10">{children}</div>

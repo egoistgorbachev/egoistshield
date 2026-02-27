@@ -8,6 +8,7 @@
 // ── Базовые spring-параметры ──
 const springSnappy = { type: "spring" as const, stiffness: 350, damping: 30, mass: 0.8 };
 const springSmooth = { type: "spring" as const, stiffness: 260, damping: 28, mass: 1 };
+const springBouncy = { type: "spring" as const, stiffness: 400, damping: 22, mass: 0.6 };
 
 // ── Presets ──
 
@@ -73,3 +74,33 @@ export const staggerItem = {
     animate: { opacity: 1, y: 0 },
     transition: { duration: 0.2 },
 };
+
+// ── v2 Extended Presets ──
+
+/** Glass card — появление с мягким масштабом и blur */
+export const glassCard = {
+    initial: { opacity: 0, y: 10, scale: 0.98 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, y: 6, scale: 0.98 },
+    transition: { ...springSmooth, opacity: { duration: 0.25 } },
+};
+
+/** Пульсирующая кнопка — для кнопки подключения */
+export const buttonPulse = {
+    whileHover: { scale: 1.05, transition: springBouncy },
+    whileTap: { scale: 0.95, transition: { duration: 0.1 } },
+};
+
+/** Toggle switch preset */
+export const toggleSwitch = {
+    initial: false,
+    transition: { ...springBouncy, duration: 0.25 },
+};
+
+/** Shimmer effect для загрузки */
+export const shimmerEffect = {
+    initial: { x: "-100%" },
+    animate: { x: "100%" },
+    transition: { duration: 1.5, ease: "easeInOut", repeat: Infinity },
+};
+

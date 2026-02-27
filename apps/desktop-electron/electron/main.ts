@@ -21,8 +21,16 @@ export let globalRuntimeManager: VpnRuntimeManager | null = null;
 let trafficInterval: NodeJS.Timeout | null = null;
 let isQuitting = false;
 
+// ── Network config constants ──
+const SINGBOX_TRAFFIC_URL = "http://127.0.0.1:9090/traffic";
+const XRAY_API_PORT = 10085;
+
 app.on('before-quit', () => {
   isQuitting = true;
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 });
 
 let activeSingboxReq: http.ClientRequest | null = null;
@@ -50,7 +58,7 @@ function startTrafficMonitoring() {
 
       if (status.runtimeKind === "sing-box") {
         if (!activeSingboxReq) {
-          activeSingboxReq = http.get("http://127.0.0.1:9090/traffic", res => {
+          activeSingboxReq = http.get(SINGBOX_TRAFFIC_URL, res => {
             res.on("data", chunk => {
               try {
                 const lines = chunk.toString().trim().split("\n");
@@ -61,7 +69,7 @@ function startTrafficMonitoring() {
                     mainWindow.webContents.send("traffic-update", { rx: data.down, tx: data.up });
                   }
                 }
-              } catch { }
+              } catch (e) { console.warn('[traffic] sing-box parse error:', e); }
             });
             res.on("end", () => { activeSingboxReq = null; });
           }).on("error", () => { activeSingboxReq = null; });
@@ -76,7 +84,7 @@ function startTrafficMonitoring() {
         let gotStats = false;
         if (status.resolvedRuntimePath) {
           try {
-            const statsData = await queryXrayStats(status.resolvedRuntimePath, 10085);
+            const statsData = await queryXrayStats(status.resolvedRuntimePath, XRAY_API_PORT);
             if (statsData.downlink > 0 || statsData.uplink > 0) {
               gotStats = true;
               if (mainWindow && !mainWindow.isDestroyed()) {
@@ -86,7 +94,7 @@ function startTrafficMonitoring() {
                 });
               }
             }
-          } catch { /* Xray CLI недоступен — fallback ниже */ }
+          } catch (e) { console.warn('[traffic] xray stats unavailable, falling back to netstat:', e); }
         }
 
         // === Метод 2: Fallback через netstat -e ===
@@ -118,11 +126,11 @@ function startTrafficMonitoring() {
                 lastTx = tx;
               }
             }
-          } catch { /* netstat fallback error */ }
+          } catch (e) { console.warn('[traffic] netstat fallback error:', e); }
         }
       }
-    } catch {
-      // Игнорируем ошибки при запросе сетевой статистики
+    } catch (e) {
+      console.warn('[traffic] monitoring cycle error:', e);
     }
   }, 1000);
 }
@@ -236,6 +244,14 @@ async function createMainWindow(): Promise<void> {
 
 export function updateTrayMenu(isConnected: boolean) {
   if (!tray) return;
+
+  // Изменяем саму картинку трея в зависимости от статуса
+  const basePath = path.resolve(app.getAppPath(), "renderer/public/assets");
+  const iconBase = nativeImage.createFromPath(path.join(basePath, isConnected ? "tray-connected.png" : "tray-default.png"));
+  if (!iconBase.isEmpty()) {
+     tray.setImage(iconBase);
+  }
+
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -269,13 +285,16 @@ function createTray(): void {
     return;
   }
 
-  const iconPath = getIconPath();
-  if (!iconPath) {
-    return;
+  const trayIconPath = path.resolve(app.getAppPath(), "renderer/public/assets/tray-default.png");
+  if (!fs.existsSync(trayIconPath)) {
+    // Fallback if not built yet
+    const fallbackPath = getIconPath();
+    if (!fallbackPath) return;
+    tray = new Tray(fallbackPath);
+  } else {
+    tray = new Tray(nativeImage.createFromPath(trayIconPath));
   }
 
-  // Pass string directly to let Windows pick the sharpest internal .ico layer based on DPI
-  tray = new Tray(iconPath);
   tray.setToolTip("EgoistShield");
 
   tray.on('click', () => {
@@ -318,7 +337,7 @@ if (!lock) {
           mainWindow.webContents.send('update-available');
         }
       });
-    } catch (e) { /* ignore */ }
+    } catch (e) { console.warn('[updater] auto-update check failed:', e); }
 
     app.on("activate", async () => {
       if (!mainWindow) {
@@ -334,9 +353,4 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("before-quit", () => {
-  if (tray) {
-    tray.destroy();
-    tray = null;
-  }
-});
+// before-quit tray cleanup moved to unified handler above (line 27)

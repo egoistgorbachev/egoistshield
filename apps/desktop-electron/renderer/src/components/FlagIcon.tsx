@@ -1,4 +1,5 @@
 import { Globe } from "lucide-react";
+import type { ReactElement } from "react";
 
 /**
  * Полностью оффлайн SVG-флаги в круглых рамках.
@@ -6,7 +7,7 @@ import { Globe } from "lucide-react";
  * 40+ стран — inline SVG геометрия. 0 сетевых запросов.
  */
 
-type FlagSVG = JSX.Element;
+type FlagSVG = ReactElement;
 
 // Горизонтальный триколор
 const tH = (c1: string, c2: string, c3: string): FlagSVG => (

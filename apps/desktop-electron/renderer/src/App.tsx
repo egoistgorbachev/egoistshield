@@ -1,8 +1,9 @@
-﻿import React, { useEffect, Suspense } from "react";
+﻿import React, { useEffect, Suspense, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BottomNav } from "./components/BottomNav";
 import { TitleBar } from "./components/TitleBar";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { SplashScreen } from "./components/SplashScreen";
 import { useAppStore } from "./store/useAppStore";
 import { getAPI } from "./lib/api";
 import { pageTransition } from "./lib/motion";
@@ -18,7 +19,7 @@ const Onboarding = React.lazy(() => import("./screens/Onboarding").then(m => ({ 
 // Fallback для Suspense — минимальный лоадер
 function ScreenLoader() {
   return <div className="w-full h-full flex items-center justify-center bg-surface-app">
-    <div className="w-8 h-8 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+    <div className="w-8 h-8 border-2 border-brand-light/30 border-t-brand-light rounded-full animate-spin" />
   </div>;
 }
 
@@ -28,10 +29,15 @@ export function App() {
   const checkFirstRun = useAppStore(state => state.checkFirstRun);
   const syncWithBackend = useAppStore(state => state.syncWithBackend);
   const installRuntime = useAppStore(state => state.installRuntime);
-  const [updateAvailable, setUpdateAvailable] = React.useState(false);
+  
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     checkFirstRun();
+    // Splash screen timer
+    const timer = setTimeout(() => setShowSplash(false), 2400);
+    return () => clearTimeout(timer);
   }, [checkFirstRun]);
 
   useEffect(() => {
@@ -53,12 +59,17 @@ export function App() {
     return <div className="w-full h-screen bg-surface-app" />;
   }
 
+  // Если первый старт, сразу рендерим онбординг (без сплеша)
   if (isFirstRun) {
     return <Suspense fallback={<ScreenLoader />}><Onboarding /></Suspense>;
   }
 
   return (
-    <div className="relative w-full h-screen bg-surface-app flex flex-col overflow-hidden text-white font-sans selection:bg-orange-500/30">
+    <div className="relative w-full h-screen bg-surface-app flex flex-col overflow-hidden text-white font-sans selection:bg-brand/30">
+      <AnimatePresence>
+        {showSplash && <SplashScreen key="splash" />}
+      </AnimatePresence>
+
       <TitleBar />
       <OfflineBanner />
 
