@@ -5,6 +5,22 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.0.5] — 2026-02-27
+
+### 🎨 Premium Cyber-Luxury Dark Редизайн
+
+- **Палитра**: Deep indigo-black (#050508) с синим подтоном, warm white (#F0EDE8) текст
+- **Aurora Mesh Background**: 3 анимированных orb с drift-animation на Dashboard и SplashScreen
+- **Floating BottomNav**: Pill shape с glass blur, sliding `layoutId` active indicator
+- **Shield кнопка**: Rotating conic-gradient ring, ambient glow при подключении
+- **Неоновый SpeedGraph**: Двойной stroke с neon glow filter, grid pattern, scan line
+- **SplashScreen**: Aurora orbs + conic spinning progress ring (вместо linear bar)
+- **Типографика**: Space Grotesk (заголовки) + JetBrains Mono (метрики/пинг)
+- **Settings**: Luxury glass cards с gradient underline, gradient toggle fill, inner shadows
+- **TitleBar**: Transparent gradient glass с animated brand text
+- **Dot matrix overlay**: Subtle 16px grid pattern на фонах
+- **Inner shadows**: Многослойные тени для глубины на всех карточках
+
 ## [1.0.4] — 2026-02-27
 
 ### ✨ UI/UX Модернизация

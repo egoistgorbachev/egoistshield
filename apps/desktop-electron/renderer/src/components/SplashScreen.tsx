@@ -105,7 +105,7 @@ export function SplashScreen() {
                             animate={{ opacity: 1 }}
                             transition={{ delay: 0.3, duration: 0.5 }}
                         >
-                            v1.0.4
+                            v1.0.5
                         </motion.span>
                     )}
                 </AnimatePresence>
