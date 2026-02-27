@@ -50,8 +50,8 @@ export function Settings() {
         <>
             <main className="relative z-10 flex-1 p-6 h-full pb-28 overflow-y-auto custom-scrollbar">
                 <div className="mb-8 mt-4">
-                    <h1 className="text-3xl font-display font-bold text-white/95 flex items-center gap-3">
-                        <SettingsIcon className="text-white/60 w-8 h-8" />
+                    <h1 className="text-2xl font-display font-bold text-white/90 flex items-center gap-3">
+                        <SettingsIcon className="text-brand/60 w-7 h-7" />
                         Настройки
                     </h1>
                     <p className="text-white/35 mt-2 text-sm font-medium tracking-wide">
@@ -60,7 +60,7 @@ export function Settings() {
                 </div>
 
                 <div className="max-w-6xl mx-auto w-full flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start pb-12">
-                    <SettingsCard title="Системное ядро" icon={<Server className="w-6 h-6 text-orange-400" />}>
+                    <SettingsCard title="Системное ядро" icon={<Server className="w-5 h-5 text-brand" />}>
                         <ToggleRow
                             label="TUN режим"
                             description="Виртуальный адаптер (только Sing-box)."
@@ -84,7 +84,7 @@ export function Settings() {
                         />
                     </SettingsCard>
 
-                    <SettingsCard title="Безопасность" className="h-full" icon={<ShieldAlert className="w-6 h-6 text-red-500" />}>
+                    <SettingsCard title="Безопасность" className="h-full" icon={<ShieldAlert className="w-5 h-5 text-neon-red" />}>
                         <ToggleRow
                             label="Kill Switch"
                             description="Блокировка трафика при обрыве VPN."
@@ -101,14 +101,14 @@ export function Settings() {
                         />
                     </SettingsCard>
 
-                    <SettingsCard title="Транспортное ядро" className="h-full" icon={<Shield className="w-6 h-6 text-yellow-500" />}>
-                        <div className="p-1.5 bg-black/40 rounded-2xl border border-white/5 flex gap-2 text-base mt-2 shadow-inner">
+                    <SettingsCard title="Транспортное ядро" className="h-full" icon={<Shield className="w-5 h-5 text-accent" />}>
+                        <div className="p-1.5 bg-void/60 rounded-2xl border border-white/5 flex gap-2 text-base mt-2 shadow-inner">
                             <button
                                 onClick={() => updateSetting("protocol", "xray")}
                                 className={cn(
                                     "flex-1 py-3 rounded-xl font-bold transition-all duration-300",
                                     protocol === "xray"
-                                        ? "bg-gradient-to-r from-orange-500/20 to-red-500/20 text-orange-400 border border-orange-500/30 shadow-[0_0_20px_rgba(249,115,22,0.15)]"
+                                        ? "bg-gradient-to-r from-brand/15 to-accent/10 text-brand-light border border-brand/25 shadow-glow-brand"
                                         : "bg-transparent text-white/40 hover:text-white/80 hover:bg-white/5 border border-transparent"
                                 )}
                             >
@@ -119,7 +119,7 @@ export function Settings() {
                                 className={cn(
                                     "flex-1 py-3 rounded-xl font-bold transition-all duration-300",
                                     protocol === "singbox"
-                                        ? "bg-gradient-to-r from-orange-500/20 to-red-500/20 text-orange-400 border border-orange-500/30 shadow-[0_0_20px_rgba(249,115,22,0.15)]"
+                                        ? "bg-gradient-to-r from-brand/15 to-accent/10 text-brand-light border border-brand/25 shadow-glow-brand"
                                         : "bg-transparent text-white/40 hover:text-white/80 hover:bg-white/5 border border-transparent"
                                 )}
                             >
@@ -132,7 +132,7 @@ export function Settings() {
                         </p>
                     </SettingsCard>
 
-                    <SettingsCard title="Приложение" className="h-full" icon={<Monitor className="w-6 h-6 text-blue-400" />}>
+                    <SettingsCard title="Приложение" className="h-full" icon={<Monitor className="w-5 h-5 text-brand-light" />}>
                         <ToggleRow
                             label="Автозапуск"
                             description="Запуск при входе в Windows."
@@ -174,7 +174,7 @@ export function Settings() {
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.9, y: 20 }}
                             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                            className="bg-surface border border-white/10 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl"
+                            className="bg-void-card border border-white/8 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="flex items-center gap-3 mb-4">
@@ -219,24 +219,24 @@ function SettingsCard({ title, icon, children, className }: { title: string; ico
                 className
             )}
             style={{
-                background: "rgba(12, 12, 18, 0.5)",
-                backdropFilter: "blur(24px) saturate(1.2)",
-                border: "1px solid rgba(255,255,255,0.04)",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3)",
+                background: "var(--es-glass-bg)",
+                backdropFilter: "blur(24px) saturate(1.3)",
+                border: "1px solid var(--es-glass-border)",
+                boxShadow: "inset 0 1px 0 var(--es-glass-shine), 0 4px 24px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3)",
             }}
         >
             {/* Corner glow */}
-            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-brand/5 to-transparent rounded-full blur-[30px] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+            <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-brand/4 to-transparent rounded-full blur-[25px] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
 
             {/* Title with gradient underline */}
             <div className="mb-5 relative z-10">
                 <h3 className="text-[13px] font-display font-semibold text-white/80 flex items-center gap-3 tracking-[0.15em] uppercase">
-                    <div className="p-2 rounded-xl border border-white/[0.06] transition-colors" style={{ background: "rgba(255,255,255,0.03)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)" }}>
+                    <div className="p-2 rounded-xl border border-brand/10 transition-colors" style={{ background: "rgba(99,102,241,0.05)" }}>
                         {icon}
                     </div>
                     {title}
                 </h3>
-                <div className="mt-3 h-px bg-gradient-to-r from-brand/20 via-brand/5 to-transparent" />
+                <div className="mt-3 h-px bg-gradient-to-r from-brand/15 via-brand/5 to-transparent" />
             </div>
             <div className="flex flex-col gap-1 relative z-10">{children}</div>
         </motion.div>
@@ -267,7 +267,7 @@ function ToggleRow({ label, description, tooltip, enabled, onChange }: {
                             onClick={(e) => { e.stopPropagation(); setShowTooltip(!showTooltip); }}
                             className={cn(
                                 "transition-colors shrink-0",
-                                showTooltip ? "text-orange-400" : "text-white/20 hover:text-orange-400"
+                                showTooltip ? "text-brand" : "text-white/20 hover:text-brand"
                             )}
                         >
                             <HelpCircle className="w-4 h-4" />
@@ -287,12 +287,12 @@ function ToggleRow({ label, description, tooltip, enabled, onChange }: {
                     className={cn(
                         "relative w-12 h-[26px] flex items-center shrink-0 rounded-full p-[3px] cursor-pointer transition-all duration-400 border",
                         enabled
-                            ? "border-brand/40"
+                            ? "border-brand/30"
                             : "bg-white/[0.04] border-white/[0.06]"
                     )}
                     style={enabled ? {
-                        background: "linear-gradient(135deg, rgba(255,107,44,0.9), rgba(255,61,0,0.8))",
-                        boxShadow: "0 0 20px rgba(255,107,44,0.25), inset 0 1px 0 rgba(255,255,255,0.1)",
+                        background: "linear-gradient(135deg, rgba(99,102,241,0.9), rgba(79,70,229,0.85))",
+                        boxShadow: "0 0 20px rgba(99,102,241,0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
                     } : {}}
                 >
                     <motion.div
@@ -314,7 +314,7 @@ function ToggleRow({ label, description, tooltip, enabled, onChange }: {
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                     >
-                        <div className="mx-0 mb-2 p-3 rounded-xl bg-orange-500/5 border border-orange-500/15">
+                        <div className="mx-0 mb-2 p-3 rounded-xl bg-brand/5 border border-brand/15">
                             <p className="text-sm text-white/70 leading-relaxed">
                                 💡 {tooltip}
                             </p>

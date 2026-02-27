@@ -1,177 +1,162 @@
-import { Zap, Globe, Settings as SettingsIcon, Server } from "lucide-react";
+import { Globe, Zap, Server, Settings as SettingsIcon } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useAppStore, type Screen } from "../store/useAppStore";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShieldLogo } from "./ShieldLogo";
-import { useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
+import { gsap } from "../lib/gsap-setup";
 
 const navItems: { id: Screen; icon: React.ReactNode; label: string }[] = [
-    { id: 'dashboard', icon: <Globe className="w-[18px] h-[18px]" />, label: "Главная" },
-    { id: 'split-tunnel', icon: <Zap className="w-[18px] h-[18px]" />, label: "Сплит" },
+  { id: "dashboard", icon: <Globe className="w-5 h-5" />, label: "Главная" },
+  { id: "split-tunnel", icon: <Zap className="w-5 h-5" />, label: "Сплит" },
 ];
-
 const navItemsRight: { id: Screen; icon: React.ReactNode; label: string }[] = [
-    { id: 'servers' as Screen, icon: <Server className="w-[18px] h-[18px]" />, label: "Серверы" },
-    { id: 'settings', icon: <SettingsIcon className="w-[18px] h-[18px]" />, label: "Настройки" },
+  { id: "servers" as Screen, icon: <Server className="w-5 h-5" />, label: "Серверы" },
+  { id: "settings", icon: <SettingsIcon className="w-5 h-5" />, label: "Настройки" },
 ];
 
 export function BottomNav() {
-    const currentScreen = useAppStore(s => s.currentScreen);
-    const setScreen = useAppStore(s => s.setScreen);
-    const isConnected = useAppStore(s => s.isConnected);
-    const tunMode = useAppStore(s => s.tunMode);
+  const currentScreen = useAppStore(s => s.currentScreen);
+  const setScreen = useAppStore(s => s.setScreen);
+  const isConnected = useAppStore(s => s.isConnected);
+  const tunMode = useAppStore(s => s.tunMode);
 
-    return (
-        <div className="relative z-20 w-full px-4 pb-3">
-            {/* Floating pill nav */}
-            <nav
-                aria-label="Основная навигация"
-                className="relative max-w-[520px] mx-auto h-[68px] flex items-center justify-between px-3 rounded-[22px] glass-card noise-overlay"
-                style={{
-                    background: "rgba(12, 12, 18, 0.75)",
-                    boxShadow: "0 -4px 30px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 32px rgba(0,0,0,0.4)",
-                }}
-            >
-                {navItems.map(item => {
-                    const isSplitDisabled = item.id === 'split-tunnel' && !tunMode;
-                    return (
-                        <NavItem
-                            key={item.id}
-                            icon={item.icon}
-                            label={item.label}
-                            active={currentScreen === item.id}
-                            disabled={isSplitDisabled}
-                            disabledTooltip="Включите TUN режим + Sing-box в настройках"
-                            onClick={() => !isSplitDisabled && setScreen(item.id)}
-                        />
-                    );
-                })}
+  return (
+    <div className="relative z-20 w-full px-5 pb-4">
+      <nav
+        aria-label="Основная навигация"
+        className="relative max-w-[480px] mx-auto h-[64px] flex items-center justify-between px-3 rounded-2xl glass-panel"
+      >
+        {navItems.map(item => {
+          const disabled = item.id === "split-tunnel" && !tunMode;
+          return (
+            <DockItem
+              key={item.id}
+              icon={item.icon}
+              label={item.label}
+              active={currentScreen === item.id}
+              disabled={disabled}
+              onClick={() => !disabled && setScreen(item.id)}
+            />
+          );
+        })}
 
-                {/* Central Shield button — floating above pill */}
-                <motion.button
-                    whileHover={{ scale: 1.06 }}
-                    whileTap={{ scale: 0.92 }}
-                    onClick={() => setScreen('dashboard')}
-                    aria-label="Щит — на главную"
-                    className="relative -top-8 flex-shrink-0"
-                >
-                    {/* Rotating conic-gradient ring */}
-                    <div className={cn(
-                        "absolute inset-[-3px] rounded-[1.8rem] opacity-60 transition-opacity duration-700",
-                        isConnected ? "animate-conic-spin opacity-80" : "opacity-30"
-                    )}
-                        style={{
-                            background: "conic-gradient(from 0deg, #FF6B2C, #FF3D00, #FFB547, transparent, transparent, transparent, #FF6B2C)",
-                            filter: "blur(2px)",
-                        }}
-                    />
+        {/* Central Shield — elevated */}
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={() => setScreen("dashboard")}
+          aria-label="Щит"
+          className="relative -top-5 flex-shrink-0"
+        >
+          {/* Ring glow */}
+          <div className={cn(
+            "absolute inset-[-2px] rounded-full transition-all duration-700",
+            isConnected ? "glow-emerald" : "glow-indigo"
+          )}>
+            <div className={cn(
+              "w-full h-full rounded-full border-2 transition-colors duration-700",
+              isConnected ? "border-neon-emerald/30" : "border-brand/20"
+            )} />
+          </div>
 
-                    {/* Main button body */}
-                    <div className="relative w-[66px] h-[66px] rounded-[1.6rem] bg-gradient-to-br from-brand/20 to-brand-hot/20 p-[1.5px] flex items-center justify-center z-10">
-                        <div className="w-full h-full rounded-[1.5rem] bg-gradient-to-br from-[#0C0C14] to-[#12121C] flex items-center justify-center transition-colors duration-300 group-hover:from-orange-950/30 group-hover:to-red-950/30">
-                            <ShieldLogo isConnected={isConnected} className="w-9 h-9 drop-shadow-xl" />
-                        </div>
-                    </div>
+          {/* Button body */}
+          <div className="relative w-[60px] h-[60px] rounded-full bg-void-surface flex items-center justify-center z-10 border border-white/[0.04]">
+            <ShieldLogo isConnected={isConnected} className="w-8 h-8" />
+          </div>
 
-                    {/* Ambient glow */}
-                    {isConnected && (
-                        <motion.div
-                            className="absolute inset-0 rounded-[1.8rem] pointer-events-none"
-                            animate={{ opacity: [0.2, 0.5, 0.2] }}
-                            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-                            style={{ boxShadow: "0 0 40px rgba(255,107,44,0.3), 0 0 80px rgba(255,107,44,0.1)" }}
-                        />
-                    )}
-                </motion.button>
+          {/* Pulse ring */}
+          {isConnected && (
+            <div className="absolute inset-[-6px] rounded-full border border-neon-emerald/20 animate-pulse-ring pointer-events-none" />
+          )}
+        </motion.button>
 
-                {navItemsRight.map(item => (
-                    <NavItem
-                        key={item.id}
-                        icon={item.icon}
-                        label={item.label}
-                        active={currentScreen === item.id}
-                        onClick={() => setScreen(item.id)}
-                    />
-                ))}
-            </nav>
-        </div>
-    );
+        {navItemsRight.map(item => (
+          <DockItem
+            key={item.id}
+            icon={item.icon}
+            label={item.label}
+            active={currentScreen === item.id}
+            onClick={() => setScreen(item.id)}
+          />
+        ))}
+      </nav>
+    </div>
+  );
 }
 
-function NavItem({ icon, label, active, disabled, disabledTooltip, onClick }: {
-    icon: React.ReactNode;
-    label: string;
-    active?: boolean;
-    disabled?: boolean;
-    disabledTooltip?: string;
-    onClick: () => void;
+function DockItem({ icon, label, active, disabled, onClick }: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
 }) {
-    const [showTooltip, setShowTooltip] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const [showTip, setShowTip] = useState(false);
 
-    const handleClick = () => {
-        if (disabled) {
-            setShowTooltip(true);
-            setTimeout(() => setShowTooltip(false), 2000);
-            return;
-        }
-        onClick();
-    };
+  // Magnetic dock hover — icon scales on approach
+  const handleMouseEnter = useCallback(() => {
+    if (disabled || !ref.current) return;
+    gsap.to(ref.current, { scale: 1.18, y: -4, duration: 0.3, ease: "back.out(2)" });
+  }, [disabled]);
 
-    return (
-        <motion.button
-            whileTap={disabled ? undefined : { scale: 0.88 }}
-            onClick={handleClick}
-            aria-label={label}
-            aria-current={active ? "page" : undefined}
-            aria-disabled={disabled || undefined}
-            className={cn(
-                "relative flex flex-col items-center justify-center gap-1 transition-all duration-300 w-14 group outline-none py-2 rounded-xl",
-                disabled
-                    ? "text-white/10 cursor-not-allowed"
-                    : active ? "text-brand" : "text-white/30 hover:text-white/55"
-            )}
-        >
-            {/* Tooltip */}
-            <AnimatePresence>
-                {showTooltip && disabledTooltip && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.9 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                        className="absolute -top-14 left-1/2 -translate-x-1/2 whitespace-nowrap bg-surface-card/95 text-white/90 text-[10px] font-semibold px-3 py-1.5 rounded-lg border border-brand/20 shadow-xl backdrop-blur-lg z-[60]"
-                    >
-                        {disabledTooltip}
-                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-surface-card/95 border-r border-b border-white/10 rotate-45" />
-                    </motion.div>
-                )}
-            </AnimatePresence>
+  const handleMouseLeave = useCallback(() => {
+    if (!ref.current) return;
+    gsap.to(ref.current, { scale: 1, y: 0, duration: 0.4, ease: "elastic.out(1, 0.5)" });
+  }, []);
 
-            {/* Active background pill — sliding indicator */}
-            {active && !disabled && (
-                <motion.div
-                    layoutId="nav-active-pill"
-                    className="absolute inset-0 rounded-xl bg-white/[0.06] border border-white/[0.06]"
-                    transition={{ type: "spring", stiffness: 400, damping: 28 }}
-                    style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}
-                />
-            )}
+  const handleClick = () => {
+    if (disabled) {
+      setShowTip(true);
+      setTimeout(() => setShowTip(false), 2000);
+      return;
+    }
+    onClick();
+  };
 
-            {/* Icon */}
-            <motion.div
-                animate={{ scale: active ? 1.05 : 1 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="relative z-10"
-            >
-                {icon}
-            </motion.div>
+  return (
+    <button
+      ref={ref}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "relative flex flex-col items-center justify-center gap-1 w-12 py-1.5 rounded-xl outline-none transition-colors duration-200",
+        disabled ? "text-white/8 cursor-not-allowed"
+          : active ? "text-brand" : "text-white/30 hover:text-white/55"
+      )}
+    >
+      {/* Tooltip for disabled */}
+      <AnimatePresence>
+        {showTip && (
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.93 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 4 }}
+            className="absolute -top-12 left-1/2 -translate-x-1/2 whitespace-nowrap bg-void-card text-white/80 text-[9px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand/15 shadow-lg z-50"
+          >
+            Включите TUN + Sing-box
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            {/* Label */}
-            <span className={cn(
-                "text-[9px] font-semibold tracking-wider transition-colors relative z-10 uppercase",
-                disabled
-                    ? "text-white/10"
-                    : active ? "text-brand" : "text-white/30 group-hover:text-white/50"
-            )}>{label}</span>
-        </motion.button>
-    );
+      {/* Active indicator dot */}
+      {active && !disabled && (
+        <motion.div
+          layoutId="dock-active"
+          className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-brand"
+          transition={{ type: "spring", stiffness: 400, damping: 28 }}
+          style={{ boxShadow: "0 0 8px rgba(99,102,241,0.5)" }}
+        />
+      )}
+
+      <div className="relative z-10">{icon}</div>
+      <span className={cn(
+        "text-[8px] font-semibold tracking-wider uppercase transition-colors",
+        disabled ? "text-white/8" : active ? "text-brand" : "text-white/20"
+      )}>{label}</span>
+    </button>
+  );
 }

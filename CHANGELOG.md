@@ -5,6 +5,21 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.0.6] — 2026-02-27
+
+### 🌌 «Void Obsidian» — Полный UI Редизайн v2
+
+- **GSAP 3.12** интеграция: 3D tilt shield, magnetic buttons, counter animations, GSAP Timeline splash
+- **Canvas 2D частицы**: 55 интерактивных точек, mouse repulsion, connection lines, emerald/indigo color shift
+- **Новая палитра**: cool indigo-violet (#818CF8) + void black (#030308) вместо warm orange
+- **Circular Speed Gauge**: 270° arc с gradient stroke + GSAP animated fill (вместо линейного графика)
+- **Dock-style навигация**: GSAP magnetic hover (scale + y shift), back.out/elastic.out easing
+- **SplashScreen**: GSAP Timeline — grid materialization → shield back.out → ring progress
+- **TitleBar**: ultra-minimal «ES» + magnetic window controls
+- **Типографика**: Outfit (display) + Inter (body) + JetBrains Mono (metrics)
+- **Glass panels**: unified CSS utility с CSS variables
+- **3D Tilt**: shield реагирует на позицию мыши через perspective transform
+
 ## [1.0.5] — 2026-02-27
 
 ### 🎨 Premium Cyber-Luxury Dark Редизайн

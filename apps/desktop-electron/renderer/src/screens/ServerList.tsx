@@ -90,8 +90,8 @@ export function ServerList() {
         <main className="relative z-10 flex-1 flex flex-col p-6 h-full pb-28 overflow-hidden">
             <div className="mb-4 mt-4 flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-display font-bold text-white/95 flex items-center gap-3">
-                        <Server className="text-brand w-8 h-8" />
+                    <h1 className="text-2xl font-display font-bold text-white/90 flex items-center gap-3">
+                        <Server className="text-brand/60 w-7 h-7" />
                         Серверы
                     </h1>
                 </div>
@@ -174,12 +174,12 @@ export function ServerList() {
                 )}
             </AnimatePresence>
 
-            <div className="flex p-1 rounded-2xl mb-4 border border-white/[0.04]" style={{ background: "rgba(12,12,18,0.5)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)" }}>
+            <div className="flex p-1 rounded-2xl mb-4 glass-panel">
                 <button
                     onClick={() => setActiveTab('nodes')}
                     className={cn(
                         "flex-1 py-2.5 text-sm max-[500px]:text-xs font-semibold rounded-xl transition-all duration-300",
-                        activeTab === 'nodes' ? "bg-brand/15 text-brand shadow-md border border-brand/20" : "text-white/40 hover:text-white/70"
+                        activeTab === 'nodes' ? "bg-brand/10 text-brand shadow-md border border-brand/15" : "text-white/30 hover:text-white/60"
                     )}
                 >
                     Узлы
@@ -188,7 +188,7 @@ export function ServerList() {
                     onClick={() => setActiveTab('subscriptions')}
                     className={cn(
                         "flex-1 py-2.5 text-sm max-[500px]:text-xs font-semibold rounded-xl transition-all duration-300",
-                        activeTab === 'subscriptions' ? "bg-brand/15 text-brand shadow-md border border-brand/20" : "text-white/40 hover:text-white/70"
+                        activeTab === 'subscriptions' ? "bg-brand/10 text-brand shadow-md border border-brand/15" : "text-white/30 hover:text-white/60"
                     )}
                 >
                     Подписки ({subscriptions.length})
@@ -234,7 +234,7 @@ export function ServerList() {
 
                                     {/* Сгруппированные */}
                                     {Object.entries(groupedServers).map(([countryCode, countryServers]) => (
-                                        <div key={countryCode} className="space-y-2 rounded-[18px] p-2 select-none" style={{ background: "rgba(12,12,18,0.4)", border: "1px solid rgba(255,255,255,0.03)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)" }}>
+                                        <div key={countryCode} className="space-y-2 rounded-[18px] p-2 select-none glass-panel">
                                             <button
                                                 onClick={() => toggleGroup(countryCode)}
                                                 className="w-full flex items-center justify-between p-3"
@@ -433,7 +433,7 @@ function EmptyState({ onAdd, type }: { onAdd: () => void, type: string }) {
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center my-auto h-full text-center p-8 rounded-[22px]" style={{ background: "rgba(12,12,18,0.4)", border: "1px solid rgba(255,255,255,0.03)" }}
+            className="flex flex-col items-center justify-center my-auto h-full text-center p-8 rounded-[22px] glass-panel"
         >
             <SearchX className="w-16 h-16 text-white/20 mb-4" />
             <h3 className="text-xl font-bold text-white/70 mb-2">Список {type} пуст</h3>

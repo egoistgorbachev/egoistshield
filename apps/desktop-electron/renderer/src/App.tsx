@@ -65,7 +65,7 @@ export function App() {
   }
 
   return (
-    <div className="relative w-full h-screen bg-surface-app flex flex-col overflow-hidden text-white font-sans selection:bg-brand/30">
+    <div className="relative w-full h-screen bg-void flex flex-col overflow-hidden text-white font-sans selection:bg-brand/20">
       <AnimatePresence>
         {showSplash && <SplashScreen key="splash" />}
       </AnimatePresence>
