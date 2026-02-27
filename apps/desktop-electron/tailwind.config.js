@@ -6,6 +6,10 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        display: ['"Space Grotesk"', '"Inter"', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', '"Fira Code"', 'monospace'],
+      },
       colors: {
         brand: {
           DEFAULT: "rgb(var(--es-brand) / <alpha-value>)",
@@ -14,6 +18,7 @@ module.exports = {
           accent: "rgb(var(--es-brand-accent) / <alpha-value>)",
           amber: "rgb(var(--es-brand-amber) / <alpha-value>)",
         },
+        neon: "rgb(var(--es-neon) / <alpha-value>)",
         success: "rgb(var(--es-success) / <alpha-value>)",
         danger: "rgb(var(--es-danger) / <alpha-value>)",
         warning: "rgb(var(--es-warning) / <alpha-value>)",
@@ -42,6 +47,7 @@ module.exports = {
       transitionTimingFunction: {
         spring: "var(--es-ease-spring)",
         "out-expo": "var(--es-ease-out-expo)",
+        elastic: "var(--es-ease-elastic)",
       },
       transitionDuration: {
         fast: "var(--es-duration-fast)",
@@ -51,8 +57,10 @@ module.exports = {
       boxShadow: {
         card: "var(--es-shadow)",
         "card-lg": "var(--es-shadow-lg)",
+        inner: "var(--es-shadow-inner)",
         glow: "var(--es-glow)",
         "glow-strong": "var(--es-glow-strong)",
+        "glow-neon": "var(--es-glow-neon)",
       },
       backdropBlur: {
         glass: "var(--es-glass-blur)",
@@ -60,29 +68,15 @@ module.exports = {
       animation: {
         "pulse-glow": "pulse-glow 3s ease-in-out infinite",
         shimmer: "shimmer 2s ease-in-out infinite",
-        float: "float 3s ease-in-out infinite",
-        "fade-in-up": "fade-in-up 0.4s var(--es-ease-spring) forwards",
-      },
-      keyframes: {
-        "pulse-glow": {
-          "0%, 100%": { boxShadow: "0 0 20px rgba(255, 102, 0, 0.15)" },
-          "50%": { boxShadow: "0 0 40px rgba(255, 102, 0, 0.35)" },
-        },
-        shimmer: {
-          "0%": { transform: "translateX(-100%)" },
-          "100%": { transform: "translateX(100%)" },
-        },
-        float: {
-          "0%, 100%": { transform: "translateY(0)" },
-          "50%": { transform: "translateY(-6px)" },
-        },
-        "fade-in-up": {
-          from: { opacity: "0", transform: "translateY(8px)" },
-          to: { opacity: "1", transform: "translateY(0)" },
-        },
+        float: "float 4s ease-in-out infinite",
+        "fade-in-up": "fade-in-up 0.5s var(--es-ease-spring) forwards",
+        "aurora-drift": "aurora-drift 12s ease-in-out infinite",
+        "aurora-drift-reverse": "aurora-drift-reverse 15s ease-in-out infinite",
+        "conic-spin": "conic-spin 3s linear infinite",
+        breathing: "breathing 4s ease-in-out infinite",
+        "scan-line": "scan-line 3s linear infinite",
       },
     },
   },
   plugins: [],
 }
-

@@ -114,18 +114,38 @@ export function Dashboard() {
         <main className="relative w-full h-full flex flex-col overflow-hidden select-none"
             style={{ WebkitAppRegion: 'drag' } as any}
         >
-            {/* Animated Background Glow */}
-                <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none w-full h-full">
+            {/* Aurora Mesh Background — 3 drifting orbs */}
+            <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none w-full h-full">
                 <motion.div
                     animate={!isHidden ? {
-                        scale: isConnected ? [1.1, 1.2, 1.1] : [1, 1.05, 1],
-                        opacity: isConnected ? [0.15, 0.25, 0.15] : [0.05, 0.1, 0.05],
-                        backgroundColor: isConnected ? "#f59e0b" : "#b91c1c",
+                        scale: isConnected ? [1.0, 1.15, 1.0] : [1, 1.05, 1],
+                        opacity: isConnected ? [0.12, 0.22, 0.12] : [0.04, 0.08, 0.04],
                     } : {}}
-                    transition={!isHidden ? { duration: 4, ease: "easeInOut", repeat: Infinity } : { duration: 0 }}
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[70%] rounded-full blur-[120px] mix-blend-screen will-change-transform transform-gpu"
+                    transition={!isHidden ? { duration: 8, ease: "easeInOut", repeat: Infinity } : { duration: 0 }}
+                    className="aurora-orb w-[300px] h-[300px] top-[5%] left-[10%]"
+                    style={{ background: isConnected ? "radial-gradient(circle, rgba(255,107,44,0.2) 0%, transparent 70%)" : "radial-gradient(circle, rgba(74,71,84,0.1) 0%, transparent 70%)" }}
                 />
-                <div className="absolute inset-0 opacity-[0.02] bg-[linear-gradient(rgba(255,255,255,1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,1)_1px,transparent_1px)] bg-[size:40px_40px]" />
+                <motion.div
+                    animate={!isHidden ? {
+                        scale: [1, 1.1, 0.95, 1],
+                        x: [0, -20, 15, 0],
+                        y: [0, 15, -10, 0],
+                    } : {}}
+                    transition={!isHidden ? { duration: 12, ease: "easeInOut", repeat: Infinity } : { duration: 0 }}
+                    className="aurora-orb w-[250px] h-[250px] top-[35%] right-[5%]"
+                    style={{ background: isConnected ? "radial-gradient(circle, rgba(0,229,255,0.06) 0%, transparent 70%)" : "radial-gradient(circle, rgba(74,71,84,0.05) 0%, transparent 70%)" }}
+                />
+                <motion.div
+                    animate={!isHidden ? {
+                        scale: [1, 1.08, 1],
+                        x: [0, 25, 0],
+                    } : {}}
+                    transition={!isHidden ? { duration: 10, ease: "easeInOut", repeat: Infinity } : { duration: 0 }}
+                    className="aurora-orb w-[200px] h-[200px] bottom-[15%] left-[25%]"
+                    style={{ background: isConnected ? "radial-gradient(circle, rgba(255,61,0,0.08) 0%, transparent 70%)" : "radial-gradient(circle, rgba(74,71,84,0.04) 0%, transparent 70%)" }}
+                />
+                {/* Dot matrix overlay */}
+                <div className="absolute inset-0 dot-matrix opacity-40" />
             </div>
 
             {/* Main Adaptive Layout */}
@@ -213,8 +233,10 @@ export function Dashboard() {
                             />
                         )}
 
-                        {/* Inner dark cavity with shield */}
-                        <div className="absolute inset-5 rounded-full bg-[#0a0604] border border-orange-900/30 overflow-hidden flex items-center justify-center p-8 group-hover:bg-[#0f0906] transition-colors">
+                        {/* Inner dark cavity with shield — deep indigo */}
+                        <div className="absolute inset-5 rounded-full bg-gradient-to-br from-[#06060C] to-[#0C0C14] border border-white/[0.04] overflow-hidden flex items-center justify-center p-8 group-hover:from-[#0A0812] group-hover:to-[#100E18] transition-colors">
+                            {/* Inner shadow depth */}
+                            <div className="absolute inset-0 rounded-full" style={{ boxShadow: "inset 0 -4px 20px rgba(0,0,0,0.6), inset 0 4px 10px rgba(255,255,255,0.02)" }} />
                             <ShieldLogo
                                 className={cn("w-full h-full drop-shadow-2xl transition-opacity duration-300", isConnecting ? "opacity-50 animate-pulse" : "opacity-90")}
                                 isConnected={isConnected}
@@ -240,7 +262,7 @@ export function Dashboard() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -8 }}
                             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                            className="text-2xl font-black tracking-[0.2em] text-white text-glow-brand"
+                            className="text-2xl font-display font-bold tracking-[0.2em] text-glow-brand"
                         >
                             {isDisconnecting ? "ОТКЛЮЧЕНИЕ..." : isConnecting ? "ПОДКЛЮЧЕНИЕ..." : isConnected ? "ЗАЩИЩЕНО" : "ОТКЛЮЧЕНО"}
                         </motion.h1>
@@ -248,7 +270,7 @@ export function Dashboard() {
 
                     {isConnected && (
                         <div className="flex items-center gap-3">
-                            <span className="uppercase text-[11px] tracking-[0.15em] font-bold text-white/30 bg-white/[0.04] px-3 py-1 rounded-full border border-white/[0.06]">
+                            <span className="uppercase text-[10px] tracking-[0.15em] font-semibold text-white/25 bg-white/[0.03] px-3 py-1.5 rounded-full border border-white/[0.05] font-mono-metric" style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)" }}>
                                 VLESS Protocol
                             </span>
                             {/* Яркий пинг-бейдж */}
@@ -407,7 +429,7 @@ export function Dashboard() {
                                 <div>
                                     <div className="text-[9px] font-black uppercase tracking-widest text-white/40 mb-0.5">Прием</div>
                                     <div className="flex items-baseline gap-1">
-                                        <AnimatedNumber value={parseFloat(downSpeed.value)} decimals={downSpeed.unit === "МБ/с" ? 2 : 0} className={cn("text-xl font-black tracking-tight tabular-nums", isConnected ? "text-white" : "text-white/40")} />
+                                        <AnimatedNumber value={parseFloat(downSpeed.value)} decimals={downSpeed.unit === "МБ/с" ? 2 : 0} className={cn("text-xl font-bold tracking-tight font-mono-metric", isConnected ? "text-white" : "text-white/40")} />
                                         <span className="text-[9px] text-white/40 font-bold uppercase">{downSpeed.unit}</span>
                                     </div>
                                 </div>
@@ -424,7 +446,7 @@ export function Dashboard() {
                                 <div className="text-right">
                                     <div className="text-[9px] font-black uppercase tracking-widest text-white/40 mb-0.5">Отдача</div>
                                     <div className="flex items-baseline gap-1 justify-end">
-                                        <AnimatedNumber value={parseFloat(upSpeed.value)} decimals={upSpeed.unit === "МБ/с" ? 2 : 0} className={cn("text-xl font-black tracking-tight tabular-nums", isConnected ? "text-white" : "text-white/40")} />
+                                        <AnimatedNumber value={parseFloat(upSpeed.value)} decimals={upSpeed.unit === "МБ/с" ? 2 : 0} className={cn("text-xl font-bold tracking-tight font-mono-metric", isConnected ? "text-white" : "text-white/40")} />
                                         <span className="text-[9px] text-white/40 font-bold uppercase">{upSpeed.unit}</span>
                                     </div>
                                 </div>
@@ -433,7 +455,7 @@ export function Dashboard() {
 
                         {/* Real-time SVG Graph — 80px tall, visible */}
                         <div className="relative w-full h-16 -mx-1">
-                            <SpeedGraph data={speedHistory} color={isConnected ? "#10b981" : "#3b82f6"} />
+                            <SpeedGraph data={speedHistory} color={isConnected ? "#00D68F" : "#00E5FF"} />
                         </div>
                     </motion.div>
                 </motion.div>

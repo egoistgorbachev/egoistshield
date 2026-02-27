@@ -50,11 +50,11 @@ export function Settings() {
         <>
             <main className="relative z-10 flex-1 p-6 h-full pb-28 overflow-y-auto custom-scrollbar">
                 <div className="mb-8 mt-4">
-                    <h1 className="text-4xl font-bold text-white flex items-center gap-3 drop-shadow-md">
-                        <SettingsIcon className="text-white/80 w-9 h-9" />
+                    <h1 className="text-3xl font-display font-bold text-white/95 flex items-center gap-3">
+                        <SettingsIcon className="text-white/60 w-8 h-8" />
                         Настройки
                     </h1>
-                    <p className="text-white/50 mt-2 text-lg font-medium">
+                    <p className="text-white/35 mt-2 text-sm font-medium tracking-wide">
                         VPN ядро, безопасность и параметры приложения.
                     </p>
                 </div>
@@ -215,16 +215,30 @@ function SettingsCard({ title, icon, children, className }: { title: string; ico
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
             className={cn(
-                "group glass-card bg-black/20 border border-white/5 hover:border-white/10 rounded-3xl p-6 shadow-card transition-all duration-500 relative noise-overlay",
+                "group rounded-[22px] p-6 transition-all duration-500 relative overflow-hidden",
                 className
             )}
+            style={{
+                background: "rgba(12, 12, 18, 0.5)",
+                backdropFilter: "blur(24px) saturate(1.2)",
+                border: "1px solid rgba(255,255,255,0.04)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3)",
+            }}
         >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.02] rounded-full blur-[40px] pointer-events-none" />
-            <h3 className="text-base font-black text-white flex items-center gap-3 mb-6 opacity-90 tracking-widest uppercase relative z-10">
-                <div className="p-2 bg-white/5 rounded-xl border border-white/10 group-hover:border-white/15 transition-colors">{icon}</div>
-                {title}
-            </h3>
-            <div className="flex flex-col gap-2 relative z-10">{children}</div>
+            {/* Corner glow */}
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-brand/5 to-transparent rounded-full blur-[30px] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+
+            {/* Title with gradient underline */}
+            <div className="mb-5 relative z-10">
+                <h3 className="text-[13px] font-display font-semibold text-white/80 flex items-center gap-3 tracking-[0.15em] uppercase">
+                    <div className="p-2 rounded-xl border border-white/[0.06] transition-colors" style={{ background: "rgba(255,255,255,0.03)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)" }}>
+                        {icon}
+                    </div>
+                    {title}
+                </h3>
+                <div className="mt-3 h-px bg-gradient-to-r from-brand/20 via-brand/5 to-transparent" />
+            </div>
+            <div className="flex flex-col gap-1 relative z-10">{children}</div>
         </motion.div>
     );
 }
@@ -271,9 +285,15 @@ function ToggleRow({ label, description, tooltip, enabled, onChange }: {
 
                 <div
                     className={cn(
-                        "relative w-14 h-7 flex items-center shrink-0 rounded-full p-1 cursor-pointer transition-colors duration-300 border",
-                        enabled ? "bg-orange-500 border-orange-400/50 shadow-[0_0_15px_rgba(249,115,22,0.4)]" : "bg-black/50 border-white/10"
+                        "relative w-12 h-[26px] flex items-center shrink-0 rounded-full p-[3px] cursor-pointer transition-all duration-400 border",
+                        enabled
+                            ? "border-brand/40"
+                            : "bg-white/[0.04] border-white/[0.06]"
                     )}
+                    style={enabled ? {
+                        background: "linear-gradient(135deg, rgba(255,107,44,0.9), rgba(255,61,0,0.8))",
+                        boxShadow: "0 0 20px rgba(255,107,44,0.25), inset 0 1px 0 rgba(255,255,255,0.1)",
+                    } : {}}
                 >
                     <motion.div
                         layout
