@@ -26,7 +26,7 @@ export const ServerItem = memo(function ServerItem({
             className={cn(
                 "group relative p-4 rounded-[20px] flex items-center justify-between cursor-pointer transition-all duration-300",
                 active
-                    ? "bg-white/[0.04] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-10 before:bg-orange-500 before:rounded-r-full overflow-hidden"
+                    ? "bg-white/[0.04] border border-brand/30 shadow-[0_8px_32px_rgba(99,102,241,0.2)] relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-10 before:bg-brand before:rounded-r-full before:shadow-[0_0_12px_#818CF8] overflow-hidden"
                     : "bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 hover:border-white/10"
             )}
         >
@@ -35,11 +35,11 @@ export const ServerItem = memo(function ServerItem({
 
                 <div className="flex flex-col">
                     <div className="flex items-center gap-2 mb-1">
-                        <span className={cn("font-bold text-base transition-colors", active ? "text-orange-50" : "text-white")}>
+                        <span className={cn("font-bold text-base transition-colors", active ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-white/80")}>
                             {name}
                         </span>
                         {recommended && (
-                            <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase tracking-wider rounded-md border border-orange-500/30">
+                            <span className="px-1.5 py-0.5 bg-brand/20 text-brand text-[10px] font-black uppercase tracking-wider rounded-md border border-brand/30 shadow-[0_0_8px_rgba(129,140,248,0.3)]">
                                 Рекомендуем
                             </span>
                         )}
@@ -63,7 +63,7 @@ export const ServerItem = memo(function ServerItem({
                 <button
                     onClick={(e) => { e.stopPropagation(); onPin(); }}
                     className={cn("w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                        pinned ? "text-orange-400 bg-orange-500/10" : "text-white/20 hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100"
+                        pinned ? "text-brand bg-brand/10 shadow-[0_0_10px_rgba(129,140,248,0.2)]" : "text-white/20 hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100"
                     )}
                 >
                     <Pin className="w-4 h-4" />
@@ -79,17 +79,17 @@ export const ServerItem = memo(function ServerItem({
                         onClick={(e) => { e.stopPropagation(); onConnectToggle?.(); }}
                         disabled={isConnecting}
                         className={cn(
-                            "ml-2 w-10 h-10 rounded-[14px] flex items-center justify-center transition-all border backdrop-blur-md",
-                            isConnecting ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/30" :
-                                isConnected ? "bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20 hover:text-red-300" :
-                                    "bg-orange-500/90 text-black border-orange-500/50 shadow-[0_4px_12px_rgba(249,115,22,0.3)] hover:bg-orange-400 hover:scale-105"
+                            "ml-2 w-10 h-10 rounded-[14px] flex items-center justify-center transition-all border backdrop-blur-md overflow-hidden relative",
+                            isConnecting ? "bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-[0_0_15px_rgba(251,191,36,0.3)]" :
+                                isConnected ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_15px_rgba(52,211,153,0.3)] hover:bg-emerald-500/20" :
+                                    "bg-brand text-white border-brand/50 shadow-[0_0_15px_rgba(129,140,248,0.5)] hover:bg-indigo-400 hover:scale-105"
                         )}
                         title={isConnected ? "Отключить" : "Подключить"}
                     >
                         {isConnecting ? (
-                            <Zap className="w-5 h-5 animate-pulse" />
+                            <Zap className="w-5 h-5 animate-pulse drop-shadow-[0_0_5px_currentColor]" />
                         ) : (
-                            <Power className="w-5 h-5" />
+                            <Power className="w-5 h-5 drop-shadow-[0_0_5px_currentColor]" />
                         )}
                     </button>
                 ) : (

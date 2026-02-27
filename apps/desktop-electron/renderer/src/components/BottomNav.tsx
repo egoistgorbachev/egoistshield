@@ -60,8 +60,8 @@ export function BottomNav() {
           </div>
 
           {/* Button body */}
-          <div className="relative w-[60px] h-[60px] rounded-full bg-void-surface flex items-center justify-center z-10 border border-white/[0.04]">
-            <ShieldLogo isConnected={isConnected} className="w-8 h-8" />
+          <div className="relative w-[60px] h-[60px] rounded-full bg-void-surface flex items-center justify-center z-10 border border-white/[0.04] shadow-[0_0_20px_rgba(0,0,0,0.8)]">
+            <ShieldLogo isConnected={isConnected} className="w-8 h-8 drop-shadow-[0_0_8px_currentColor]" />
           </div>
 
           {/* Pulse ring */}
@@ -146,7 +146,7 @@ function DockItem({ icon, label, active, disabled, onClick }: {
       {active && !disabled && (
         <motion.div
           layoutId="dock-active"
-          className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-brand"
+          className="absolute -bottom-0.5 w-1.5 h-1.5 rounded-full bg-brand shadow-[0_0_8px_#818CF8]"
           transition={{ type: "spring", stiffness: 400, damping: 28 }}
           style={{ boxShadow: "0 0 8px rgba(99,102,241,0.5)" }}
         />

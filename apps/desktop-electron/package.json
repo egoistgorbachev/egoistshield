@@ -1,7 +1,7 @@
 {
   "name": "egoistshield-desktop-electron",
   "productName": "EgoistShield",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "EgoistShield next-gen universal VPN client for Windows",
   "main": ".vite/build/main.js",
   "private": true,

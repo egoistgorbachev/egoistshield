@@ -106,8 +106,8 @@ export function ServerList() {
                             className={cn(
                                 "p-3 text-white transition-all rounded-xl shadow-lg border flex items-center gap-2",
                                 speedtestRunning
-                                    ? "bg-orange-500/20 border-orange-500/30 text-orange-400 cursor-wait"
-                                    : "bg-white/5 hover:bg-orange-500/20 border-white/10 hover:border-orange-500/40 hover:text-orange-400"
+                                    ? "bg-amber-500/20 border-amber-500/30 text-amber-400 cursor-wait shadow-[0_0_15px_rgba(251,191,36,0.2)]"
+                                    : "bg-white/5 hover:bg-brand/20 border-white/10 hover:border-brand/40 hover:text-brand"
                             )}
                             title="Замерить скорость узла"
                         >
@@ -128,7 +128,7 @@ export function ServerList() {
                             onClick={() => refreshAllSubscriptions()}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            className="p-3 bg-white/5 hover:bg-orange-500/20 text-white transition-colors rounded-xl shadow-lg border border-white/10"
+                            className="p-3 bg-white/5 hover:bg-brand/20 text-white transition-colors rounded-xl shadow-lg border border-white/10"
                             title="Обновить все подписки"
                         >
                             <RefreshCw className="w-6 h-6" />
@@ -138,7 +138,7 @@ export function ServerList() {
                         onClick={() => setIsAddModalOpen(true)}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="p-3 bg-white/5 hover:bg-orange-500/20 text-white hover:text-orange-400 rounded-xl border border-white/10 hover:border-orange-500/40 transition-colors shadow-lg flex items-center justify-center"
+                        className="p-3 bg-white/5 hover:bg-brand/20 text-white hover:text-brand rounded-xl border border-white/10 hover:border-brand/40 transition-colors shadow-lg flex items-center justify-center"
                         title="Добавить конфигурацию"
                     >
                         <Plus className="w-6 h-6" />
@@ -206,7 +206,7 @@ export function ServerList() {
                                     {/* Закрепленные */}
                                     {pinnedServers.length > 0 && (
                                         <div className="space-y-3">
-                                            <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                            <h3 className="text-sm font-bold text-brand uppercase tracking-wider flex items-center gap-2 mb-2 drop-shadow-[0_0_8px_rgba(129,140,248,0.4)]">
                                                 <Pin className="w-4 h-4" /> Закрепленные
                                             </h3>
                                             {pinnedServers.map(server => (
@@ -317,13 +317,13 @@ export function ServerList() {
                                         return (
                                             <div key={idx} className="rounded-2xl overflow-hidden border border-white/[0.06] bg-white/[0.02]">
                                                 {/* Header — gradient with name */}
-                                                <div className="bg-gradient-to-r from-orange-500/10 to-red-500/5 px-5 py-3.5 flex items-center justify-between border-b border-white/[0.04]">
+                                                <div className="bg-gradient-to-r from-brand/10 to-accent/5 px-5 py-3.5 flex items-center justify-between border-b border-white/[0.04]">
                                                     <div className="flex-1 min-w-0 mr-3">
                                                         <h4 className="font-black text-white/90 text-sm truncate" title={sub.url}>{sub.name || "Подписка"}</h4>
                                                         <p className="text-[10px] text-white/30 mt-0.5 truncate font-mono" title={sub.url}>{sub.url}</p>
                                                     </div>
                                                     <div className="flex gap-1.5 shrink-0">
-                                                        <button onClick={() => handleRefresh(sub.url)} className="p-2 bg-white/[0.06] hover:bg-orange-500/20 rounded-xl text-white/50 hover:text-orange-400 transition-all duration-200 hover:scale-105 active:scale-95" title="Обновить">
+                                                        <button onClick={() => handleRefresh(sub.url)} className="p-2 bg-white/[0.06] hover:bg-brand/20 rounded-xl text-white/50 hover:text-brand transition-all duration-200 hover:scale-105 active:scale-95" title="Обновить">
                                                             <RefreshCw className="w-3.5 h-3.5" />
                                                         </button>
                                                         <button onClick={() => removeSubscription(sub.url)} className="p-2 bg-white/[0.06] hover:bg-red-500/20 rounded-xl text-white/50 hover:text-red-400 transition-all duration-200 hover:scale-105 active:scale-95" title="Удалить">

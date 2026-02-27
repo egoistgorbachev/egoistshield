@@ -20,8 +20,8 @@ interface Particle {
 
 const PARTICLE_COUNT = 55;
 const CONNECTION_DIST = 100;
-const MOUSE_RADIUS = 140;
-const MOUSE_FORCE = 0.8;
+const MOUSE_RADIUS = 180;
+const MOUSE_FORCE = 1.2;
 
 export function ParticleCanvas({ isConnected = false }: { isConnected?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -135,7 +135,11 @@ export function ParticleCanvas({ isConnected = false }: { isConnected?: boolean 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = color;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = connected ? "#34D399" : "#818CF8";
         ctx.fill();
+        // Reset shadow for performance on lines
+        ctx.shadowBlur = 0;
       }
 
       // Draw connections
