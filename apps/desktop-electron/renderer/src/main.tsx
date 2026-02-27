@@ -3,12 +3,11 @@ import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "react-error-boundary";
 import { Toaster } from "sonner";
 import { App } from "./App";
-import { useAppStore } from "./store/useAppStore";
+
 import "./styles/globals.css";
 
-// Восстановить тему из localStorage при загрузке
-const savedTheme = useAppStore.getState().theme ?? "dark";
-document.documentElement.setAttribute("data-theme", savedTheme);
+// Тема всегда dark
+document.documentElement.setAttribute("data-theme", "dark");
 
 function ErrorFallback({ error, resetErrorBoundary }: { error: unknown; resetErrorBoundary: () => void }) {
   const message = error instanceof Error ? error.message : String(error);
@@ -36,7 +35,7 @@ if (root) {
       <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => window.location.reload()}>
         <App />
         <Toaster
-          theme={savedTheme}
+          theme="dark"
           position="top-center"
           toastOptions={{
             style: {

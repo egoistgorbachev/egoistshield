@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Settings as SettingsIcon, Server, Shield, Monitor, ShieldAlert, HelpCircle, AlertTriangle, Sun, Moon } from "lucide-react";
+import { Settings as SettingsIcon, Server, Shield, Monitor, ShieldAlert, HelpCircle, AlertTriangle } from "lucide-react";
 import { cn } from "../lib/cn";
 import { getAPI } from "../lib/api";
 import { useAppStore } from "../store/useAppStore";
@@ -14,8 +14,7 @@ export function Settings() {
     const hwAccel = useAppStore(s => s.hwAccel);
     const protocol = useAppStore(s => s.protocol);
     const updateSetting = useAppStore(s => s.updateSetting);
-    const theme = useAppStore(s => s.theme);
-    const toggleTheme = useAppStore(s => s.toggleTheme);
+
 
     const [showResetModal, setShowResetModal] = useState(false);
 
@@ -148,13 +147,7 @@ export function Settings() {
                             enabled={hwAccel}
                             onChange={() => updateSetting("hwAccel", !hwAccel)}
                         />
-                        <ToggleRow
-                            label="Светлая тема"
-                            description="Переключить цветовую схему."
-                            tooltip="Переключает между тёмной и светлой темой интерфейса. Светлая тема может быть удобнее при ярком освещении."
-                            enabled={theme === 'light'}
-                            onChange={toggleTheme}
-                        />
+
 
                         <button
                             onClick={() => setShowResetModal(true)}

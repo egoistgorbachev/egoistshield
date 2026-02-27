@@ -214,9 +214,19 @@ export function ServerList() {
                                                     key={server.id}
                                                     {...server}
                                                     active={selectedServerId === server.id}
+                                                    isConnected={isConnected && selectedServerId === server.id}
+                                                    isConnecting={isConnecting && selectedServerId === server.id}
                                                     onClick={() => setSelectedServer(server.id)}
                                                     onRemove={() => removeServer(server.id)}
                                                     onPin={() => togglePinServer(server.id)}
+                                                    onConnectToggle={() => {
+                                                        if (selectedServerId !== server.id) {
+                                                            setSelectedServer(server.id);
+                                                            if (!isConnected) toggleConnection();
+                                                        } else {
+                                                            toggleConnection();
+                                                        }
+                                                    }}
                                                 />
                                             ))}
                                         </div>

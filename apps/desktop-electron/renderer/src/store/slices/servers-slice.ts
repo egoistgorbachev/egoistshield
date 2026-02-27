@@ -211,9 +211,11 @@ export const createServersSlice: StateCreator<
     startPingLoop: () => {
         const state = get();
         if (!state._pingInterval) {
+            // Immediate first ping
+            get().testAllPings();
             const interval = setInterval(() => {
                 get().testAllPings();
-            }, 10000);
+            }, 5000);
             set({ _pingInterval: interval });
         }
     },
@@ -234,22 +236,17 @@ export const createServersSlice: StateCreator<
         const servers = state.servers.filter(s => s.id !== 'smart-optimal');
         if (servers.length === 0) return;
 
-        // Smart Ping Strategy: active + 10 random
-        const serversToPing = new Set<ServerConfig>();
+        // Ping ALL servers — active first, then rest in batches of 5
+        const serversToPing: ServerConfig[] = [];
         const activeServer = servers.find(s => s.id === state.selectedServerId);
-        if (activeServer) serversToPing.add(activeServer);
-
-        const shuffled = [...servers].sort(() => 0.5 - Math.random());
-        for (const s of shuffled) {
-            if (serversToPing.size >= 10) break;
-            if (s.id !== state.selectedServerId) serversToPing.add(s);
-        }
-
-        const batched = Array.from(serversToPing);
+        if (activeServer) serversToPing.push(activeServer);
+        servers.forEach(s => {
+            if (s.id !== state.selectedServerId) serversToPing.push(s);
+        });
         const newPings = new Map<string, number>();
 
-        for (let i = 0; i < batched.length; i += 5) {
-            const chunk = batched.slice(i, i + 5);
+        for (let i = 0; i < serversToPing.length; i += 5) {
+            const chunk = serversToPing.slice(i, i + 5);
             const results = await Promise.all(chunk.map(async (s: ServerConfig) => {
                 try {
                     const p = await api.system.ping(s._host!, s._port!);

@@ -3,7 +3,7 @@
  *
  * Логика разбита на слайсы:
  * - connection-slice: VPN connect/disconnect
- * - settings-slice: настройки, тема, first-run, split tunnel
+ * - settings-slice: настройки, first-run, split tunnel
  * - servers-slice: серверы, пинг, подписки, sync
  *
  * Этот файл комбинирует слайсы в единый store с persist.
@@ -40,7 +40,7 @@ export const useAppStore = create<AppState>()(
                 autoStart: state.autoStart,
                 hwAccel: state.hwAccel,
                 protocol: state.protocol,
-                theme: state.theme,
+
                 selectedServerId: state.selectedServerId,
                 servers: state.servers,
                 proxyApps: state.proxyApps,

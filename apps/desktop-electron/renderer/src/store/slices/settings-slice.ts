@@ -1,5 +1,5 @@
 /**
- * Settings Slice — Настройки, тема, first-run
+ * Settings Slice — Настройки, first-run
  */
 import type { StateCreator } from 'zustand';
 import { getAPI } from '../../lib/api';
@@ -23,7 +23,7 @@ export interface SettingsSlice {
     autoStart: boolean;
     hwAccel: boolean;
     protocol: Protocol;
-    theme: 'dark' | 'light';
+
 
     // Split Tunnel
     proxyApps: App[];
@@ -33,7 +33,7 @@ export interface SettingsSlice {
     setScreen: (screen: Screen) => void;
     checkFirstRun: () => Promise<void>;
     completeFirstRun: () => Promise<void>;
-    toggleTheme: () => void;
+
     updateSetting: <K extends string>(key: K, value: unknown) => void;
     addProxyApp: (app: App) => void;
     removeProxyApp: (appName: string) => void;
@@ -56,7 +56,7 @@ export const createSettingsSlice: StateCreator<
     autoStart: false,
     hwAccel: true,
     protocol: 'xray',
-    theme: 'dark' as 'dark' | 'light',
+
 
     proxyApps: [],
     bypassApps: [],
@@ -81,11 +81,7 @@ export const createSettingsSlice: StateCreator<
         set({ isFirstRun: false });
     },
 
-    toggleTheme: () => {
-        const next = get().theme === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        set({ theme: next });
-    },
+
 
     updateSetting: (key, value) => {
         const wasConnected = get().isConnected;
