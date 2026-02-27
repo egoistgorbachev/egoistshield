@@ -132,7 +132,7 @@ export function SplashScreen() {
           className="mt-1.5 text-[10px] font-mono-metric font-medium tracking-[0.3em] text-white/15 uppercase"
           style={{ opacity: 0 }}
         >
-          v1.0.6
+          v1.0.7
         </span>
 
         {/* Progress ring */}
