@@ -115,19 +115,130 @@ body {
 
 /*
  * ═══════════════════════════════════════════
- *  Light Theme — Semantic Overrides
- *  Вместо перехвата Tailwind-классов через !important,
- *  используем семантические CSS-переменные, которые уже
- *  определены выше в [data-theme="light"].
- *  Компоненты должны использовать text-primary, text-secondary,
- *  bg-surface-app, bg-surface-card и пр. токены.
+ *  Light Theme — Tailwind Class Overrides
+ *
+ *  Компоненты используют Tailwind-классы
+ *  (text-white, bg-white/5, border-white/10),
+ *  которые заточены под dark mode.
+ *
+ *  Здесь перехватываем их через
+ *  [data-theme="light"] (выше по specificity)
+ *  и преобразуем в семантические цвета.
  * ═══════════════════════════════════════════
  */
 [data-theme="light"] {
-  /* Backdrop & glass — не зависят от Tailwind-класса */
+
+  /* ── Text overrides ── */
+  .text-white {
+    color: rgb(var(--es-text-primary));
+  }
+  .text-white\/90 {
+    color: rgba(var(--es-text-primary), 0.9);
+  }
+  .text-white\/80 {
+    color: rgba(var(--es-text-primary), 0.8);
+  }
+  .text-white\/70 {
+    color: rgba(var(--es-text-primary), 0.7);
+  }
+  .text-white\/60 {
+    color: rgba(var(--es-text-secondary), 0.9);
+  }
+  .text-white\/50 {
+    color: rgba(var(--es-text-secondary), 0.8);
+  }
+  .text-white\/40 {
+    color: rgba(var(--es-text-muted), 0.9);
+  }
+  .text-white\/30 {
+    color: rgba(var(--es-text-muted), 0.7);
+  }
+
+  /* ── Background overrides ── */
+  .bg-white\/\[0\.02\] {
+    background-color: rgba(var(--es-border), 0.03);
+  }
+  .bg-white\/5 {
+    background-color: rgba(var(--es-border), 0.04);
+  }
+  .bg-white\/10 {
+    background-color: rgba(var(--es-border), 0.07);
+  }
+  .bg-white\/15,
+  .bg-white\/20 {
+    background-color: rgba(var(--es-border), 0.08);
+  }
+  .bg-black\/20,
+  .bg-black\/30,
+  .bg-black\/40 {
+    background-color: rgba(var(--es-border), 0.04);
+  }
+
+  /* ── Border overrides ── */
+  .border-white\/5 {
+    border-color: rgba(var(--es-border), 0.08);
+  }
+  .border-white\/10 {
+    border-color: rgba(var(--es-border), 0.1);
+  }
+  .border-white\/20 {
+    border-color: rgba(var(--es-border), 0.14);
+  }
+
+  /* ── Ring overrides ── */
+  .ring-white\/10,
+  .ring-white\/20 {
+    --tw-ring-color: rgba(var(--es-border), 0.1);
+  }
+
+  /* ── Divide overrides ── */
+  .divide-white\/5 > * + * {
+    border-color: rgba(var(--es-border), 0.06);
+  }
+
+  /* ── Hover overrides ── */
+  .hover\:text-white:hover {
+    color: rgb(var(--es-text-primary));
+  }
+  .hover\:text-white\/80:hover {
+    color: rgba(var(--es-text-primary), 0.8);
+  }
+  .hover\:bg-white\/5:hover {
+    background-color: rgba(var(--es-border), 0.06);
+  }
+  .hover\:bg-white\/10:hover {
+    background-color: rgba(var(--es-border), 0.08);
+  }
+
+  /* ── Placeholder overrides ── */
+  .placeholder-white\/30::placeholder {
+    color: rgba(var(--es-text-muted), 0.7);
+  }
+
+  /* ── Backdrop & glass ── */
   .backdrop-blur-xl,
   .backdrop-blur-md,
   .backdrop-blur-lg {
     background-color: rgba(var(--es-bg-surface), 0.85);
+  }
+
+  /* ── Shadows ── */
+  .shadow-lg {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  }
+  .shadow-xl {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.07);
+  }
+  .shadow-2xl {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+
+  /* ── Gradient overrides ── */
+  .from-white\/5 {
+    --tw-gradient-from: rgba(var(--es-border), 0.04);
+  }
+  .to-white\/0,
+  .to-transparent {
+    --tw-gradient-to: transparent;
   }
 }
