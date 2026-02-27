@@ -1,0 +1,133 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * ═══════════════════════════════════════════
+ *  EgoistShield — Design Tokens
+ * ═══════════════════════════════════════════
+ */
+
+/* ── Dark Theme (default) ── */
+:root,
+[data-theme="dark"] {
+  --es-brand: 249 115 22;
+  --es-brand-light: 251 146 60;
+  --es-brand-hot: 239 68 68;
+  --es-success: 52 211 153;
+  --es-danger: 239 68 68;
+  --es-warning: 251 191 36;
+
+  --es-bg-app: 5 8 13;
+  --es-bg-surface: 11 14 20;
+  --es-bg-card: 15 19 28;
+  --es-bg-elevated: 20 25 38;
+
+  --es-text-primary: 255 255 255;
+  --es-text-secondary: 148 163 184;
+  --es-text-muted: 100 116 139;
+
+  --es-border: 255 255 255;
+  --es-border-alpha: 0.08;
+
+  --es-topbar-h: 32px;
+  --es-bottomnav-h: 76px;
+
+  --es-ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --es-duration-fast: 150ms;
+  --es-duration-normal: 250ms;
+
+  --es-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --es-glow: 0 0 20px rgba(249, 115, 22, 0.15);
+
+  color-scheme: dark;
+}
+
+/* ── Light Theme ── */
+[data-theme="light"] {
+  --es-bg-app: 245 247 250;
+  --es-bg-surface: 255 255 255;
+  --es-bg-card: 248 250 252;
+  --es-bg-elevated: 241 245 249;
+
+  --es-text-primary: 15 23 42;
+  --es-text-secondary: 71 85 105;
+  --es-text-muted: 148 163 184;
+
+  --es-border: 0 0 0;
+  --es-border-alpha: 0.08;
+
+  --es-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --es-glow: 0 0 20px rgba(249, 115, 22, 0.1);
+
+  color-scheme: light;
+}
+
+body {
+  background-color: rgb(var(--es-bg-app));
+  color: rgb(var(--es-text-primary));
+  font-family:
+    "Inter",
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition:
+    background-color var(--es-duration-normal) var(--es-ease-spring),
+    color var(--es-duration-normal) var(--es-ease-spring);
+}
+
+/* ── Custom scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--es-text-secondary), 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--es-text-secondary), 0.35);
+}
+
+/* ── Focus ring ── */
+*:focus-visible {
+  outline: 2px solid rgba(var(--es-brand), 0.5);
+  outline-offset: 2px;
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgba(var(--es-brand), 0.3);
+}
+
+/*
+ * ═══════════════════════════════════════════
+ *  Light Theme — Semantic Overrides
+ *  Вместо перехвата Tailwind-классов через !important,
+ *  используем семантические CSS-переменные, которые уже
+ *  определены выше в [data-theme="light"].
+ *  Компоненты должны использовать text-primary, text-secondary,
+ *  bg-surface-app, bg-surface-card и пр. токены.
+ * ═══════════════════════════════════════════
+ */
+[data-theme="light"] {
+  /* Backdrop & glass — не зависят от Tailwind-класса */
+  .backdrop-blur-xl,
+  .backdrop-blur-md,
+  .backdrop-blur-lg {
+    background-color: rgba(var(--es-bg-surface), 0.85);
+  }
+}

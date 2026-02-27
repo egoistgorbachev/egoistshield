@@ -1,0 +1,31 @@
+bin/
+obj/
+.vs/
+artifacts/
+TestResults/
+*.user
+*.suo
+*.nupkg
+.idea/
+.vscode/
+.agent/
+.agents/
+.claude/
+brain/
+.venv/
+Credentials.env
+
+# Node.js
+node_modules/
+dist/
+out/
+.vite/
+*.tsbuildinfo
+
+# Build artifacts
+packaging/build/
+packaging/output/
+
+# OS
+.DS_Store
+Thumbs.db

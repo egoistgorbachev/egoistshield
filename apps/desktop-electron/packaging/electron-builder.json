@@ -1,0 +1,36 @@
+{
+  "appId": "com.egoistshield.desktop",
+  "productName": "EgoistShield",
+  "directories": {
+    "output": "out/make/nsis"
+  },
+  "win": {
+    "icon": "renderer/public/assets/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "EgoistShield_Setup_${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": true,
+    "allowElevation": true,
+    "perMachine": true,
+    "createDesktopShortcut": "always",
+    "createStartMenuShortcut": true,
+    "shortcutName": "EgoistShield",
+    "runAfterFinish": true,
+    "deleteAppDataOnUninstall": true,
+    "installerIcon": "renderer/public/assets/icon.ico",
+    "uninstallerIcon": "renderer/public/assets/icon.ico",
+    "installerSidebar": "packaging/installer/assets/installerSidebar.bmp",
+    "uninstallerSidebar": "packaging/installer/assets/uninstallerSidebar.bmp",
+    "installerHeader": "packaging/installer/assets/installerHeader.bmp",
+    "installerHeaderIcon": "packaging/installer/assets/installerHeaderIcon.ico",
+    "include": "packaging/installer/installer.nsh"
+  }
+}
