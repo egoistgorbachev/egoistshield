@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "types": [
+      "node",
+      "vite/client"
+    ],
+    "baseUrl": "."
+  },
+  "include": [
+    "electron",
+    "renderer",
+    "shared",
+    "vite.*.config.ts",
+    "forge.config.ts"
+  ],
+  "exclude": [
+    "tests",
+    "e2e",
+    "node_modules"
+  ]
+}
