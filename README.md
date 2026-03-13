@@ -1,56 +1,94 @@
-# EgoistShield
+<p align="center">
+  <img src="apps/desktop-electron/renderer/public/assets/icon.ico" width="80" alt="EgoistShield Logo"/>
+</p>
 
-Универсальный VPN-клиент нового поколения для Windows: импорт конфигов/ссылок/QR, мульти-core рантайм (Xray + sing-box), split tunneling по процессам и сайтам, Kill Switch.
+<h1 align="center">🛡️ EgoistShield</h1>
 
-## Технологии
+<p align="center">
+  <b>Бесплатный VPN-клиент для Windows — быстрый, безопасный, без регистрации</b>
+</p>
 
-- **Platform:** Electron 36.5 (Windows x64)
-- **Frontend:** React 19.1, TypeScript 5.8 (strict), Tailwind CSS 3.4
-- **Bundler:** Vite 7.3 + Electron Forge
-- **State:** Zustand 5.0
-- **VPN Runtime:** Xray-core + sing-box
-- **Installer:** NSIS (electron-builder)
-- **Tests:** Vitest (unit), Playwright (E2E)
+<p align="center">
+  <a href="https://github.com/egoistgorbachev/egoistshield/releases/latest">
+    <img src="https://img.shields.io/github/v/release/egoistgorbachev/egoistshield?style=for-the-badge&color=10b981&label=%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C" alt="Download"/>
+  </a>
+  <img src="https://img.shields.io/badge/Windows%2010%2F11-x64-blue?style=for-the-badge&logo=windows" alt="Windows"/>
+  <img src="https://img.shields.io/github/downloads/egoistgorbachev/egoistshield/total?style=for-the-badge&color=6366f1&label=%D0%A1%D0%BA%D0%B0%D1%87%D0%B8%D0%B2%D0%B0%D0%BD%D0%B8%D1%8F" alt="Downloads"/>
+</p>
 
-## Структура
+---
 
-```
-apps/desktop-electron/
-├── electron/           # Main Process (Node.js)
-│   ├── main.ts         # Точка входа Electron
-│   ├── preload.ts      # contextBridge → egoistAPI
-│   └── ipc/            # IPC обработчики + Zod-валидация
-├── renderer/           # Renderer Process (React)
-│   └── src/
-│       ├── screens/    # Dashboard, ServerList, SplitTunnel, Settings, Onboarding
-│       ├── components/ # UI компоненты
-│       ├── store/      # Zustand store
-│       └── lib/        # Утилиты
-├── shared/             # Общие TypeScript типы
-├── tests/              # Vitest тесты (10 файлов)
-├── e2e/                # Playwright E2E
-└── runtime/            # VPN runtime бинарники (xray, sing-box)
-```
+## 📥 Установка (2 шага)
 
-## Быстрый старт
+1. **Скачай** последнюю версию → [**EgoistShield_Setup.exe**](https://github.com/egoistgorbachev/egoistshield/releases/latest)
+2. **Запусти** скачанный файл — установка автоматическая, ярлык появится на рабочем столе
 
-```bash
-cd apps/desktop-electron
-npm install
-npm run dev
-```
+> 💡 **Обновления приходят автоматически** — приложение само уведомит о новой версии.
 
-## Тесты
+---
 
-```bash
-npm test              # Unit-тесты (Vitest)
-npm run test:e2e      # E2E (Playwright)
-npm run stress        # Stress-тест VPN connect/disconnect
-```
+## ✨ Возможности
 
-## Сборка
+| | Возможность | Описание |
+|:---:|:---|:---|
+| 🌐 | **Мульти-протокол** | VLESS, VMess, Shadowsocks, Trojan, Hysteria2, TUIC, WireGuard |
+| ⚡ | **Быстрый** | Xray-core + sing-box — два движка для максимальной скорости |
+| 🔌 | **Импорт в один клик** | Ссылки, подписки, файлы конфигов — Ctrl+V и готово |
+| 🛡️ | **Split Tunnel** | Выбирай какие приложения проходят через VPN |
+| 🌍 | **Мульти-сервер** | Список серверов с пингом и флагами стран |
+| 📊 | **Мониторинг** | Скорость, трафик, IP-адрес, DNS Leak Test |
+| 🔄 | **Автообновление** | Новые версии скачиваются и устанавливаются автоматически |
+| 🚫 | **Без регистрации** | Никаких аккаунтов, логинов и личных данных |
 
-```bash
-npm run package       # Electron Forge package
-npm run build:installer  # NSIS installer (EgoistShield_Setup_*.exe)
-```
+---
+
+## 📸 Скриншоты
+
+> *Скоро...*
+
+---
+
+## 🔒 Безопасность
+
+- Приложение **не собирает** никаких персональных данных
+- Весь трафик шифруется протоколами VPN
+- Исходный код открыт для аудита
+- При удалении — все настройки полностью очищаются
+
+---
+
+## 💻 Системные требования
+
+| | Требование |
+|:---:|:---|
+| 🖥️ | Windows 10 / 11 (x64) |
+| 💾 | 200 МБ свободного места |
+| 🌐 | Интернет-соединение |
+
+---
+
+## ❓ FAQ
+
+<details>
+<summary><b>Как добавить сервер?</b></summary>
+
+Скопируй VPN-ссылку (например `vless://...`) и нажми **Ctrl+V** в приложении — сервер добавится автоматически.
+</details>
+
+<details>
+<summary><b>Как обновить?</b></summary>
+
+Обновления приходят автоматически. При наличии новой версии появится кнопка «Установить» внизу экрана.
+</details>
+
+<details>
+<summary><b>Как удалить?</b></summary>
+
+Через «Установку и удаление программ» в Windows → EgoistShield → Удалить. Все настройки будут очищены.
+</details>
+
+---
+
+<p align="center">
+  <sub>Made with ❤️ by EgoistShield Team</sub>
+</p>
