@@ -39,7 +39,7 @@
     "provider": "github",
     "owner": "egoistgorbachev",
     "repo": "egoistshield",
-    "private": true,
+    "private": false,
     "releaseType": "release"
   }
 }
