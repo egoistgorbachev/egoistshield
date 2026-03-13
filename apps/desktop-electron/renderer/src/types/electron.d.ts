@@ -67,7 +67,11 @@ export interface EgoistAPI {
     onUpdateAvailable(callback: (data: { version: string }) => void): void;
     onDownloadProgress(callback: (data: { percent: number; transferred: number; total: number }) => void): void;
     onUpdateDownloaded(callback: (data: { version: string }) => void): void;
+    onUpdateNotAvailable(callback: () => void): void;
+    onUpdateError(callback: (data: { message: string }) => void): void;
     install(): Promise<void>;
+    check(): Promise<{ ok: boolean; version?: string; error?: string }>;
+    setAuto(enabled: boolean): Promise<boolean>;
   };
   autoConnect: {
     onAutoConnect(callback: (serverId: string) => void): void;

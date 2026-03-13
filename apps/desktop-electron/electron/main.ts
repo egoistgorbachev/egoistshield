@@ -17,9 +17,25 @@ import { autoUpdater } from "electron-updater";
 import { fullCleanup } from "./ipc/dns-cleanup";
 import logger from "./ipc/logger";
 
-// ── IPC: Установить скачанное обновление ──
+// ── IPC: Автообновление ──
 ipcMain.handle("updater:install", () => {
   autoUpdater.quitAndInstall(false, true);
+});
+
+ipcMain.handle("updater:check", async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { ok: true, version: result?.updateInfo?.version ?? null };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle("updater:set-auto", (_event, enabled: boolean) => {
+  autoUpdater.autoDownload = enabled;
+  autoUpdater.autoInstallOnAppQuit = enabled;
+  logger.info(`[updater] autoDownload set to ${enabled}`);
+  return enabled;
 });
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -453,6 +469,9 @@ if (!lock) {
 
       autoUpdater.on("update-not-available", () => {
         logger.info("[updater] no updates available");
+        if (mainWindow) {
+          mainWindow.webContents.send("update-not-available");
+        }
       });
 
       autoUpdater.on("download-progress", (progress) => {
@@ -479,6 +498,9 @@ if (!lock) {
 
       autoUpdater.on("error", (err) => {
         logger.warn("[updater] error:", err?.message || err);
+        if (mainWindow) {
+          mainWindow.webContents.send("update-error", { message: err?.message || String(err) });
+        }
       });
 
       // Проверить обновления через 5 секунд после запуска

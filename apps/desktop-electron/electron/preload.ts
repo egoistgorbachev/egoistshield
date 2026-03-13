@@ -83,7 +83,15 @@ const api = {
     onUpdateDownloaded: (callback: (data: { version: string }) => void) => {
       ipcRenderer.on("update-downloaded", (_event, data) => callback(data));
     },
-    install: (): Promise<void> => ipcRenderer.invoke("updater:install")
+    onUpdateNotAvailable: (callback: () => void) => {
+      ipcRenderer.on("update-not-available", () => callback());
+    },
+    onUpdateError: (callback: (data: { message: string }) => void) => {
+      ipcRenderer.on("update-error", (_event, data) => callback(data));
+    },
+    install: (): Promise<void> => ipcRenderer.invoke("updater:install"),
+    check: (): Promise<{ ok: boolean; version?: string; error?: string }> => ipcRenderer.invoke("updater:check"),
+    setAuto: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke("updater:set-auto", enabled)
   },
   autoConnect: {
     onAutoConnect: (callback: (serverId: string) => void) => {

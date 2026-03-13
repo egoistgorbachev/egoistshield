@@ -1,9 +1,12 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
+  CheckCircle2,
+  Download,
   HelpCircle,
   Loader2,
   Monitor,
+  RefreshCw,
   Server,
   Settings as SettingsIcon,
   Shield,
@@ -30,6 +33,9 @@ export function Settings() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [dnsLeakTesting, setDnsLeakTesting] = useState(false);
   const [dnsLeakResult, setDnsLeakResult] = useState<{ leaked: boolean; vpnIp: string | null; error: string | null } | null>(null);
+  const [autoUpdate, setAutoUpdate] = useState(true);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateCheckResult, setUpdateCheckResult] = useState<"idle" | "upToDate" | "available" | "error">("idle");
 
   const runDnsLeakTest = async () => {
     setDnsLeakTesting(true);
@@ -221,6 +227,75 @@ export function Settings() {
               enabled={hwAccel}
               onChange={() => updateSetting("hwAccel", !hwAccel)}
             />
+
+            <ToggleRow
+              label="Автообновление"
+              description="Скачивать новые версии автоматически."
+              tooltip="Приложение будет автоматически проверять и скачивать новые версии при запуске. Обновление установится при следующем перезапуске."
+              enabled={autoUpdate}
+              onChange={() => {
+                const next = !autoUpdate;
+                setAutoUpdate(next);
+                const api = getAPI();
+                api?.updater?.setAuto?.(next);
+              }}
+            />
+
+            {/* Проверить обновления */}
+            <div className="flex items-center justify-between px-1 py-2">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-semibold text-white/90">Обновления</span>
+                <span className="text-xs text-muted">v{(window as any).__APP_VERSION__ || '1.8.3'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  setUpdateChecking(true);
+                  setUpdateCheckResult("idle");
+                  const api = getAPI();
+                  try {
+                    const result = await api?.updater?.check?.();
+                    // Wait for events from main process
+                    setTimeout(() => {
+                      setUpdateChecking(false);
+                      if (result?.ok && result?.version) {
+                        setUpdateCheckResult("available");
+                      } else if (result?.ok) {
+                        setUpdateCheckResult("upToDate");
+                      } else {
+                        setUpdateCheckResult("error");
+                      }
+                      // Reset status after 5 seconds
+                      setTimeout(() => setUpdateCheckResult("idle"), 5000);
+                    }, 2000);
+                  } catch {
+                    setUpdateChecking(false);
+                    setUpdateCheckResult("error");
+                    setTimeout(() => setUpdateCheckResult("idle"), 5000);
+                  }
+                }}
+                disabled={updateChecking}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                  updateCheckResult === "upToDate" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    : updateCheckResult === "available" ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                    : updateCheckResult === "error" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                    : "bg-white/5 text-muted hover:text-white hover:bg-white/10 border border-white/10"
+                )}
+              >
+                {updateChecking ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Проверяем...</>
+                ) : updateCheckResult === "upToDate" ? (
+                  <><CheckCircle2 className="w-3.5 h-3.5" /> Актуальная версия</>
+                ) : updateCheckResult === "available" ? (
+                  <><Download className="w-3.5 h-3.5" /> Есть обновление!</>
+                ) : updateCheckResult === "error" ? (
+                  <><AlertTriangle className="w-3.5 h-3.5" /> Ошибка проверки</>
+                ) : (
+                  <><RefreshCw className="w-3.5 h-3.5" /> Проверить</>
+                )}
+              </button>
+            </div>
 
             <button
               type="button"
