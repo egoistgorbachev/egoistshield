@@ -5,8 +5,18 @@ import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
 
-if (require("electron-squirrel-startup")) {
-  app.quit();
+// ── Squirrel.Windows install/update events ──
+// Inline check instead of electron-squirrel-startup (не попадает в asar)
+if (process.platform === "win32") {
+  const squirrelCommand = process.argv[1];
+  if (
+    squirrelCommand === "--squirrel-install" ||
+    squirrelCommand === "--squirrel-updated" ||
+    squirrelCommand === "--squirrel-uninstall" ||
+    squirrelCommand === "--squirrel-obsolete"
+  ) {
+    app.quit();
+  }
 }
 
 import { registerIpcHandlers } from "./ipc/handlers";
