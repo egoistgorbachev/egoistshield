@@ -34,3 +34,13 @@ apps/desktop-electron/runtime/
 # OS
 .DS_Store
 Thumbs.db
+
+# Debug keystore
+*.keystore
+
+# Native binaries
+*.so
+*.dylib
+
+# Gemini
+.gemini/

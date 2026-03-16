@@ -5,6 +5,23 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.8.4] — 2026-03-13
+
+### 🔄 Автообновление + Оформление репозитория
+
+#### ✨ Новое
+- **Кнопка «Проверить обновления»** в Настройках (4 состояния: idle → checking → upToDate/available/error)
+- **Тогл «Автообновление»** — включение/выключение автоматической загрузки новых версий
+- **IPC `updater:check`** — ручная проверка обновлений через кнопку
+- **IPC `updater:set-auto`** — управление autoDownload из UI
+- **События `update-not-available` / `update-error`** → обратная связь в renderer
+
+#### 📝 Репозиторий
+- README полностью переработан — HTML-таблица возможностей, раздел «Интерфейс», FAQ, лицензия
+- Юридический аудит — убраны названия anti-DPI протоколов из README
+- `publish.private` → `false` (репо публичное)
+- GitHub Topics: vpn, windows, vpn-client, privacy
+
 ## [1.8.3] — 2026-03-13
 
 ### 🔬 UI/UX Audit v4 — Performance + DRY
@@ -85,37 +102,6 @@
 - **Toaster CSS**: исправлены сломанные `rgb(var())` на корректные hex-значения
 - **SplitTunnel**: `bg-surface` → `bg-void-card` (корректный Tailwind-класс)
 
-## [2.0.0] — 2026-03-03
-
-### 🔥 «Inferno Core v2.0» — Полная модернизация
-
-#### 🎨 Новая палитра
-
-- **Финальная палитра зафиксирована:** ярко-оранжевый `#FF6B00` + глубокий чёрный `#050508`
-- Все 30+ CSS-переменных дизайн-системы обновлены на новые значения
-- Tailwind colors `brand`, `void`, `surface` обновлены
-- 12 компонентов обновлены (устранены все хардкод rgba/hex ссылки на старую палитру)
-- Более глубокие тени (`--es-shadow-*`) для усиления контраста на тёмном фоне
-- Усиленные glass border и glow эффекты
-
-#### 📦 Очистка проекта
-
-- Удалён архив `versions/EgoistShield-v2.0.0-final.zip` (161 MB)
-- Создана папка `builds/` для артефактов сборки
-- `builds/` и `versions/` добавлены в `.gitignore`
-- Удалён dead code: `magnetEffect()` из `gsap-setup.ts`
-
-#### 🔧 Code Quality
-
-- `npm audit fix` — снижено количество уязвимостей с 29 до 26
-- `console.error` → `log.error` через electron-log в `handlers.ts`
-- Добавлен import `electron-log` в IPC handlers для персистенции логов
-
-#### 📋 Инфраструктура
-
-- Версия обновлена: `1.0.9` → `2.0.0`
-- SplashScreen badge: `v2.0.0`
-- Дизайн-система: `Inferno Core v1.0` → `v2.0.0`
 
 ## [1.0.8] — 2026-02-27
 

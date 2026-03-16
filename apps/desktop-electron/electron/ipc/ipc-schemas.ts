@@ -106,7 +106,10 @@ export const PersistedStateSchema = z.object({
 export const ImportTextInputSchema = z.string().min(1, "Payload не может быть пустым");
 
 /** import:file — путь к файлу */
-export const ImportFileInputSchema = z.string().min(1, "Путь к файлу не может быть пустым");
+export const ImportFileInputSchema = z
+  .string()
+  .min(1, "Путь к файлу не может быть пустым")
+  .refine((p) => !p.includes(".."), "Путь не может содержать '..'");
 
 /** subscription:refresh-one — URL подписки */
 export const SubscriptionUrlInputSchema = z.string().url("Некорректный URL подписки");

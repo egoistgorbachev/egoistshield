@@ -17,6 +17,13 @@
   <img src="https://img.shields.io/github/license/egoistgorbachev/egoistshield?style=for-the-badge&color=f59e0b" alt="License"/>
 </p>
 
+<p align="center">
+    <img src="https://img.shields.io/badge/Electron-36-47848F?style=flat-square&logo=electron" alt="Electron"/>
+    <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React"/>
+    <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript" alt="TypeScript"/>
+    <img src="https://img.shields.io/badge/Vite-7-646CFF?style=flat-square&logo=vite" alt="Vite"/>
+</p>
+
 ---
 
 ## 📥 Установка
@@ -126,6 +133,34 @@
 
 ---
 
+## 🛠️ Стек
+
+| Технология | Версия | Назначение |
+|:---|:---|:---|
+| Electron | 36 | Десктоп-оболочка |
+| React | 19 | UI |
+| TypeScript | 5.8 (strict) | Типизация |
+| Vite | 7 | Сборка |
+| Tailwind CSS | 3.4 | Стили |
+| Zustand | 5 | State management |
+| Biome | 1.9 | Линтер + форматтер |
+
+---
+
+## 🏗️ Сборка из исходников
+
+```bash
+git clone https://github.com/egoistgorbachev/egoistshield.git
+cd egoistshield/apps/desktop-electron
+npm install
+npm run dev          # Запуск в dev-режиме
+npm run make         # Сборка инсталлера
+```
+
+> ⚠️ Для сборки необходим Node.js 20+ и Windows 10/11 x64.
+
+---
+
 ## 📄 Лицензия
 
 Проект распространяется под лицензией [MIT](LICENSE).
@@ -133,5 +168,5 @@
 ---
 
 <p align="center">
-  <sub>Made with ❤️ by EgoistShield Team</sub>
+  <sub>Made with ❤️ by EgoistShield</sub>
 </p>

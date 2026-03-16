@@ -1,4 +1,4 @@
-﻿import { execFile, spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { promises as fs } from "node:fs";
@@ -221,34 +221,37 @@ export class VpnRuntimeManager extends EventEmitter {
       }
       await fs.writeFile(configPath, configContent, "utf8");
 
-      // Debug: сохраняем копию конфига в debug папку
-      const debugDir = path.join(this.userDataDir, "debug");
-      await fs.mkdir(debugDir, { recursive: true }).catch(() => {});
-      const debugPrefix = `${resolvedRuntime.runtimeKind}_${node.protocol}`;
-      await fs.writeFile(path.join(debugDir, `${debugPrefix}_config.json`), configContent, "utf8").catch(() => {});
-      await fs
-        .writeFile(
-          path.join(debugDir, `${debugPrefix}_node.json`),
-          JSON.stringify(
-            {
-              id: node.id,
-              name: node.name,
-              protocol: node.protocol,
-              server: node.server,
-              port: node.port,
-              runtimeKind: resolvedRuntime.runtimeKind,
-              routeMode: effectiveSettings.routeMode,
-              dnsMode: effectiveSettings.dnsMode,
-              useTunMode: effectiveSettings.useTunMode,
-              proxyPort,
-              socksPort
-            },
-            null,
-            2
-          ),
-          "utf8"
-        )
-        .catch(() => {});
+      // Debug: сохраняем копию конфига в debug папку (ТОЛЬКО в dev-режиме)
+      const isDev = process.env.NODE_ENV === "development" || !!process.env.VITE_DEV_SERVER_URL;
+      if (isDev) {
+        const debugDir = path.join(this.userDataDir, "debug");
+        await fs.mkdir(debugDir, { recursive: true }).catch(() => {});
+        const debugPrefix = `${resolvedRuntime.runtimeKind}_${node.protocol}`;
+        await fs.writeFile(path.join(debugDir, `${debugPrefix}_config.json`), configContent, "utf8").catch(() => {});
+        await fs
+          .writeFile(
+            path.join(debugDir, `${debugPrefix}_node.json`),
+            JSON.stringify(
+              {
+                id: node.id,
+                name: node.name,
+                protocol: node.protocol,
+                server: node.server,
+                port: node.port,
+                runtimeKind: resolvedRuntime.runtimeKind,
+                routeMode: effectiveSettings.routeMode,
+                dnsMode: effectiveSettings.dnsMode,
+                useTunMode: effectiveSettings.useTunMode,
+                proxyPort,
+                socksPort
+              },
+              null,
+              2
+            ),
+            "utf8"
+          )
+          .catch(() => {});
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.snapshot.lastError = `Failed to write config: ${msg}`;
