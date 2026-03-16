@@ -37,3 +37,15 @@ jobs:
       - name: Security audit
         working-directory: apps/desktop-electron
         run: npm audit --audit-level=high
+
+      - name: Package app for E2E tests
+        working-directory: apps/desktop-electron
+        run: npm run package
+
+      - name: Install Playwright dependencies
+        working-directory: apps/desktop-electron
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: apps/desktop-electron
+        run: npx playwright test

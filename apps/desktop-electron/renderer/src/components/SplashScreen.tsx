@@ -1,69 +1,15 @@
 import { motion } from "framer-motion";
 import { Zap } from "lucide-react";
-import { useEffect, useRef } from "react";
-import { gsap } from "../lib/gsap-setup";
 
 /* ──────────────────────────────────────────────────────────
-   SplashScreen v7 — "Clean Power"  
+   SplashScreen v8 — "Clean Power" (Framer Motion Edition)
    No blur, no ember. Sharp icon, bright gradient, fast.
    ────────────────────────────────────────────────────────── */
 export function SplashScreen() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const logoRef = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLHeadingElement>(null);
-  const versionRef = useRef<HTMLSpanElement>(null);
-  const ringRef = useRef<SVGCircleElement>(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-
-    if (logoRef.current) {
-      tl.fromTo(
-        logoRef.current,
-        { scale: 0.5, opacity: 0 },
-        { scale: 1, opacity: 1, duration: 0.8, ease: "back.out(1.4)" },
-        0.1
-      );
-    }
-
-    if (textRef.current) {
-      tl.fromTo(
-        textRef.current,
-        { opacity: 0, y: 15, letterSpacing: "0.5em" },
-        { opacity: 1, y: 0, letterSpacing: "0.2em", duration: 0.6 },
-        "-=0.3"
-      );
-    }
-    if (versionRef.current) {
-      tl.fromTo(versionRef.current, { opacity: 0 }, { opacity: 1, duration: 0.3 }, "-=0.2");
-    }
-
-    if (ringRef.current) {
-      const circumference = 2 * Math.PI * 18;
-      ringRef.current.style.strokeDasharray = `${circumference}`;
-      ringRef.current.style.strokeDashoffset = `${circumference}`;
-
-      tl.to(
-        ringRef.current,
-        {
-          strokeDashoffset: 0,
-          duration: 1,
-          ease: "power2.inOut"
-        },
-        "-=0.1"
-      );
-    }
-
-    return () => {
-      tl.kill();
-    };
-  }, []);
+  const circumference = 2 * Math.PI * 18;
 
   return (
     <motion.div
-      ref={containerRef}
       className="absolute inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden w-full h-screen"
       style={{ background: "#030305" }}
       exit={{ opacity: 0, scale: 1.05 }}
@@ -79,10 +25,11 @@ export function SplashScreen() {
 
       <div className="relative z-10 flex flex-col items-center">
         {/* Shield + Bolt Icon */}
-        <div
-          ref={logoRef}
+        <motion.div
           className="w-28 h-28 flex items-center justify-center will-change-transform"
-          style={{ opacity: 0 }}
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.8, delay: 0.1, ease: [0.175, 0.885, 0.32, 1.275] }} // backOut approximation
         >
           <div className="relative w-20 h-20">
             <div
@@ -102,37 +49,38 @@ export function SplashScreen() {
               />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Brand text */}
-        <h1
-          ref={textRef}
-          className="mt-4 text-[22px] font-display font-bold tracking-[0.2em] uppercase"
+        <motion.h1
+          className="mt-4 text-[22px] font-display font-bold uppercase"
           style={{
-            opacity: 0,
             background: "linear-gradient(135deg, #FFFFFF, #FF8C38, #FF6B00)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent"
           }}
+          initial={{ opacity: 0, y: 15, letterSpacing: "0.5em" }}
+          animate={{ opacity: 1, y: 0, letterSpacing: "0.2em" }}
+          transition={{ duration: 0.6, delay: 0.6, ease: "easeOut" }}
         >
           EgoistShield
-        </h1>
+        </motion.h1>
 
         {/* Version */}
-        <span
-          ref={versionRef}
+        <motion.span
           className="mt-1 text-[9px] font-mono-metric font-medium tracking-[0.3em] text-whisper uppercase"
-          style={{ opacity: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 1.0 }}
         >
           v{__APP_VERSION__}
-        </span>
+        </motion.span>
 
         {/* Progress ring */}
         <div className="mt-6 w-9 h-9">
           <svg viewBox="0 0 40 40" className="w-full h-full -rotate-90">
             <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,107,0,0.15)" strokeWidth="2.5" />
-            <circle
-              ref={ringRef}
+            <motion.circle
               cx="20"
               cy="20"
               r="18"
@@ -140,6 +88,10 @@ export function SplashScreen() {
               stroke="url(#splash-ring-grad-v2)"
               strokeWidth="2.5"
               strokeLinecap="round"
+              strokeDasharray={circumference}
+              initial={{ strokeDashoffset: circumference }}
+              animate={{ strokeDashoffset: 0 }}
+              transition={{ duration: 1.0, delay: 1.2, ease: "easeInOut" }}
             />
             <defs>
               <linearGradient id="splash-ring-grad-v2" x1="0%" y1="0%" x2="100%" y2="100%">

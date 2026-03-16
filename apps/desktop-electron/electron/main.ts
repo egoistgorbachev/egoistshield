@@ -1,56 +1,42 @@
+import { app, BrowserWindow, Menu, Notification, Tray, ipcMain, nativeImage } from "electron";
 import { exec, execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
-import { BrowserWindow, Menu, Notification, Tray, app, ipcMain, nativeImage } from "electron";
+
+if (require("electron-squirrel-startup")) {
+  app.quit();
+}
+
 import { registerIpcHandlers } from "./ipc/handlers";
 import { StateStore } from "./ipc/state-store";
 import { VpnRuntimeManager } from "./ipc/vpn-manager";
-
 
 export let globalStateStore: StateStore | null = null;
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
-import { autoUpdater } from "electron-updater";
 import { fullCleanup } from "./ipc/dns-cleanup";
 import logger from "./ipc/logger";
 
 // ── IPC: Автообновление ──
+// TODO: Адаптировать встроенный electron autoUpdater для Squirrel.
+// Пока автообновление будет отдавать fallback для совместимости с UI.
 ipcMain.handle("updater:install", () => {
-  autoUpdater.quitAndInstall(false, true);
+  logger.warn("updater:install: Недоступно в текущей сборке (electron-forge Squirrel)");
 });
 
 ipcMain.handle("updater:check", async () => {
-  // В dev-режиме updater не работает — нет подписанного приложения
   if (!app.isPackaged) {
     return { ok: true, version: null, message: "Dev-режим: обновления отключены" };
   }
-  try {
-    const result = await autoUpdater.checkForUpdates();
-    if (result?.updateInfo?.version) {
-      return { ok: true, version: result.updateInfo.version };
-    }
-    return { ok: true, version: null };
-  } catch (e: any) {
-    const msg = e?.message || String(e);
-    logger.warn("[updater] check failed:", msg);
-    // Понятные сообщения для типичных ошибок
-    if (msg.includes("net::ERR") || msg.includes("ENOTFOUND") || msg.includes("getaddrinfo")) {
-      return { ok: false, error: "Нет подключения к серверу обновлений" };
-    }
-    if (msg.includes("404") || msg.includes("Cannot find")) {
-      return { ok: false, error: "Сервер обновлений недоступен" };
-    }
-    return { ok: false, error: msg };
-  }
+  // Заглушка, чтобы UI не падал
+  return { ok: true, version: null, message: "Внутреннее автообновление временно отключено" };
 });
 
 ipcMain.handle("updater:set-auto", (_event, enabled: boolean) => {
-  autoUpdater.autoDownload = enabled;
-  autoUpdater.autoInstallOnAppQuit = enabled;
-  logger.info(`[updater] autoDownload set to ${enabled}`);
+  logger.info(`[updater] fake autoDownload set to ${enabled}`);
   return enabled;
 });
 
@@ -467,67 +453,8 @@ if (!lock) {
     startTrafficMonitoring();
 
     // ── Автообновление через GitHub Releases ──
-    try {
-      autoUpdater.autoDownload = true;
-      autoUpdater.autoInstallOnAppQuit = true;
-      autoUpdater.logger = logger;
-
-      autoUpdater.on("checking-for-update", () => {
-        logger.info("[updater] checking for updates...");
-      });
-
-      autoUpdater.on("update-available", (info) => {
-        logger.info(`[updater] update available: v${info.version}`);
-        if (mainWindow) {
-          mainWindow.webContents.send("update-available", { version: info.version });
-        }
-      });
-
-      autoUpdater.on("update-not-available", () => {
-        logger.info("[updater] no updates available");
-        if (mainWindow) {
-          mainWindow.webContents.send("update-not-available");
-        }
-      });
-
-      autoUpdater.on("download-progress", (progress) => {
-        if (mainWindow) {
-          mainWindow.webContents.send("update-progress", {
-            percent: Math.round(progress.percent),
-            transferred: progress.transferred,
-            total: progress.total
-          });
-        }
-      });
-
-      autoUpdater.on("update-downloaded", (info) => {
-        logger.info(`[updater] update downloaded: v${info.version}`);
-        if (mainWindow) {
-          mainWindow.webContents.send("update-downloaded", { version: info.version });
-        }
-        // Системное уведомление Windows
-        new Notification({
-          title: "EgoistShield — Обновление готово",
-          body: `Версия ${info.version} скачана. Перезапустите для установки.`
-        }).show();
-      });
-
-      autoUpdater.on("error", (err) => {
-        logger.warn("[updater] error:", err?.message || err);
-        if (mainWindow) {
-          mainWindow.webContents.send("update-error", { message: err?.message || String(err) });
-        }
-      });
-
-      // Проверить обновления через 5 секунд после запуска
-      setTimeout(() => {
-        autoUpdater.checkForUpdates().catch((e) => {
-          logger.warn("[updater] check failed:", e?.message || e);
-        });
-      }, 5000);
-    } catch (e) {
-      console.warn("[updater] auto-update init failed:", e);
-    }
+    // TODO: Интегрировать electron built-in autoUpdater (Squirrel)
+    // Временно отключено при миграции на electron-forge
 
     app.on("activate", async () => {
       if (!mainWindow) {

@@ -1,5 +1,6 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerZIP } from "@electron-forge/maker-zip";
+import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import path from "node:path";
@@ -18,7 +19,12 @@ const config: ForgeConfig = {
     },
     extraResource: [path.resolve(__dirname, "runtime")]
   },
-  makers: [new MakerZIP({}, ["win32"])],
+  makers: [
+    new MakerSquirrel({
+      setupIcon: path.resolve(__dirname, "renderer/public/assets/icon.ico")
+    }),
+    new MakerZIP({}, ["win32"])
+  ],
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({
