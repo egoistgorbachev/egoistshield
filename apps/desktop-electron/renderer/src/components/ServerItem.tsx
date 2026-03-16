@@ -16,6 +16,7 @@ export interface ServerItemProps extends ServerConfig {
   active: boolean;
   isConnected?: boolean;
   isConnecting?: boolean;
+  rank?: number;
   onClick: () => void;
   onRemove: () => void;
   onPin: () => void;
@@ -33,6 +34,7 @@ export const ServerItem = memo(function ServerItem({
   active,
   isConnected,
   isConnecting,
+  rank,
   onClick,
   onRemove,
   onPin,
@@ -132,6 +134,11 @@ export const ServerItem = memo(function ServerItem({
               <Signal className="w-3 h-3" />
               {ping > 0 ? `${ping} мс` : "--"}
             </span>
+            {rank != null && rank <= 3 && ping > 0 && (
+              <span className="text-[11px]" title={`Rank #${rank}`}>
+                {rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉"}
+              </span>
+            )}
             {/* Security badge */}
             {security === "reality" && (
               <span className="font-bold px-2 py-0.5 rounded-lg text-[10px] text-emerald-400 bg-emerald-500/10 uppercase tracking-wider">

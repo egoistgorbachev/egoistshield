@@ -7,6 +7,7 @@ import { OfflineBanner } from "./components/OfflineBanner";
 import { SplashScreen } from "./components/SplashScreen";
 import { TitleBar } from "./components/TitleBar";
 import { getAPI } from "./lib/api";
+import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
 import { pageTransition } from "./lib/motion";
 import { useAppStore } from "./store/useAppStore";
 
@@ -32,6 +33,8 @@ export function App() {
   const checkFirstRun = useAppStore((state) => state.checkFirstRun);
   const syncWithBackend = useAppStore((state) => state.syncWithBackend);
   const installRuntime = useAppStore((state) => state.installRuntime);
+
+  useKeyboardShortcuts();
 
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateVersion, setUpdateVersion] = useState("");

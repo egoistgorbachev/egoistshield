@@ -13,10 +13,12 @@ import {
   ShieldAlert,
   ShieldCheck,
   Wifi,
-  WifiOff
+  WifiOff,
+  Zap
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DepthBackground } from "../components/DepthBackground";
+import { ConnectionTimeline } from "../components/ConnectionTimeline";
 import { FlagIcon } from "../components/FlagIcon";
 import { Skeleton } from "../components/Skeleton";
 import { SpeedGraph } from "../components/SpeedGraph";
@@ -147,6 +149,8 @@ export function Dashboard() {
   const connectedServerId = useAppStore((s) => s.connectedServerId);
   const selectedServerId = useAppStore((s) => s.selectedServerId);
   const errorMessage = useAppStore((s) => s.errorMessage);
+  const smartConnect = useAppStore((s) => s.smartConnect);
+  const [isSmartConnecting, setIsSmartConnecting] = useState(false);
   // Dashboard показывает ФАКТИЧЕСКИ подключённый сервер, а не выбранный в списке
   const currentServer = servers.find((s) => s.id === (isConnected ? connectedServerId : selectedServerId));
 
@@ -270,6 +274,16 @@ export function Dashboard() {
       return;
     }
     toggleConnection();
+  };
+
+  const handleSmartConnect = async () => {
+    if (isSmartConnecting || isConnecting) return;
+    setIsSmartConnecting(true);
+    try {
+      await smartConnect();
+    } finally {
+      setIsSmartConnecting(false);
+    }
   };
 
   const downMBs = traffic.down / 1024;
@@ -457,6 +471,40 @@ export function Dashboard() {
             </motion.div>
           )}
         </div>
+
+        {/* ═══ CONNECTION TIMELINE ═══ */}
+        {(isConnecting || isConnected) && (
+          <ConnectionTimeline
+            isConnecting={isConnecting}
+            isConnected={isConnected}
+            serverName={currentServer?.name}
+          />
+        )}
+
+        {/* ═══ SMART CONNECT ═══ */}
+        {!isConnected && !isConnecting && servers.length > 0 && (
+          <motion.button
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={handleSmartConnect}
+            disabled={isSmartConnecting}
+            style={{ WebkitAppRegion: "no-drag" } as any}
+            className={cn(
+              "z-10 flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-bold tracking-wide transition-all",
+              "border backdrop-blur-sm",
+              isSmartConnecting
+                ? "bg-brand/10 border-brand/20 text-brand cursor-wait"
+                : "bg-white/[0.04] border-white/[0.08] text-muted hover:text-brand hover:bg-brand/10 hover:border-brand/20 cursor-pointer"
+            )}
+          >
+            {isSmartConnecting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Zap className="w-4 h-4" />
+            )}
+            {isSmartConnecting ? "Поиск лучшего сервера..." : "Smart Connect"}
+          </motion.button>
+        )}
 
         {/* ═══ ERROR ═══ */}
         <AnimatePresence>

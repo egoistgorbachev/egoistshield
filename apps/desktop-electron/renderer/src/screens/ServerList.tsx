@@ -115,6 +115,18 @@ export function ServerList() {
     return groups;
   }, [regularServers]);
 
+  // Ping ranking: рассчитываем позицию каждого сервера по пингу
+  const rankMap = useMemo(() => {
+    const ranked = [...servers]
+      .filter((s) => s.ping > 0)
+      .sort((a, b) => a.ping - b.ping)
+      .reduce<Map<string, number>>((map, s, i) => {
+        map.set(s.id, i + 1);
+        return map;
+      }, new Map());
+    return ranked;
+  }, [servers]);
+
   // Filtered servers by search
   const filteredPinned = useMemo(() => {
     if (!searchQuery.trim()) return pinnedServers;
@@ -364,6 +376,7 @@ export function ServerList() {
                         onRemove={() => removeServer(server.id)}
                         onPin={() => toggleFavorite(server.id)}
                         pinned={favoriteServerIds.includes(server.id)}
+                        rank={rankMap.get(server.id)}
                         onConnectToggle={() => {
 
                           if (isConnected && connectedServerId === server.id) {
@@ -418,6 +431,7 @@ export function ServerList() {
                               onRemove={() => removeServer(server.id)}
                               onPin={() => toggleFavorite(server.id)}
                               pinned={favoriteServerIds.includes(server.id)}
+                              rank={rankMap.get(server.id)}
                               onConnectToggle={() => {
 
                                 if (isConnected && connectedServerId === server.id) {

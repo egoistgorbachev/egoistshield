@@ -10,7 +10,7 @@ import {
   UploadCloud,
   X
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type DragEvent, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { type ServerConfig, useAppStore } from "../store/useAppStore";
 
@@ -30,8 +30,12 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
   // QR Code Scanning State
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scanningRef = useRef(false);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState("");
+  const [scanSuccess, setScanSuccess] = useState<{ added: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
@@ -39,6 +43,9 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
       setUrlInput("");
       setClipboardText("");
       setClipboardDone(false);
+      setScanSuccess(null);
+      setScanError("");
+      setIsDragOver(false);
       setActiveTab("url");
     }
   }, [isOpen]);
@@ -55,31 +62,11 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
 
   const handleImportUrl = async () => {
     if (!urlInput.trim()) return;
-    const gw = window as any;
-
-    if (gw.egoistAPI) {
-      try {
-        await gw.egoistAPI.import.text(urlInput);
-        await useAppStore.getState().syncWithBackend();
-      } catch (err) {
-        console.error(err);
-        // Can add error state later
-      }
-    } else {
-      let cc = "us";
-      if (urlInput.toLowerCase().includes("de")) cc = "de";
-      else if (urlInput.toLowerCase().includes("nl")) cc = "nl";
-
-      const newServer: ServerConfig = {
-        id: Math.random().toString(36).substring(7),
-        name: `Link Connection (${cc.toUpperCase()})`,
-        protocol: "unknown",
-        ping: Math.floor(Math.random() * 60) + 20,
-        load: Math.floor(Math.random() * 30) + 5,
-        countryCode: cc,
-        recommended: false
-      };
-      addServer(newServer);
+    try {
+      await window.egoistAPI?.import.text(urlInput);
+      await useAppStore.getState().syncWithBackend();
+    } catch (err) {
+      console.error(err);
     }
     onClose();
   };
@@ -187,26 +174,28 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
 
   const startScan = async () => {
     setScanError("");
+    setScanSuccess(null);
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          displaySurface: "browser"
-        }
+        video: { displaySurface: "browser" }
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
+        scanningRef.current = true;
         setScanning(true);
-        scanLoop();
+        requestAnimationFrame(scanLoop);
       }
     } catch (err: any) {
       console.error("Screen share error", err);
       setScanError("Не удалось получить доступ к экрану для сканирования QR-кода.");
+      scanningRef.current = false;
       setScanning(false);
     }
   };
 
   const stopScan = () => {
+    scanningRef.current = false;
     setScanning(false);
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
@@ -215,8 +204,24 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
     }
   };
 
+  const handleQrDetected = async (data: string) => {
+    try {
+      const result = await window.egoistAPI?.import.text(data);
+      await useAppStore.getState().syncWithBackend();
+      const added = (result?.added ?? 0) + (result?.subscriptionsAdded ?? 0);
+      if (added > 0) {
+        setScanSuccess({ added });
+        setTimeout(() => onClose(), 1200);
+      } else {
+        setScanError("QR-код распознан, но VPN-конфигурация не найдена.");
+      }
+    } catch (err: any) {
+      setScanError(`Ошибка импорта: ${err.message || "не удалось обработать"}`);
+    }
+  };
+
   const scanLoop = () => {
-    if (!videoRef.current || !canvasRef.current || !scanning) return;
+    if (!videoRef.current || !canvasRef.current || !scanningRef.current) return;
 
     if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
       const canvas = canvasRef.current;
@@ -233,37 +238,47 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
         });
 
         if (code) {
-          console.log("Found QR code", code.data);
-          const gw = window as any;
-          if (gw.egoistAPI) {
-            gw.egoistAPI.import
-              .text(code.data)
-              .then(() => {
-                useAppStore.getState().syncWithBackend();
-              })
-              .catch((err: any) => console.error(err));
-          } else {
-            const newServer: ServerConfig = {
-              id: Math.random().toString(36).substring(7),
-              name: "QR Imported Node",
-              protocol: "unknown",
-              ping: Math.floor(Math.random() * 60) + 20,
-              load: Math.floor(Math.random() * 30) + 5,
-              countryCode: "us",
-              recommended: false
-            };
-            addServer(newServer);
-          }
           stopScan();
-          onClose();
+          handleQrDetected(code.data);
           return;
         }
       }
     }
 
-    if (scanning) {
+    if (scanningRef.current) {
       requestAnimationFrame(scanLoop);
     }
+  };
+
+  const handleQrFromFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanError("");
+    setScanSuccess(null);
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "attemptBoth"
+      });
+      if (code) {
+        handleQrDetected(code.data);
+      } else {
+        setScanError("QR-код не найден на изображении. Попробуйте другое фото.");
+      }
+    };
+    img.onerror = () => setScanError("Не удалось загрузить изображение.");
+    img.src = URL.createObjectURL(file);
+
+    // Reset file input
+    e.target.value = "";
   };
 
   return (
@@ -359,11 +374,37 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   className="flex flex-col gap-4 items-center justify-center py-6"
+                  onDragOver={(e: DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+                  onDragLeave={(e: DragEvent) => { e.preventDefault(); setIsDragOver(false); }}
+                  onDrop={async (e: DragEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDragOver(false);
+                    const file = e.dataTransfer.files[0];
+                    if (file) {
+                      const text = await file.text();
+                      try {
+                        await window.egoistAPI?.import.text(text);
+                        await useAppStore.getState().syncWithBackend();
+                        onClose();
+                      } catch (err: any) {
+                        console.error("DnD import error", err);
+                      }
+                    }
+                  }}
                 >
-                  <div className="w-16 h-16 rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-2">
-                    <UploadCloud className="w-8 h-8 text-orange-400" />
+                  <div className={cn(
+                    "w-16 h-16 rounded-2xl border flex items-center justify-center mb-2 transition-all duration-300",
+                    isDragOver
+                      ? "bg-brand/20 border-brand/40 scale-110"
+                      : "bg-orange-500/10 border-orange-500/20"
+                  )}>
+                    <UploadCloud className={cn("w-8 h-8 transition-colors", isDragOver ? "text-brand" : "text-orange-400")} />
                   </div>
-                  <p className="text-sm text-center text-muted mb-2">Поддерживаются форматы .json, .yaml, .txt</p>
+                  <p className="text-sm text-center text-muted mb-2">
+                    {isDragOver ? "Отпустите файл для импорта" : "Перетащите файл сюда или выберите вручную"}
+                  </p>
+                  <p className="text-xs text-center text-white/20 mb-2">.json, .yaml, .txt, .conf</p>
                   <button
                     onClick={handleImportFile}
                     className="py-3 px-6 text-white/80 hover:text-white rounded-xl transition-all font-bold flex items-center gap-2 relative overflow-hidden"
@@ -440,44 +481,76 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                   animate={{ opacity: 1, x: 0 }}
                   className="flex flex-col gap-4 items-center justify-center"
                 >
-                  <p className="text-sm text-center text-muted mb-2">Выберите окно с QR кодом для сканирования</p>
-
-                  <div className="w-full aspect-square bg-black border border-white/10 rounded-2xl overflow-hidden relative flex items-center justify-center">
-                    <video
-                      ref={videoRef}
-                      className="absolute inset-0 w-full h-full object-cover opacity-50"
-                      muted
-                      playsInline
-                    />
-                    <canvas ref={canvasRef} className="hidden" />
-
-                    {!scanning && !scanError && (
-                      <button
-                        onClick={startScan}
-                        className="relative z-10 py-2.5 px-5 text-white rounded-xl font-bold overflow-hidden"
-                        style={{
-                          background: "linear-gradient(135deg, #FF4D00, #FF6B00)",
-                          boxShadow: "0 4px 16px rgba(255,107,0,0.4)"
-                        }}
-                      >
-                        <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
-                        <span className="relative z-10">Начать сканирование</span>
-                      </button>
-                    )}
-
-                    {scanning && (
-                      <div className="absolute inset-0 border-2 border-orange-500/50 rounded-2xl flex items-center justify-center pointer-events-none">
-                        <div className="w-3/4 h-3/4 border-2 border-orange-400 rounded-lg animate-pulse" />
+                  {scanSuccess ? (
+                    <div className="flex flex-col items-center gap-3 py-6">
+                      <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-400" />
                       </div>
-                    )}
+                      <p className="text-sm font-bold text-emerald-400">QR-код распознан!</p>
+                      <p className="text-xs text-muted">Импортировано узлов: {scanSuccess.added}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-center text-muted mb-2">Сканируйте экран или загрузите изображение с QR-кодом</p>
 
-                    {scanError && <div className="text-red-400 text-xs text-center p-4">{scanError}</div>}
-                  </div>
+                      <div className="w-full aspect-[4/3] bg-black border border-white/10 rounded-2xl overflow-hidden relative flex items-center justify-center">
+                        <video
+                          ref={videoRef}
+                          className="absolute inset-0 w-full h-full object-cover opacity-50"
+                          muted
+                          playsInline
+                        />
+                        <canvas ref={canvasRef} className="hidden" />
 
-                  {scanning && (
-                    <button onClick={stopScan} className="text-xs text-white/40 hover:text-white mt-2">
-                      Остановить
-                    </button>
+                        {!scanning && !scanError && (
+                          <button
+                            onClick={startScan}
+                            className="relative z-10 py-2.5 px-5 text-white rounded-xl font-bold overflow-hidden"
+                            style={{
+                              background: "linear-gradient(135deg, #FF4D00, #FF6B00)",
+                              boxShadow: "0 4px 16px rgba(255,107,0,0.4)"
+                            }}
+                          >
+                            <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
+                            <span className="relative z-10 flex items-center gap-2"><QrCode className="w-4 h-4" /> Сканировать экран</span>
+                          </button>
+                        )}
+
+                        {scanning && (
+                          <div className="absolute inset-0 border-2 border-orange-500/50 rounded-2xl flex items-center justify-center pointer-events-none">
+                            <div className="w-3/4 h-3/4 border-2 border-orange-400 rounded-lg animate-pulse" />
+                          </div>
+                        )}
+
+                        {scanError && <div className="text-red-400 text-xs text-center p-4">{scanError}</div>}
+                      </div>
+
+                      <div className="flex gap-2 w-full">
+                        {scanning ? (
+                          <button
+                            onClick={stopScan}
+                            className="flex-1 py-2.5 text-white/60 hover:text-white text-sm font-bold rounded-xl transition-colors bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15]"
+                          >
+                            Остановить
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex-1 py-2.5 text-white/80 hover:text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-white/[0.04] border border-white/[0.08] hover:border-brand/30 hover:bg-brand/5"
+                          >
+                            <UploadCloud className="w-4 h-4" /> Загрузить изображение
+                          </button>
+                        )}
+                      </div>
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleQrFromFile}
+                        className="hidden"
+                      />
+                    </>
                   )}
                 </motion.div>
               )}

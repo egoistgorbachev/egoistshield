@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Home, Server, Settings as SettingsIcon, Shield, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "../lib/cn";
+import { getAPI } from "../lib/api";
 import { type Screen, useAppStore } from "../store/useAppStore";
 
 /* ──────────────────────────────────────────────────────────
@@ -22,31 +23,28 @@ export function Sidebar() {
   const setScreen = useAppStore((s) => s.setScreen);
   const isConnected = useAppStore((s) => s.isConnected);
   const tunMode = useAppStore((s) => s.tunMode);
+  const [healthPing, setHealthPing] = useState<number | null>(null);
 
-  // Keyboard shortcuts: Ctrl+1..4 for navigation
+  // Health indicator — ping every 5s when connected
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || e.altKey || e.shiftKey) return;
-      // Skip when focused on inputs
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-
-      const map: Record<string, Screen> = {
-        "1": "dashboard",
-        "2": "split-tunnel",
-        "3": "servers",
-        "4": "settings"
-      };
-      const screen = map[e.key];
-      if (screen) {
-        e.preventDefault();
-        if (screen === "split-tunnel" && !tunMode) return;
-        setScreen(screen);
+    if (!isConnected) { setHealthPing(null); return; }
+    const doPing = async () => {
+      const api = getAPI();
+      if (api?.system?.pingActiveProxy) {
+        const p = await api.system.pingActiveProxy();
+        if (p > 0) setHealthPing(p);
       }
     };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [setScreen, tunMode]);
+    doPing();
+    const iv = setInterval(doPing, 5000);
+    return () => clearInterval(iv);
+  }, [isConnected]);
+
+  const healthColor = !healthPing ? null
+    : healthPing < 80 ? "bg-emerald-400"
+    : healthPing < 200 ? "bg-amber-400"
+    : "bg-red-400";
+
 
   return (
     <nav
@@ -89,6 +87,24 @@ export function Sidebar() {
           </div>
         </motion.button>
       </div>
+
+      {/* ── Health Indicator ── */}
+      {isConnected && healthColor && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-0.5 -mt-2 mb-1"
+          title={healthPing ? `${healthPing} мс` : undefined}
+        >
+          <div className="relative">
+            <div className={cn("w-2 h-2 rounded-full", healthColor)} />
+            <div className={cn("absolute inset-0 w-2 h-2 rounded-full animate-ping opacity-40", healthColor)} />
+          </div>
+          <span className="text-[7px] font-bold font-mono-metric text-white/30">
+            {healthPing}мс
+          </span>
+        </motion.div>
+      )}
 
       {/* ── Separator ── */}
       <div className="w-7 h-px bg-white/[0.06] mb-3" />

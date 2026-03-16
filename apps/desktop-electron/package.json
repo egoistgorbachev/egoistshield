@@ -23,9 +23,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "npx playwright test",
     "stress": "vitest run tests/stress.spec.ts",
-    "build:win": "npm run test && npm run stress && npm run make -- --platform win32",
-    "build:installer": "npm run package && electron-builder --config ./packaging/electron-builder.json --win nsis --x64 --prepackaged ./out/EgoistShield-win32-x64",
-    "build:single-exe": "powershell -ExecutionPolicy Bypass -File ./packaging/scripts/build-single-exe.ps1"
+    "build": "npm run test && npm run stress && npm run package && electron-builder --config ./packaging/electron-builder.json --win nsis --x64 --prepackaged ./out/EgoistShield-win32-x64"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

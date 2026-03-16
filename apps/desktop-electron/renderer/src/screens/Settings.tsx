@@ -36,6 +36,7 @@ export function Settings() {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateCheckResult, setUpdateCheckResult] = useState<"idle" | "upToDate" | "available" | "error">("idle");
+  const [updateErrorMsg, setUpdateErrorMsg] = useState("");
 
   const runDnsLeakTest = async () => {
     setDnsLeakTesting(true);
@@ -245,7 +246,7 @@ export function Settings() {
             <div className="flex items-center justify-between px-1 py-2">
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold text-white/90">Обновления</span>
-                <span className="text-xs text-muted">v{(window as any).__APP_VERSION__ || '1.8.3'}</span>
+                <span className="text-xs text-muted">v{__APP_VERSION__}</span>
               </div>
               <button
                 type="button"
@@ -255,22 +256,20 @@ export function Settings() {
                   const api = getAPI();
                   try {
                     const result = await api?.updater?.check?.();
-                    // Wait for events from main process
-                    setTimeout(() => {
-                      setUpdateChecking(false);
-                      if (result?.ok && result?.version) {
-                        setUpdateCheckResult("available");
-                      } else if (result?.ok) {
-                        setUpdateCheckResult("upToDate");
-                      } else {
-                        setUpdateCheckResult("error");
-                      }
-                      // Reset status after 5 seconds
-                      setTimeout(() => setUpdateCheckResult("idle"), 5000);
-                    }, 2000);
-                  } catch {
+                    setUpdateChecking(false);
+                    if (result?.ok && result?.version) {
+                      setUpdateCheckResult("available");
+                    } else if (result?.ok) {
+                      setUpdateCheckResult("upToDate");
+                    } else {
+                      setUpdateCheckResult("error");
+                      setUpdateErrorMsg(result?.error || "Неизвестная ошибка");
+                    }
+                    setTimeout(() => setUpdateCheckResult("idle"), 5000);
+                  } catch (err: any) {
                     setUpdateChecking(false);
                     setUpdateCheckResult("error");
+                    setUpdateErrorMsg(err?.message || "Не удалось проверить");
                     setTimeout(() => setUpdateCheckResult("idle"), 5000);
                   }
                 }}
@@ -290,7 +289,7 @@ export function Settings() {
                 ) : updateCheckResult === "available" ? (
                   <><Download className="w-3.5 h-3.5" /> Есть обновление!</>
                 ) : updateCheckResult === "error" ? (
-                  <><AlertTriangle className="w-3.5 h-3.5" /> Ошибка проверки</>
+                  <><AlertTriangle className="w-3.5 h-3.5" /> {updateErrorMsg || "Ошибка проверки"}</>
                 ) : (
                   <><RefreshCw className="w-3.5 h-3.5" /> Проверить</>
                 )}

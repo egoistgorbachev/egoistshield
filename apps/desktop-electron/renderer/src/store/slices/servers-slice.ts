@@ -51,6 +51,7 @@ export interface ServersSlice {
   syncWithBackend: () => Promise<void>;
   installRuntime: () => Promise<void>;
   testAllPings: (activeOnly?: boolean) => Promise<void>;
+  smartConnect: () => Promise<void>;
   startPingLoop: () => void;
   stopPingLoop: () => void;
 }
@@ -365,6 +366,50 @@ export const createServersSlice: StateCreator<
         return p !== undefined && p > 0 ? { ...s, ping: p } : s;
       })
     }));
+  },
+
+  smartConnect: async () => {
+    const api = getAPI();
+    if (!api) return;
+
+    const state = get();
+    const servers = state.servers.filter((s) => s._host && s._port);
+    if (servers.length === 0) return;
+
+    // Пингуем все серверы параллельно (батчами по 5)
+    const pingResults: { id: string; ping: number }[] = [];
+    for (let i = 0; i < servers.length; i += 5) {
+      const chunk = servers.slice(i, i + 5);
+      const results = await Promise.all(
+        chunk.map(async (s) => {
+          try {
+            const p = await api.system.ping(s._host!, s._port!);
+            return { id: s.id, ping: p > 0 ? p : Infinity };
+          } catch {
+            return { id: s.id, ping: Infinity };
+          }
+        })
+      );
+      pingResults.push(...results);
+    }
+
+    // Обновляем пинги в store
+    const newPings = new Map(pingResults.map((r) => [r.id, r.ping]));
+    set((state) => ({
+      servers: state.servers.map((s) => {
+        const p = newPings.get(s.id);
+        return p !== undefined && p > 0 && p < Infinity ? { ...s, ping: p } : s;
+      })
+    }));
+
+    // Выбираем сервер с минимальным пингом
+    const reachable = pingResults.filter((r) => r.ping < Infinity);
+    if (reachable.length === 0) return;
+    reachable.sort((a, b) => a.ping - b.ping);
+    const bestId = reachable[0]!.id;
+
+    // Подключаемся
+    await get().connectToServer(bestId);
   },
 
   installRuntime: async () => {
