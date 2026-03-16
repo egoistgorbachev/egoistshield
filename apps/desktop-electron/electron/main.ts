@@ -23,11 +23,27 @@ ipcMain.handle("updater:install", () => {
 });
 
 ipcMain.handle("updater:check", async () => {
+  // В dev-режиме updater не работает — нет подписанного приложения
+  if (!app.isPackaged) {
+    return { ok: true, version: null, message: "Dev-режим: обновления отключены" };
+  }
   try {
     const result = await autoUpdater.checkForUpdates();
-    return { ok: true, version: result?.updateInfo?.version ?? null };
+    if (result?.updateInfo?.version) {
+      return { ok: true, version: result.updateInfo.version };
+    }
+    return { ok: true, version: null };
   } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
+    const msg = e?.message || String(e);
+    logger.warn("[updater] check failed:", msg);
+    // Понятные сообщения для типичных ошибок
+    if (msg.includes("net::ERR") || msg.includes("ENOTFOUND") || msg.includes("getaddrinfo")) {
+      return { ok: false, error: "Нет подключения к серверу обновлений" };
+    }
+    if (msg.includes("404") || msg.includes("Cannot find")) {
+      return { ok: false, error: "Сервер обновлений недоступен" };
+    }
+    return { ok: false, error: msg };
   }
 });
 

@@ -289,13 +289,16 @@ export class VpnRuntimeManager extends EventEmitter {
     child.stdout?.on("data", appendRuntimeOutput);
     child.stderr?.on("data", appendRuntimeOutput);
 
-    // Debug: пишем runtime output в лог-файл
-    const debugLogPath = path.join(this.userDataDir, "debug", `${resolvedRuntime.runtimeKind}_runtime.log`);
-    const writeDebugLog = (chunk: Buffer): void => {
-      fs.appendFile(debugLogPath, chunk.toString("utf8")).catch(() => {});
-    };
-    child.stdout?.on("data", writeDebugLog);
-    child.stderr?.on("data", writeDebugLog);
+    // Debug: пишем runtime output в лог-файл (ТОЛЬКО в dev-режиме — содержит адреса серверов и UUID)
+    const isDevLog = process.env.NODE_ENV === "development" || !!process.env.VITE_DEV_SERVER_URL;
+    if (isDevLog) {
+      const debugLogPath = path.join(this.userDataDir, "debug", `${resolvedRuntime.runtimeKind}_runtime.log`);
+      const writeDebugLog = (chunk: Buffer): void => {
+        fs.appendFile(debugLogPath, chunk.toString("utf8")).catch(() => {});
+      };
+      child.stdout?.on("data", writeDebugLog);
+      child.stderr?.on("data", writeDebugLog);
+    }
 
     child.on("error", (error) => {
       if (this.snapshot.processGeneration === processGeneration) {
