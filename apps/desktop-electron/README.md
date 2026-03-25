@@ -1,65 +1,75 @@
-# 🛡️ EgoistShield
+# EgoistShield Desktop
 
-> Desktop VPN клиент для Windows — быстрый, стабильный, расширяемый.
+Desktop-клиент `EgoistShield` для Windows 10/11.
 
-## Возможности
+Текущая ветка документации соответствует релизному состоянию **3.1.0**.
 
-- 🔒 **9 протоколов**: VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria2, TUIC, WireGuard
-- ⚡ **Dual-runtime**: Xray + Sing-box с автоматическим fallback
-- 🛡️ **Kill Switch**: Блокировка трафика при обрыве VPN (Windows Firewall)
-- 🌐 **TUN-режим**: Полный перехват сетевого трафика
-- 📡 **Smart Routing**: Автоматический выбор сервера с минимальным пингом
-- 🔄 **Подписки**: Импорт и автообновление subscription-ссылок (12 UA-профилей)
-- 🎨 **Premium UI**: Дизайн-система «Inferno Core» с glassmorphism и анимациями
-- 📊 **Мониторинг**: Реальное время трафик, пинг, GeoIP
-- 🔐 **Безопасность**: Sandbox, CSP, IPC Zod-валидация, contextIsolation
+## Что есть в desktop-версии
+
+- **Мультипротокольный импорт и подключение**: VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria2, TUIC, WireGuard.
+- **Dual-runtime**: Xray + Sing-box.
+- **Smart Connect v2**: health-score выбор узлов, fallback по кандидатам, быстрый warm-switch.
+- **System DNS Center**: установка и сброс системного DNS Windows с валидацией ввода.
+- **Kill Switch**: управление firewall-правилами Windows для защиты при обрыве соединения.
+- **Автозапуск и авто-подключение**.
+- **Updater**: ручная проверка новой версии и установка релиза через GitHub Releases.
+- **Диагностика**: structured logs, runtime lifecycle, runtime diagnostics, DNS leak test, connection logs.
+- **UI**: dashboard, server list, 3D-globe, usage insights, command palette, polished dark design system.
 
 ## Стек
 
-| Компонент  | Версия       |
-| ---------- | ------------ |
-| Electron   | 36.5         |
-| React      | 19.1         |
-| TypeScript | 5.8 (strict) |
-| Vite       | 7.3          |
-| Zustand    | 5.0          |
-| Biome      | 1.9          |
-
-## Быстрый старт
-
-```bash
-# Установка
-npm install
-
-# Разработка
-npm run dev
-
-# Сборка
-npm run make
-
-# Тесты
-npx vitest run
-
-# Линтинг
-npx biome check .
-```
+| Компонент | Версия |
+| --- | --- |
+| Electron | 36.9.5 |
+| React | 19.1.0 |
+| TypeScript | 5.8.3 |
+| Vite | 7.3.1 |
+| Zustand | 5.0.11 |
+| Zod | 3.24.x |
+| Vitest | 3.1.2 |
+| Playwright | 1.58.x |
 
 ## Структура
 
+```text
+electron/                 Main process, IPC, runtime orchestration
+renderer/src/             React UI, store, screens, design system
+shared/                   Shared runtime types and DNS parser
+tests/                    Unit and integration tests
+e2e/                      Playwright scenarios
+packaging/                Installer, icons, builder assets and scripts
 ```
-electron/       Main Process (Node.js)
-├── main.ts     Entry point
-├── preload.ts  contextBridge API
-└── ipc/        Бизнес-логика (handlers, vpn-manager, config-builder...)
 
-renderer/       Renderer Process (React)
-└── src/
-    ├── screens/      5 экранов
-    ├── components/   13 компонентов
-    ├── store/        Zustand + 3 слайса
-    └── styles/       Дизайн-система
+## Основные команды
+
+```bash
+npm install
+npm run test
+npm run stress
+npm run test:e2e
+npm run build:vite
+npm run dist
+```
+
+## Что важно знать
+
+- `System DNS Center` работает с системными DNS Windows и ожидает корректные IP-адреса DNS-серверов.
+- Форматы `sdns://` и некоторые hostname-based secure DNS-схемы нельзя применять напрямую как системный DNS Windows без локального DNS-прокси.
+- `Kill Switch`, системный DNS и часть сетевых операций требуют соответствующих прав в Windows.
+- Публичное описание продукта намеренно не использует формулировки, которые можно трактовать как обещание обхода законно установленных ограничений.
+
+## Сборка релиза
+
+```bash
+npm run dist
+```
+
+Инсталлятор появится в:
+
+```text
+apps/desktop-electron/out/dist/
 ```
 
 ## Лицензия
 
-Private — только для личного использования.
+Проект распространяется по лицензии [MIT](../../LICENSE).

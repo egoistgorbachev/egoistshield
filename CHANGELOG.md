@@ -5,6 +5,83 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [3.1.0] — 2026-03-25
+
+### 🚀 Network Engine, DNS Center & Release Refinement
+
+Релиз переводит desktop-клиент на более зрелую сетевую модель: улучшен Smart Connect, добавлена явная runtime-диагностика, оформлен отдельный экран системного DNS и обновлена публичная документация проекта.
+
+#### ✨ Добавлено
+- **Smart Connect v2** на health-score логике: учитываются не только ping, но и история успешности, качество сессии и fallback-кандидаты.
+- **Runtime lifecycle + diagnostics**: состояния `idle`, `probing`, `connecting`, `warmup`, `active`, `degraded`, `reconnecting`, `failed`.
+- **System DNS Center**: отдельный экран для установки и сброса системного DNS Windows.
+- **Structured connection logs** и более ясные причины ошибок runtime.
+- **Protocol-aware groundwork** для дальнейшей оптимизации сетевого движка.
+
+#### ✅ Исправлено
+- Убраны устаревшие UI-элементы и состояния вокруг прежнего `TUN/Split Tunnel` контура.
+- Исправлен парсинг системного DNS и добавлена безопасная поддержка IPv4/IPv6 форматов.
+- Дочищен installer pipeline и воспроизводимость Windows-сборки.
+- Исправлены визуальные артефакты dashboard и клиппинг теней карточек.
+
+#### 📝 Документация
+- Полностью обновлён корневой `README.md` под релиз `3.1.0`.
+- Актуализирован `apps/desktop-electron/README.md`.
+- Публичное описание перепозиционировано в более консервативную и юридически безопасную форму для РФ.
+
+## [3.0.0] — 2026-03-19
+
+### 🛡 Release Integrity & Desktop Polish
+
+Релиз сфокусирован на доведении desktop-клиента до воспроизводимого релизного состояния: зелёный verification loop, честная типизация, более зрелая accessibility-семантика и готовый Windows installer pipeline.
+
+#### ✅ Исправлено
+- Полностью закрыт `P0` quality gate: `biome`, `tsc`, `vitest`, `stress`, `Playwright E2E`, `build:vite`.
+- Починены `Ctrl+K`, `Ctrl+V`, window controls и E2E first-run flow.
+- Убраны `any`/non-null assertions из критичных экранов и store-контуров (`Dashboard`, `ServerList`, `Settings`, `Onboarding`, `Globe3D`, `WorldMap`, `servers-slice`).
+- Исправлены dev/test `userData`, `logs` и session paths для изоляции прогонов.
+- Split Tunnel и runtime-dependent toggles теперь честно отражают ограничения `TUN + sing-box`.
+
+#### 🎨 UI/UX
+- Улучшены motion и стабильность визуальных компонентов `Globe3D`, `SpeedGraph`, onboarding и usage widgets.
+- Дочищена accessibility-семантика: корректные `button/output/switch`, keyboard paths, decorative SVG handling.
+- `UsageInsights` теперь показывает полезную недельную агрегацию, включая число уникальных узлов.
+
+#### 📦 Release
+- Версия desktop-приложения переведена на `3.0.0`.
+- Single-EXE packaging script больше не хардкодит версию runtime-кэша.
+
+## [2.0.0] — 2026-03-18
+
+### 💎 Эпоха v2.0: Трансформация UI/UX & Производительности
+
+Глобальное обновление интерфейса, превращающее EgoistShield в VPN премиального уровня. Улучшена производительность, переписаны стили, добавлен глубокий мониторинг (Smart UX) и внедрены строгие стандарты доступности (WCAG 2.2 AA).
+
+#### 🚀 Ультимативная производительность
+- **Интеллектуальный throttling 3D фона:** 30fps в активном состоянии VPN, авто-пауза при сворачивании и экономия CPU/GPU до 40%.
+- **Аппаратные CSS-анимации:** Полный отказ от CPU-анимаций (Framer Motion) для пульсаций и колец фокуса в пользу Composite CSS (GPU-only, `pulse-ring`, `glow-pulse`). Тотальная плавность и 0% CPU overhead UI в фоновом режиме.
+
+#### 🎨 Новая Дизайн-Система
+- Унифицированный Spacing (4px grid) и Typography (Tokens + Tailwind).
+- Абсолютно переписан **Tailwind config**: четко определены `z-index` (0..100), длительности анимаций и `motion` токены.
+- Отказ от хардкода стилей и inline-CSS: все карточки унифицированы через `.glass-card` и `.sidebar-panel`.
+
+#### 🤖 Smart UX
+- **Usage Insights Dashboard:** Мониторинг статистики входящего/исходящего трафика в реальном времени, встроенный прямо в дашборд (bar charts & stats). Данные сохраняются локально.
+- **Server Health Badges:** Цветовая индикация здоровья серверов и пинга (emerald/amber/red).
+- **Command Palette (Ctrl+K):** Глобальный поиск и быстрое управление настройками через хоткей.
+- Логи перенесены из настроек в отдельное окно `ConnectionLogsScreen` для невероятной чистоты UI Настроек.
+
+#### ♿ Доступность
+- Откалиброваны контрасты (3.1:1 — 4.5:1), убраны 'бледные тексты', добавлен семантический цвет `muted`.
+- Внедрён ARIA Live для Toast Alert (VoiceOver / NVDA озвучка при ошибках подключения).
+- Имплементированы aria-метки для переключателей, Split Tunnel списка и Server Status.
+- Добавлен `lang="ru"` в корень.
+
+#### 🔧 Core Fixes
+- Устранение проблемы **Zombie Xray / Bind Port**: Процессы ядра теперь гарантированно уничтожаются при завершении и реконнекте, никаких "Port already in use".
+- Оптимизация конфигов Xray с добавлением **XTLS Flow / Vision** для максимальной скорости VLESS соединений.
+
 ## [1.8.4] — 2026-03-13
 
 ### 🔄 Автообновление + Оформление репозитория
