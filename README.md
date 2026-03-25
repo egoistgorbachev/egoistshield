@@ -52,7 +52,7 @@
 
 | Область | Возможности |
 | --- | --- |
-| Подключение | VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria2, TUIC, WireGuard |
+| Подключение | все популярные, актуальные протоколы|
 | Runtime | Xray + Sing-box, runtime diagnostics, soft fallback |
 | Smart Connect | health-score выбор узлов, fallback-цепочка, быстрый warm-switch |
 | Импорт | подписки, URI, буфер обмена, файлы конфигурации |
