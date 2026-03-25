@@ -1,4 +1,3 @@
-import { promises as fs } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 
@@ -80,19 +79,16 @@ const svgString = `
 `;
 
 async function main() {
-    const rootDir = path.resolve();
-    // generate-icons expects `new logo.png` here:
-    const targetPath = path.join(rootDir, "..", "..", "..", "..", "new logo.png");
+  const rootDir = path.resolve();
+  // generate-icons expects `new logo.png` here:
+  const targetPath = path.join(rootDir, "..", "..", "..", "..", "new logo.png");
 
-    console.log("Rendering SVG to 1024x1024 PNG...");
-    
-    const buffer = Buffer.from(svgString);
-    await sharp(buffer)
-        .resize(1024, 1024)
-        .png({ quality: 100 })
-        .toFile(targetPath);
+  console.log("Rendering SVG to 1024x1024 PNG...");
 
-    console.log(`✅ Saved new static Void Prism logo to: ${targetPath}`);
+  const buffer = Buffer.from(svgString);
+  await sharp(buffer).resize(1024, 1024).png({ quality: 100 }).toFile(targetPath);
+
+  console.log(`✅ Saved new static Void Prism logo to: ${targetPath}`);
 }
 
 main().catch(console.error);

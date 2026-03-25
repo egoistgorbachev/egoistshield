@@ -19,7 +19,7 @@ const STEPS: TimelineStep[] = [
   { id: "resolve", label: "Поиск сервера", icon: Globe },
   { id: "connect", label: "Подключение", icon: Wifi },
   { id: "secure", label: "Шифрование", icon: Lock },
-  { id: "done", label: "Защищено", icon: CheckCircle },
+  { id: "done", label: "Защищено", icon: CheckCircle }
 ];
 
 interface Props {
@@ -58,6 +58,7 @@ export function ConnectionTimeline({ isConnecting, isConnected, serverName }: Pr
         animate={{ opacity: 1, height: "auto" }}
         exit={{ opacity: 0, height: 0 }}
         transition={{ duration: 0.3 }}
+        title={serverName ? `Сервер: ${serverName}` : undefined}
         className="flex items-center gap-1.5 z-10"
       >
         {STEPS.map((step, i) => {

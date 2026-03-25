@@ -20,16 +20,16 @@ export function useKeyboardShortcuts() {
       const ctrl = e.ctrlKey || e.metaKey;
 
       if (ctrl && !e.shiftKey) {
-        switch (e.key) {
-          case "1":
+        switch (e.code) {
+          case "Digit1":
             e.preventDefault();
             useAppStore.getState().setScreen("dashboard");
             break;
-          case "2":
+          case "Digit2":
             e.preventDefault();
             useAppStore.getState().setScreen("servers");
             break;
-          case "3":
+          case "Digit3":
             e.preventDefault();
             useAppStore.getState().setScreen("settings");
             break;
@@ -37,12 +37,12 @@ export function useKeyboardShortcuts() {
       }
 
       if (ctrl && e.shiftKey) {
-        switch (e.key.toUpperCase()) {
-          case "C":
+        switch (e.code) {
+          case "KeyC":
             e.preventDefault();
             useAppStore.getState().toggleConnection();
             break;
-          case "S":
+          case "KeyS":
             e.preventDefault();
             useAppStore.getState().smartConnect();
             break;

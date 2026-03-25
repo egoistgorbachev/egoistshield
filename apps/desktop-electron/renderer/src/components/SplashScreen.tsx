@@ -11,15 +11,15 @@ export function SplashScreen() {
   return (
     <motion.div
       className="absolute inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden w-full h-screen"
-      style={{ background: "#030305" }}
+      style={{ background: "#082032" }}
       exit={{ opacity: 0, scale: 1.05 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
     >
-      {/* Subtle radial gradient — bright orange center */}
+      {/* Subtle radial gradient — red-orange brand center */}
       <div
         className="absolute w-[600px] h-[600px] rounded-full pointer-events-none"
         style={{
-          background: "radial-gradient(circle, rgba(255,107,0,0.12) 0%, transparent 60%)"
+          background: "radial-gradient(circle, rgba(255,76,41,0.12) 0%, transparent 60%)"
         }}
       />
 
@@ -35,8 +35,8 @@ export function SplashScreen() {
             <div
               className="absolute inset-0 rounded-2xl flex items-center justify-center"
               style={{
-                background: "linear-gradient(135deg, #FF4D00, #FF6B00, #FF8C38)",
-                boxShadow: "0 8px 40px rgba(255,107,0,0.5)",
+                background: "linear-gradient(135deg, #E0401E, #FF4C29, #FF6B47)",
+                boxShadow: "0 8px 40px rgba(255,76,41,0.5)",
                 borderRadius: "28%"
               }}
             >
@@ -55,7 +55,7 @@ export function SplashScreen() {
         <motion.h1
           className="mt-4 text-[22px] font-display font-bold uppercase"
           style={{
-            background: "linear-gradient(135deg, #FFFFFF, #FF8C38, #FF6B00)",
+            background: "linear-gradient(135deg, #FFFFFF, #FF6B47, #FF4C29)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent"
           }}
@@ -78,8 +78,8 @@ export function SplashScreen() {
 
         {/* Progress ring */}
         <div className="mt-6 w-9 h-9">
-          <svg viewBox="0 0 40 40" className="w-full h-full -rotate-90">
-            <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,107,0,0.15)" strokeWidth="2.5" />
+          <svg viewBox="0 0 40 40" className="w-full h-full -rotate-90" aria-hidden="true" focusable="false">
+            <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,76,41,0.15)" strokeWidth="2.5" />
             <motion.circle
               cx="20"
               cy="20"
@@ -96,7 +96,7 @@ export function SplashScreen() {
             <defs>
               <linearGradient id="splash-ring-grad-v2" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#FFFFFF" />
-                <stop offset="100%" stopColor="#FF6B00" />
+                <stop offset="100%" stopColor="#FF4C29" />
               </linearGradient>
             </defs>
           </svg>

@@ -40,6 +40,9 @@
       ".vite",
       "dist",
       "runtime",
+      "stats.html",
+      "test-results",
+      "playwright-report",
       "packaging/build",
       "packaging/output",
       "*.min.js"

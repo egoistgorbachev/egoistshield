@@ -18,12 +18,15 @@ interface WorldMapProps {
   className?: string;
 }
 
+const GRID_COLUMNS = Array.from({ length: 20 }, (_, columnIndex) => columnIndex * 50 + 25);
+const GRID_ROWS = Array.from({ length: 10 }, (_, rowIndex) => rowIndex * 50 + 25);
+
 /** Group servers by countryCode */
 function groupByCountry(servers: ServerConfig[]) {
   const map = new Map<string, { servers: ServerConfig[]; bestPing: number }>();
   for (const s of servers) {
     const cc = s.countryCode?.toLowerCase() || "un";
-    const group = map.get(cc) || { servers: [], bestPing: Infinity };
+    const group = map.get(cc) || { servers: [], bestPing: Number.POSITIVE_INFINITY };
     group.servers.push(s);
     if (s.ping > 0 && s.ping < group.bestPing) group.bestPing = s.ping;
     map.set(cc, group);
@@ -33,7 +36,8 @@ function groupByCountry(servers: ServerConfig[]) {
 
 /** Get dot color by ping */
 function getPingColor(ping: number): { fill: string; glow: string; label: string } {
-  if (ping <= 0 || ping === Infinity) return { fill: "#555", glow: "rgba(85,85,85,0.3)", label: "gray" };
+  if (ping <= 0 || ping === Number.POSITIVE_INFINITY)
+    return { fill: "#555", glow: "rgba(85,85,85,0.3)", label: "gray" };
   if (ping < 80) return { fill: "#10B981", glow: "rgba(16,185,129,0.5)", label: "green" };
   if (ping < 200) return { fill: "#F59E0B", glow: "rgba(245,158,11,0.5)", label: "yellow" };
   return { fill: "#EF4444", glow: "rgba(239,68,68,0.5)", label: "red" };
@@ -48,29 +52,33 @@ export const WorldMap = memo(function WorldMap({ servers, onSelectCountry, class
   const countryGroups = useMemo(() => groupByCountry(servers), [servers]);
 
   // Find which country the selected server belongs to
-  const selectedServer = useMemo(
-    () => servers.find((s) => s.id === selectedServerId),
-    [servers, selectedServerId]
-  );
+  const selectedServer = useMemo(() => servers.find((s) => s.id === selectedServerId), [servers, selectedServerId]);
   const selectedCountryCode = selectedServer?.countryCode?.toLowerCase();
+  const selectedCountryPoint = selectedCountryCode ? COUNTRY_COORDS[selectedCountryCode] : null;
+  const selectedCountryCoords = selectedCountryPoint
+    ? latLngToSvg(selectedCountryPoint.lat, selectedCountryPoint.lng)
+    : null;
 
   // Get hovered group info for tooltip
   const hoveredGroup = hoveredCountry ? countryGroups.get(hoveredCountry) : null;
   const hoveredPoint = hoveredCountry ? COUNTRY_COORDS[hoveredCountry] : null;
-  const hoveredCoords = hoveredPoint ? { ...latLngToSvg(hoveredPoint.lat, hoveredPoint.lng), name: hoveredPoint.name } : null;
+  const hoveredCoords = hoveredPoint
+    ? { ...latLngToSvg(hoveredPoint.lat, hoveredPoint.lng), name: hoveredPoint.name }
+    : null;
 
   return (
     <div className={cn("relative w-full select-none", className)}>
       <svg
         viewBox="0 0 1000 500"
         className="w-full h-full"
-        style={{ filter: "drop-shadow(0 0 40px rgba(255,107,0,0.05))" }}
+        style={{ filter: "drop-shadow(0 0 40px rgba(38,201,154,0.05))" }}
       >
+        <title>Карта серверов EgoistShield</title>
         <defs>
           {/* Gradient for continents */}
           <linearGradient id="continent-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="rgba(255,107,0,0.06)" />
-            <stop offset="100%" stopColor="rgba(255,107,0,0.02)" />
+            <stop offset="0%" stopColor="rgba(38,201,154,0.06)" />
+            <stop offset="100%" stopColor="rgba(38,201,154,0.02)" />
           </linearGradient>
           {/* Connection line gradient */}
           <linearGradient id="connection-line-grad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -81,45 +89,30 @@ export const WorldMap = memo(function WorldMap({ servers, onSelectCountry, class
         </defs>
 
         {/* ── Continent outlines ── */}
-        {CONTINENT_PATHS.map((d, i) => (
-          <path
-            key={`continent-${i}`}
-            d={d}
-            fill="url(#continent-grad)"
-            stroke="rgba(255,107,0,0.08)"
-            strokeWidth="0.8"
-          />
+        {CONTINENT_PATHS.map((d) => (
+          <path key={d} d={d} fill="url(#continent-grad)" stroke="rgba(38,201,154,0.08)" strokeWidth="0.8" />
         ))}
 
         {/* ── Grid dots (subtle) ── */}
-        {Array.from({ length: 20 }, (_, xi) =>
-          Array.from({ length: 10 }, (_, yi) => (
-            <circle
-              key={`grid-${xi}-${yi}`}
-              cx={xi * 50 + 25}
-              cy={yi * 50 + 25}
-              r="0.5"
-              fill="rgba(255,255,255,0.03)"
-            />
-          ))
+        {GRID_COLUMNS.map((x) =>
+          GRID_ROWS.map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r="0.5" fill="rgba(255,255,255,0.03)" />)
         )}
 
         {/* ── Connection line (when connected) ── */}
-        {isConnected && selectedCountryCode && COUNTRY_COORDS[selectedCountryCode] && (() => {
-          const sv = latLngToSvg(COUNTRY_COORDS[selectedCountryCode]!.lat, COUNTRY_COORDS[selectedCountryCode]!.lng);
-          return <motion.line
+        {isConnected && selectedCountryCoords && (
+          <motion.line
             x1="500"
             y1="250"
-            x2={sv.x}
-            y2={sv.y}
+            x2={selectedCountryCoords.x}
+            y2={selectedCountryCoords.y}
             stroke="url(#connection-line-grad)"
             strokeWidth="1.5"
             strokeDasharray="6 4"
             initial={{ pathLength: 0, opacity: 0 }}
             animate={{ pathLength: 1, opacity: 1 }}
             transition={{ duration: 1, ease: "easeOut" }}
-          />;
-        })()}
+          />
+        )}
 
         {/* ── Server dots ── */}
         {Array.from(countryGroups.entries()).map(([cc, group]) => {
@@ -162,11 +155,19 @@ export const WorldMap = memo(function WorldMap({ servers, onSelectCountry, class
                 cx={coords.x}
                 cy={coords.y}
                 r={dotRadius}
+                role="button"
+                tabIndex={0}
+                aria-label={`Выбрать страну ${point.name}`}
                 fill={isActive && isConnected ? "#10B981" : pingColor.fill}
-                stroke={isActive ? "rgba(255,255,255,0.5)" : isHovered ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)"}
+                stroke={
+                  isActive ? "rgba(255,255,255,0.5)" : isHovered ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)"
+                }
                 strokeWidth={isActive ? "1.5" : "0.8"}
                 className="cursor-pointer"
-                style={{ transition: "all 0.2s ease", filter: isHovered || isActive ? `drop-shadow(0 0 6px ${pingColor.glow})` : "none" }}
+                style={{
+                  transition: "all 0.2s ease",
+                  filter: isHovered || isActive ? `drop-shadow(0 0 6px ${pingColor.glow})` : "none"
+                }}
                 onMouseEnter={(e) => {
                   setHoveredCountry(cc);
                   const svgRect = (e.target as SVGElement).closest("svg")?.getBoundingClientRect();
@@ -180,6 +181,12 @@ export const WorldMap = memo(function WorldMap({ servers, onSelectCountry, class
                   }
                 }}
                 onMouseLeave={() => setHoveredCountry(null)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelectCountry?.(cc);
+                  }
+                }}
                 onClick={() => onSelectCountry?.(cc)}
               />
 
@@ -230,14 +237,24 @@ export const WorldMap = memo(function WorldMap({ servers, onSelectCountry, class
               <div className="text-white/90 mb-0.5">{hoveredCoords?.name}</div>
               <div className="flex items-center gap-3 text-[10px]">
                 <span className="text-muted">
-                  {hoveredGroup.servers.length} {hoveredGroup.servers.length === 1 ? "сервер" : hoveredGroup.servers.length < 5 ? "сервера" : "серверов"}
+                  {hoveredGroup.servers.length}{" "}
+                  {hoveredGroup.servers.length === 1
+                    ? "сервер"
+                    : hoveredGroup.servers.length < 5
+                      ? "сервера"
+                      : "серверов"}
                 </span>
-                {hoveredGroup.bestPing < Infinity && (
-                  <span className={cn(
-                    "font-mono",
-                    hoveredGroup.bestPing < 80 ? "text-emerald-400" :
-                    hoveredGroup.bestPing < 200 ? "text-amber-400" : "text-red-400"
-                  )}>
+                {hoveredGroup.bestPing < Number.POSITIVE_INFINITY && (
+                  <span
+                    className={cn(
+                      "font-mono",
+                      hoveredGroup.bestPing < 80
+                        ? "text-emerald-400"
+                        : hoveredGroup.bestPing < 200
+                          ? "text-amber-400"
+                          : "text-red-400"
+                    )}
+                  >
                     {hoveredGroup.bestPing} мс
                   </span>
                 )}

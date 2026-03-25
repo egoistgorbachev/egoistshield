@@ -2,15 +2,25 @@ import type { AppSettings, DomainRule, ProcessRule, VpnNode } from "./contracts"
 
 type XrayConfig = Record<string, unknown>;
 type SingBoxConfig = Record<string, unknown>;
+type ProtocolProfile = {
+  xrayTlsAlpn?: string[];
+  singBoxNetwork?: "tcp" | "udp";
+  singBoxHopInterval?: string;
+  tuicCongestionControl?: "cubic" | "new_reno" | "bbr";
+  tuicHeartbeat?: string;
+  tuicZeroRttHandshake?: boolean;
+  tuicUdpRelayMode?: "native" | "quic";
+  wireguardMtu?: number;
+};
 
-// biome-ignore lint/style/noNamespace: необходимо для статической группировки методов
 export namespace ConfigBuilder {
   export function buildXray(
     node: VpnNode,
     domainRules: DomainRule[],
     settings: AppSettings,
     httpPort: number,
-    socksPort: number
+    socksPort: number,
+    apiPort: number
   ): string {
     const outbound = buildOutbound(node);
     const rules = buildRules(domainRules);
@@ -58,7 +68,7 @@ export namespace ConfigBuilder {
         },
         {
           listen: "127.0.0.1",
-          port: 10085,
+          port: apiPort,
           protocol: "dokodemo-door",
           settings: { address: "127.0.0.1" },
           tag: "api"
@@ -158,6 +168,7 @@ export namespace ConfigBuilder {
 
   function buildOutbound(node: VpnNode): Record<string, unknown> {
     const m = node.metadata ?? {};
+    const profile = getProtocolProfile(node);
 
     if (node.protocol === "vless") {
       return {
@@ -167,7 +178,13 @@ export namespace ConfigBuilder {
             {
               address: node.server,
               port: node.port,
-              users: [{ id: m.id ?? "", encryption: "none", flow: m.flow }]
+              users: [
+                {
+                  id: m.id ?? "",
+                  encryption: "none",
+                  flow: m.flow || (m.security === "reality" ? "xtls-rprx-vision" : undefined)
+                }
+              ]
             }
           ]
         },
@@ -175,7 +192,13 @@ export namespace ConfigBuilder {
           network: m.type ?? "tcp",
           security: m.security ?? "none",
           tlsSettings:
-            m.security === "tls" ? { serverName: m.sni ?? node.server, fingerprint: m.fp ?? "chrome" } : undefined,
+            m.security === "tls"
+              ? {
+                  serverName: m.sni ?? node.server,
+                  fingerprint: m.fp ?? "chrome",
+                  alpn: profile.xrayTlsAlpn
+                }
+              : undefined,
           realitySettings:
             m.security === "reality"
               ? {
@@ -209,7 +232,13 @@ export namespace ConfigBuilder {
         streamSettings: {
           network: m.net ?? "tcp",
           security: m.tls === "tls" ? "tls" : "none",
-          tlsSettings: m.tls === "tls" ? { serverName: m.sni ?? node.server } : undefined,
+          tlsSettings:
+            m.tls === "tls"
+              ? {
+                  serverName: m.sni ?? node.server,
+                  alpn: profile.xrayTlsAlpn
+                }
+              : undefined,
           wsSettings:
             m.net === "ws" ? { path: m.path ?? "/", headers: m.host ? { Host: m.host } : undefined } : undefined,
           grpcSettings: m.net === "grpc" ? { serviceName: m.serviceName ?? "" } : undefined
@@ -232,7 +261,7 @@ export namespace ConfigBuilder {
         streamSettings: {
           network: m.type ?? "tcp",
           security: "tls",
-          tlsSettings: { serverName: m.sni ?? node.server },
+          tlsSettings: { serverName: m.sni ?? node.server, alpn: profile.xrayTlsAlpn },
           wsSettings:
             m.type === "ws" ? { path: m.path ?? "/", headers: m.host ? { Host: m.host } : undefined } : undefined,
           grpcSettings: m.type === "grpc" ? { serviceName: m.serviceName ?? "" } : undefined
@@ -299,8 +328,50 @@ export namespace ConfigBuilder {
     return value ? ["1", "true", "yes", "on"].includes(value.toLowerCase()) : false;
   }
 
+  function getProtocolProfile(node: VpnNode): ProtocolProfile {
+    if (node.protocol === "hysteria2") {
+      return {
+        singBoxNetwork: "udp",
+        singBoxHopInterval: "30s"
+      };
+    }
+
+    if (node.protocol === "tuic") {
+      return {
+        singBoxNetwork: "udp",
+        tuicCongestionControl: "bbr",
+        tuicHeartbeat: "10s",
+        tuicZeroRttHandshake: false,
+        tuicUdpRelayMode: "native"
+      };
+    }
+
+    if (node.protocol === "wireguard") {
+      return {
+        singBoxNetwork: "udp",
+        wireguardMtu: 1408
+      };
+    }
+
+    if (node.protocol === "vless" || node.protocol === "vmess" || node.protocol === "trojan") {
+      const metadata = node.metadata ?? {};
+      const network = node.protocol === "vmess" ? metadata.net ?? "tcp" : metadata.type ?? "tcp";
+      const alpn = metadata.alpn
+        ?.split(",")
+        .map((value: string) => value.trim())
+        .filter(Boolean);
+
+      return {
+        xrayTlsAlpn: alpn && alpn.length > 0 ? alpn : network === "grpc" || network === "h2" ? ["h2", "http/1.1"] : ["http/1.1"]
+      };
+    }
+
+    return {};
+  }
+
   function buildSingBoxOutbound(node: VpnNode): Record<string, unknown> {
     const m = node.metadata ?? {};
+    const profile = getProtocolProfile(node);
 
     if (node.protocol === "vless") {
       const transport = buildSingBoxTransport(m);
@@ -310,7 +381,7 @@ export namespace ConfigBuilder {
         server: node.server,
         server_port: node.port,
         uuid: m.id ?? "",
-        flow: m.flow || undefined,
+        flow: m.flow || (m.security === "reality" ? "xtls-rprx-vision" : undefined),
         tls: tls,
         transport: transport
       };
@@ -392,6 +463,8 @@ export namespace ConfigBuilder {
         password: m.password ?? "",
         up_mbps: parseNumber(m.up_mbps ?? m.upmbps ?? m.up, 100),
         down_mbps: parseNumber(m.down_mbps ?? m.downmbps ?? m.down, 100),
+        hop_interval: m.hop_interval ?? profile.singBoxHopInterval,
+        network: m.network ?? profile.singBoxNetwork,
         tls: {
           enabled: true,
           server_name: m.sni ?? node.server,
@@ -408,8 +481,11 @@ export namespace ConfigBuilder {
         server_port: node.port,
         uuid: m.uuid ?? "",
         password: m.password ?? "",
-        congestion_control: m.congestion_control ?? "bbr",
-        udp_relay_mode: m.udp_relay_mode ?? "native",
+        congestion_control: m.congestion_control ?? profile.tuicCongestionControl ?? "bbr",
+        udp_relay_mode: m.udp_relay_mode ?? profile.tuicUdpRelayMode ?? "native",
+        zero_rtt_handshake: parseBool(m.zero_rtt_handshake) || profile.tuicZeroRttHandshake === true,
+        heartbeat: m.heartbeat ?? profile.tuicHeartbeat,
+        network: m.network ?? profile.singBoxNetwork,
         tls: {
           enabled: true,
           server_name: m.sni ?? node.server,
@@ -435,7 +511,8 @@ export namespace ConfigBuilder {
         peer_public_key: m.peer_public_key ?? m.public_key ?? m.publicKey ?? "",
         pre_shared_key: m.pre_shared_key ?? m.preshared_key ?? undefined,
         local_address: localAddress.length > 0 ? localAddress : ["10.7.0.2/32"],
-        mtu: parseNumber(m.mtu, 1280),
+        mtu: parseNumber(m.mtu, profile.wireguardMtu ?? 1408),
+        network: m.network ?? profile.singBoxNetwork,
         reserved: m.reserved
           ? m.reserved
               .split(",")

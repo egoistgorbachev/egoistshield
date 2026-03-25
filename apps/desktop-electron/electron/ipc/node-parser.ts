@@ -154,4 +154,3 @@ export function parseNodesFromText(payload: string): { nodes: VpnNode[]; issues:
   log.info(`[node-parser] Final result: ${nodes.length} nodes, ${issues.length} issues`);
   return { nodes: dedupeNodes(nodes), issues };
 }
-

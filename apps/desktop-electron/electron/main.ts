@@ -1,25 +1,19 @@
-import { app, BrowserWindow, Menu, Notification, Tray, ipcMain, nativeImage } from "electron";
 import { exec, execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
+import { BrowserWindow, Menu, Notification, Tray, app, ipcMain, nativeImage } from "electron";
 
-// ── Squirrel.Windows install/update events ──
-// Inline check instead of electron-squirrel-startup (не попадает в asar)
-if (process.platform === "win32") {
-  const squirrelCommand = process.argv[1];
-  if (
-    squirrelCommand === "--squirrel-install" ||
-    squirrelCommand === "--squirrel-updated" ||
-    squirrelCommand === "--squirrel-uninstall" ||
-    squirrelCommand === "--squirrel-obsolete"
-  ) {
-    app.quit();
-  }
-}
+// ── electron-builder NSIS инсталлер ──
+// Все install/update/uninstall операции (taskkill, cleanup, ярлыки)
+// выполняются NSIS скриптом: packaging/nsis/installer.nsh
+// Squirrel-код полностью удалён.
 
+import { buildAppPathConfig, detectRuntimeEnvironment } from "./app-paths";
+import { fullCleanup } from "./ipc/dns-cleanup";
 import { registerIpcHandlers } from "./ipc/handlers";
+import logger, { configureLoggerPaths } from "./ipc/logger";
 import { StateStore } from "./ipc/state-store";
 import { VpnRuntimeManager } from "./ipc/vpn-manager";
 
@@ -27,26 +21,189 @@ export let globalStateStore: StateStore | null = null;
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
-import { fullCleanup } from "./ipc/dns-cleanup";
-import logger from "./ipc/logger";
 
-// ── IPC: Автообновление ──
-// TODO: Адаптировать встроенный electron autoUpdater для Squirrel.
-// Пока автообновление будет отдавать fallback для совместимости с UI.
-ipcMain.handle("updater:install", () => {
-  logger.warn("updater:install: Недоступно в текущей сборке (electron-forge Squirrel)");
+const runtimeEnvironment = detectRuntimeEnvironment({
+  isPackaged: app.isPackaged,
+  nodeEnv: process.env.NODE_ENV
+});
+const appPathConfig = buildAppPathConfig({
+  defaultUserDataDir: app.getPath("userData"),
+  environment: runtimeEnvironment,
+  pid: process.pid
+});
+
+if (appPathConfig.userDataDir !== app.getPath("userData")) {
+  app.setPath("userData", appPathConfig.userDataDir);
+}
+
+if (appPathConfig.sessionDataDir) {
+  app.setPath("sessionData", appPathConfig.sessionDataDir);
+}
+
+configureLoggerPaths(appPathConfig.logsDir);
+
+const USER_DATA_DIR = app.getPath("userData");
+
+// ── IPC: Автообновление через GitHub Releases (Squirrel.Windows) ──
+const GITHUB_OWNER = "egoistgorbachev";
+const GITHUB_REPO = "egoistshield";
+
+let autoUpdateEnabled = true;
+let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Semver comparison: returns true if `remote` is strictly newer than `current`.
+ * Supports standard X.Y.Z format. If parsing fails, falls back to string comparison.
+ */
+function isNewerVersion(remote: string, current: string): boolean {
+  const parse = (v: string) => v.split(".").map((n) => Number.parseInt(n, 10));
+  const r = parse(remote);
+  const c = parse(current);
+  const len = Math.max(r.length, c.length);
+  for (let i = 0; i < len; i++) {
+    const rv = r[i] ?? 0;
+    const cv = c[i] ?? 0;
+    if (rv > cv) return true;
+    if (rv < cv) return false;
+  }
+  return false; // equal
+}
+
+// Проверка обновлений в обход API-лимитов GitHub (60 req/hr)
+async function checkUpdateViaGitHubAPI(): Promise<{
+  ok: boolean;
+  version: string | null;
+  downloadUrl?: string;
+  error?: string;
+}> {
+  try {
+    // HEAD запрос к latest URL всегда редиректит на актуальный тег (без расходования API-лимитов)
+    const res = await fetch(`https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`, {
+      method: "HEAD",
+      redirect: "follow",
+      headers: { "User-Agent": `EgoistShield/${app.getVersion()}` },
+      signal: AbortSignal.timeout(10_000)
+    });
+
+    if (!res.ok) return { ok: false, version: null, error: `GitHub HTTP: ${res.status}` };
+
+    // Извлекаем версию из финального URL после редиректа (например, .../releases/tag/v1.9.1)
+    const match = res.url.match(/\/releases\/tag\/(v?[\d\.]+)/);
+    const latestTag = match?.[1]?.replace(/^v/, "") ?? null;
+
+    if (!latestTag) return { ok: true, version: null };
+
+    const current = app.getVersion();
+
+    // Обновлять только если remote > current
+    if (!isNewerVersion(latestTag, current)) {
+      logger.info(`[updater] Текущая версия ${current} >= ${latestTag}, обновление не требуется`);
+      return { ok: true, version: null };
+    }
+
+    // NSIS инсталлер имеет предсказуемое имя
+    const downloadUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/v${latestTag}/EgoistShield-${latestTag}-Setup.exe`;
+
+    return {
+      ok: true,
+      version: latestTag,
+      downloadUrl
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, version: null, error: msg };
+  }
+}
+
+function setupAutoUpdater(): void {
+  if (!app.isPackaged) {
+    logger.info("[updater] Dev-режим: автообновление отключено");
+    return;
+  }
+
+  // === NSIS installer: используем GitHub API вместо Squirrel ===
+  // Squirrel autoUpdater несовместим с NSIS-инсталятором.
+  const doCheck = async () => {
+    if (!autoUpdateEnabled) return;
+    try {
+      const result = await checkUpdateViaGitHubAPI();
+      if (result.version) {
+        logger.info(`[updater] Доступна новая версия: ${result.version}`);
+        mainWindow?.webContents.send("update-available", {
+          version: result.version,
+          downloadUrl: result.downloadUrl
+        });
+
+        if (Notification.isSupported()) {
+          new Notification({
+            title: "EgoistShield: Обновление",
+            body: `Доступна версия ${result.version}`,
+            silent: true
+          }).show();
+        }
+      } else {
+        logger.info("[updater] Текущая версия актуальна");
+        mainWindow?.webContents.send("update-not-available");
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      logger.warn("[updater] Ошибка проверки:", msg);
+    }
+  };
+
+  setTimeout(doCheck, 10_000);
+  updateCheckInterval = setInterval(doCheck, 4 * 60 * 60 * 1000);
+  logger.info(`[updater] Автообновление настроено (GitHub API), текущая: ${app.getVersion()}`);
+}
+
+ipcMain.handle("updater:install", async () => {
+  if (!app.isPackaged) {
+    logger.warn("[updater] Dev-режим: установка обновления невозможна");
+    return;
+  }
+  // NSIS: открываем ссылку на скачивание в браузере
+  try {
+    const result = await checkUpdateViaGitHubAPI();
+    if (result.downloadUrl) {
+      const { shell } = require("electron") as typeof import("electron");
+      await shell.openExternal(result.downloadUrl);
+    }
+  } catch (err) {
+    logger.error("[updater] Ошибка открытия страницы обновления:", err);
+  }
 });
 
 ipcMain.handle("updater:check", async () => {
-  if (!app.isPackaged) {
-    return { ok: true, version: null, message: "Dev-режим: обновления отключены" };
-  }
-  // Заглушка, чтобы UI не падал
-  return { ok: true, version: null, message: "Внутреннее автообновление временно отключено" };
+  const result = await checkUpdateViaGitHubAPI();
+  return { ok: result.ok, version: result.version, error: result.error };
 });
 
-ipcMain.handle("updater:set-auto", (_event, enabled: boolean) => {
-  logger.info(`[updater] fake autoDownload set to ${enabled}`);
+ipcMain.handle("updater:set-auto", async (_event, enabled: boolean) => {
+  autoUpdateEnabled = enabled;
+  logger.info(`[updater] autoDownload set to ${enabled}`);
+
+  if (globalStateStore) {
+    try {
+      await globalStateStore.patch({ settings: { autoUpdate: enabled } });
+    } catch (error: unknown) {
+      logger.warn("[updater] Failed to persist auto-update setting:", error);
+    }
+  }
+
+  if (!enabled && updateCheckInterval) {
+    clearInterval(updateCheckInterval);
+    updateCheckInterval = null;
+  } else if (enabled && !updateCheckInterval && app.isPackaged) {
+    const doCheck = async () => {
+      try {
+        await checkUpdateViaGitHubAPI();
+      } catch (error: unknown) {
+        logger.warn("[updater] Scheduled check failed:", error);
+      }
+    };
+    updateCheckInterval = setInterval(doCheck, 4 * 60 * 60 * 1000);
+  }
+
   return enabled;
 });
 
@@ -106,8 +263,8 @@ function syncCleanup() {
     );
     spawnSync("ipconfig", ["/flushdns"], { windowsHide: true, timeout: 3000 });
     spawnSync("netsh", ["winsock", "reset"], { windowsHide: true, timeout: 5000 });
-  } catch {
-    /* best-effort */
+  } catch (error: unknown) {
+    logger.warn("[cleanup] sync cleanup failed:", error);
   }
 }
 process.on("exit", syncCleanup);
@@ -206,8 +363,13 @@ function startTrafficMonitoring() {
             if (byteLine) {
               const nums = byteLine.match(/\d+/g);
               if (nums && nums.length >= 2) {
-                const rx = Number.parseInt(nums[0]!, 10);
-                const tx = Number.parseInt(nums[1]!, 10);
+                const [rawRx, rawTx] = nums;
+                if (!rawRx || !rawTx) {
+                  return;
+                }
+
+                const rx = Number.parseInt(rawRx, 10);
+                const tx = Number.parseInt(rawTx, 10);
 
                 if (lastRx > 0 && lastTx > 0) {
                   const deltaRx = Math.max(0, rx - lastRx);
@@ -245,10 +407,14 @@ async function queryXrayStats(xrayPath: string, apiPort: number): Promise<{ upli
 
   // Regex безопасный для Windows \r\n и Unix \n
   const nameValueRegex = /name:\s*"([^"]+)"\s*[\r\n]+\s*value:\s*(\d+)/g;
-  let match;
-  while ((match = nameValueRegex.exec(stdout)) !== null) {
+  for (const match of stdout.matchAll(nameValueRegex)) {
     const name = match[1];
-    const value = Number.parseInt(match[2]!, 10);
+    const rawValue = match[2];
+    if (!name || !rawValue) {
+      continue;
+    }
+
+    const value = Number.parseInt(rawValue, 10);
     if (name?.includes(">>>traffic>>>uplink")) {
       uplink += value;
     } else if (name?.includes(">>>traffic>>>downlink")) {
@@ -321,15 +487,17 @@ async function createMainWindow(): Promise<void> {
     }
   });
 
-  const stateStore = new StateStore(app.getPath("userData"));
+  const stateStore = new StateStore(USER_DATA_DIR);
   globalStateStore = stateStore;
   if (!globalRuntimeManager) {
-    globalRuntimeManager = new VpnRuntimeManager(process.resourcesPath, app.getPath("userData"));
+    globalRuntimeManager = new VpnRuntimeManager(process.resourcesPath, USER_DATA_DIR);
   }
   await registerIpcHandlers(mainWindow, stateStore, globalRuntimeManager);
 
   // Auto-connect: если включён autoConnect и есть сохранённый сервер
   const loadedState = await stateStore.load();
+  autoUpdateEnabled = loadedState.settings.autoUpdate;
+  logger.info(`[updater] Persisted auto-update = ${autoUpdateEnabled}`);
   if (loadedState.settings.autoConnect && loadedState.activeNodeId) {
     const activeNodeId = loadedState.activeNodeId;
     // Задержка 3с — дождаться загрузки renderer UI
@@ -347,8 +515,8 @@ async function createMainWindow(): Promise<void> {
     await mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
 
-  mainWindow.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {
-    // ignore
+  mainWindow.webContents.setVisualZoomLevelLimits(1, 1).catch((error: unknown) => {
+    logger.warn("[window] Failed to lock visual zoom level:", error);
   });
   mainWindow.webContents.setZoomFactor(1);
 
@@ -456,15 +624,15 @@ if (!lock) {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId("EgoistShield");
+    logger.info(`[paths] Runtime=${runtimeEnvironment}, userData=${USER_DATA_DIR}`);
     await createMainWindow();
     createTray();
 
     // Запуск фонового трекинга трафика для UI
     startTrafficMonitoring();
 
-    // ── Автообновление через GitHub Releases ──
-    // TODO: Интегрировать electron built-in autoUpdater (Squirrel)
-    // Временно отключено при миграции на electron-forge
+    // ── Автообновление через GitHub API (NSIS-совместимый) ──
+    setupAutoUpdater();
 
     app.on("activate", async () => {
       if (!mainWindow) {

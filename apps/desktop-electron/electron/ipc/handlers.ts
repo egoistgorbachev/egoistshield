@@ -8,6 +8,7 @@
  */
 import type { BrowserWindow } from "electron";
 import { registerImportHandlers } from "./handlers-import";
+import { registerLogHandlers } from "./handlers-logs";
 import { registerSystemHandlers } from "./handlers-system";
 import { registerVpnHandlers } from "./handlers-vpn";
 import type { IpcContext } from "./ipc-context";
@@ -26,4 +27,5 @@ export async function registerIpcHandlers(
   registerSystemHandlers(ctx);
   registerImportHandlers(ctx);
   registerVpnHandlers(ctx);
+  registerLogHandlers();
 }

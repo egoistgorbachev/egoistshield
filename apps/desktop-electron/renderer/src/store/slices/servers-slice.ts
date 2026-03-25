@@ -4,20 +4,41 @@
 import type { StateCreator } from "zustand";
 import { getAPI } from "../../lib/api";
 import { detectCountry } from "../../lib/country-detector";
+import {
+  SMART_CONNECT_CANDIDATE_LIMIT,
+  SMART_CONNECT_FRESH_TTL_MS,
+  SMART_CONNECT_PROBE_BUDGET,
+  SMART_CONNECT_TIMEOUT_MS,
+  buildSmartProbeTargets,
+  mergeSmartCandidates,
+  rankFreshSmartCandidates,
+  rankSmartCandidates,
+  toSmartCandidate
+} from "../../lib/smart-connect";
+import type { SettingsSlice } from "./settings-slice";
 
 export interface ServerConfig {
   id: string;
   name: string;
   protocol: string;
   ping: number;
-  load: number;
+  load: number | null;
   countryCode: string;
   countryName?: string;
   recommended?: boolean;
   pinned?: boolean;
   security?: string;
+  premium?: boolean;
   _host?: string;
   _port?: number;
+  lastPingAt?: number | null;
+  jitterMs?: number | null;
+  lossPercent?: number | null;
+  connectTimeMs?: number | null;
+  timeToFirstByteMs?: number | null;
+  successRate?: number | null;
+  failureCount?: number | null;
+  lastFailureAt?: number | null;
 }
 
 export interface SubscriptionConfig {
@@ -30,6 +51,94 @@ export interface SubscriptionConfig {
   download?: number;
   total?: number;
   expire?: number;
+}
+
+type PingableServer = ServerConfig & { _host: string; _port: number };
+type GeoIpServer = ServerConfig & { _host: string };
+type PingProbeResult = { id: string; ping: number; checkedAt: number };
+
+function isPingableServer(server: ServerConfig): server is PingableServer {
+  return typeof server._host === "string" && server._host.length > 0 && typeof server._port === "number";
+}
+
+function isGeoIpServer(server: ServerConfig): server is GeoIpServer {
+  return typeof server._host === "string" && server._host.length > 0;
+}
+
+async function pingServers(
+  servers: PingableServer[],
+  timeoutMs: number,
+  batchSize: number
+): Promise<PingProbeResult[]> {
+  const api = getAPI();
+  if (!api || servers.length === 0) {
+    return [];
+  }
+
+  const results: PingProbeResult[] = [];
+
+  for (let index = 0; index < servers.length; index += batchSize) {
+    const chunk = servers.slice(index, index + batchSize);
+    const chunkResults = await Promise.all(
+      chunk.map(async (server) => {
+        try {
+          const ping = await api.system.ping(server._host, server._port, timeoutMs);
+          return { id: server.id, ping, checkedAt: Date.now() };
+        } catch {
+          return { id: server.id, ping: -1, checkedAt: Date.now() };
+        }
+      })
+    );
+
+    results.push(...chunkResults);
+  }
+
+  return results;
+}
+
+function applyPingProbeResults(servers: ServerConfig[], probeResults: PingProbeResult[]): ServerConfig[] {
+  const resultMap = new Map(probeResults.map((result) => [result.id, result]));
+
+  return servers.map((server) => {
+    const result = resultMap.get(server.id);
+    if (!result) {
+      return server;
+    }
+
+    return {
+      ...server,
+      ping: result.ping > 0 ? result.ping : 0,
+      lastPingAt: result.checkedAt
+    };
+  });
+}
+
+function updateServerConnectHealth(
+  servers: ServerConfig[],
+  serverId: string,
+  outcome: "success" | "failure",
+  connectTimeMs: number
+): ServerConfig[] {
+  return servers.map((server) => {
+    if (server.id !== serverId) {
+      return server;
+    }
+
+    const previousFailureCount = server.failureCount ?? 0;
+    const previousSuccessRate = server.successRate ?? 1;
+    const nextSuccessRate =
+      outcome === "success"
+        ? Math.min(1, previousSuccessRate * 0.75 + 0.25)
+        : Math.max(0, previousSuccessRate * 0.7);
+
+    return {
+      ...server,
+      connectTimeMs,
+      successRate: nextSuccessRate,
+      failureCount: outcome === "success" ? Math.max(0, previousFailureCount - 1) : previousFailureCount + 1,
+      lastFailureAt: outcome === "failure" ? Date.now() : null
+    };
+  });
 }
 
 export interface ServersSlice {
@@ -57,7 +166,20 @@ export interface ServersSlice {
 }
 
 export const createServersSlice: StateCreator<
-  ServersSlice & { isConnected: boolean; isConnecting: boolean; isDisconnecting: boolean; connectedServerId: string; errorMessage: string | null; sessionStartTime: number | null; sessionBytesRx: number; sessionBytesTx: number; toggleConnection: () => Promise<void> },
+  ServersSlice & {
+    isConnected: boolean;
+    isConnecting: boolean;
+    isDisconnecting: boolean;
+    connectedServerId: string;
+    errorMessage: string | null;
+    sessionStartTime: number | null;
+    sessionBytesRx: number;
+    sessionBytesTx: number;
+    toggleConnection: () => Promise<void>;
+  } & Pick<
+      SettingsSlice,
+      "fakeDns" | "killSwitch" | "autoUpdate" | "autoConnect" | "notifications" | "autoStart" | "systemDnsServers"
+    >,
   [],
   [],
   ServersSlice
@@ -84,40 +206,64 @@ export const createServersSlice: StateCreator<
     }
 
     try {
-      // Обновляем activeNodeId в backend
-      console.log("[connectToServer] updating backend activeNodeId...");
-      const currentState = await api.state.get();
-      await api.state.set({ ...currentState, activeNodeId: id });
-
       const wasConnected = get().isConnected;
+      const startedAt = Date.now();
       console.log("[connectToServer] wasConnected:", wasConnected);
 
       set({ isConnecting: true, isDisconnecting: wasConnected, errorMessage: null });
-
-      if (wasConnected) {
-        console.log("[connectToServer] disconnecting...");
-        try { await api.vpn.disconnect(); } catch { /* ignore */ }
-        set({ isConnected: false, isDisconnecting: false, sessionStartTime: null, sessionBytesRx: 0, sessionBytesTx: 0 });
-      }
 
       console.log("[connectToServer] calling api.vpn.connect(", id, ")...");
       const status = await api.vpn.connect(id);
       console.log("[connectToServer] connect result:", JSON.stringify(status));
 
-      if (status.connected) {
-        set({ isConnected: true, isConnecting: false, connectedServerId: id, errorMessage: null, sessionStartTime: Date.now(), sessionBytesRx: 0, sessionBytesTx: 0 });
+      if (status.connected && status.activeNodeId === id) {
+        set({
+          isConnected: true,
+          isConnecting: false,
+          isDisconnecting: false,
+          connectedServerId: id,
+          errorMessage: null,
+          sessionStartTime: Date.now(),
+          sessionBytesRx: 0,
+          sessionBytesTx: 0,
+          servers: updateServerConnectHealth(get().servers, id, "success", Date.now() - startedAt)
+        });
+      } else if (status.connected && status.activeNodeId) {
+        set({
+          isConnected: true,
+          isConnecting: false,
+          isDisconnecting: false,
+          connectedServerId: status.activeNodeId,
+          errorMessage: status.lastError || "Не удалось переключиться на выбранный сервер",
+          sessionStartTime: get().sessionStartTime,
+          sessionBytesRx: get().sessionBytesRx,
+          sessionBytesTx: get().sessionBytesTx,
+          servers: updateServerConnectHealth(get().servers, id, "failure", Date.now() - startedAt)
+        });
       } else {
         set({
           isConnected: false,
           isConnecting: false,
+          isDisconnecting: false,
           connectedServerId: "",
-          errorMessage: status.lastError || "Ошибка подключения"
+          errorMessage: status.lastError || "Ошибка подключения",
+          servers: updateServerConnectHealth(get().servers, id, "failure", Date.now() - startedAt)
         });
       }
     } catch (e: unknown) {
       console.error("[connectToServer] CATCH:", e);
       const msg = e instanceof Error ? e.message : "Ошибка подключения";
-      set({ isConnected: false, isConnecting: false, isDisconnecting: false, connectedServerId: "", errorMessage: msg, sessionStartTime: null, sessionBytesRx: 0, sessionBytesTx: 0 });
+      set({
+        isConnected: false,
+        isConnecting: false,
+        isDisconnecting: false,
+        connectedServerId: "",
+        errorMessage: msg,
+        sessionStartTime: null,
+        sessionBytesRx: 0,
+        sessionBytesTx: 0,
+        servers: updateServerConnectHealth(get().servers, id, "failure", 15_000)
+      });
     }
   },
 
@@ -174,9 +320,7 @@ export const createServersSlice: StateCreator<
       const subId = subToRemove?.id;
 
       // Удаляем ноды, привязанные к этой подписке
-      const filteredNodes = subId
-        ? currentState.nodes.filter((n) => n.subscriptionId !== subId)
-        : currentState.nodes;
+      const filteredNodes = subId ? currentState.nodes.filter((n) => n.subscriptionId !== subId) : currentState.nodes;
 
       await api.state.set({
         ...currentState,
@@ -184,7 +328,7 @@ export const createServersSlice: StateCreator<
         nodes: filteredNodes,
         activeNodeId: filteredNodes.some((n) => n.id === currentState.activeNodeId)
           ? currentState.activeNodeId
-          : filteredNodes[0]?.id ?? null
+          : (filteredNodes[0]?.id ?? null)
       });
       await get().syncWithBackend();
     }
@@ -195,8 +339,8 @@ export const createServersSlice: StateCreator<
       subscriptions: state.subscriptions.map((s) => (s.url === url ? { ...s, name: newName } : s))
     }));
     const api = getAPI();
-    if (api && (api as any).subscription?.rename) {
-      await (api as any).subscription.rename(url, newName);
+    if (api) {
+      await api.subscription.rename(url, newName);
     }
   },
 
@@ -205,8 +349,8 @@ export const createServersSlice: StateCreator<
       servers: state.servers.map((s) => (s.id === id ? { ...s, name: newName } : s))
     }));
     const api = getAPI();
-    if (api && (api as any).node?.rename) {
-      await (api as any).node.rename(id, newName);
+    if (api) {
+      await api.node.rename(id, newName);
     }
   },
 
@@ -225,25 +369,30 @@ export const createServersSlice: StateCreator<
 
       const mappedServers: ServerConfig[] = state.nodes.map((n) => {
         const extractedCountry = detectCountry(n.name || "");
+        const rawLoad = n.metadata?.load;
+        const parsedLoad = rawLoad ? Number.parseInt(rawLoad, 10) : null;
+
         return {
           id: n.id,
           name: n.name || `${n.protocol} node`,
           protocol: n.protocol || "unknown",
           ping: 0,
-          load: 0,
+          load: parsedLoad !== null && Number.isFinite(parsedLoad) ? parsedLoad : null,
           countryCode: extractedCountry,
           recommended: false,
           pinned: n.metadata?.pinned === "true",
           security: n.metadata?.security || (n.metadata?.flow ? "reality" : ""),
+          premium: n.metadata?.premium === "true" || !!n.name?.toLowerCase().match(/premium|vip|pro|plus/i),
           _host: n.server,
           _port: n.port
         };
       });
 
-      const existingPings = new Map(get().servers.map((s) => [s.id, s.ping]));
+      const existingPings = new Map(get().servers.map((server) => [server.id, server]));
       const serversToSet: ServerConfig[] = mappedServers.map((s) => ({
         ...s,
-        ping: existingPings.get(s.id) || 0
+        ping: existingPings.get(s.id)?.ping || 0,
+        lastPingAt: existingPings.get(s.id)?.lastPingAt ?? null
       }));
 
       // Сохраняем текущий UI-выбор если сервер ещё существует в списке;
@@ -254,7 +403,14 @@ export const createServersSlice: StateCreator<
       set({
         servers: serversToSet,
         subscriptions: state.subscriptions || [],
-        selectedServerId: uiSelectionValid ? currentUiSelection : (state.activeNodeId || serversToSet[0]?.id || "")
+        selectedServerId: uiSelectionValid ? currentUiSelection : state.activeNodeId || serversToSet[0]?.id || "",
+        fakeDns: state.settings.dnsMode === "secure",
+        killSwitch: state.settings.killSwitch,
+        autoUpdate: state.settings.autoUpdate,
+        autoConnect: state.settings.autoConnect,
+        notifications: state.settings.notifications,
+        autoStart: state.settings.autoStart,
+        systemDnsServers: state.settings.systemDnsServers ?? ""
       });
 
       get().testAllPings();
@@ -265,14 +421,14 @@ export const createServersSlice: StateCreator<
         const geoApi = getAPI();
         if (!geoApi?.system?.geoip) return;
         const currentServers = get().servers;
-        const unknowns = currentServers.filter((s) => s.countryCode === "un" && s._host);
+        const unknowns = currentServers.filter((s): s is GeoIpServer => s.countryCode === "un" && isGeoIpServer(s));
 
         // Process in batches of 5
         for (let i = 0; i < unknowns.length; i += 5) {
           const chunk = unknowns.slice(i, i + 5);
           const results = await Promise.allSettled(
             chunk.map(async (s) => {
-              const geo = await geoApi.system.geoip(s._host!);
+              const geo = await geoApi.system.geoip(s._host);
               return { id: s.id, countryCode: geo.countryCode, country: geo.country };
             })
           );
@@ -305,9 +461,9 @@ export const createServersSlice: StateCreator<
       const interval = setInterval(() => {
         // Pause when window is hidden
         if (typeof document !== "undefined" && document.hidden) return;
-        // Full ping ALL servers every 3s
+        // Full ping ALL servers every 2s
         get().testAllPings();
-      }, 3000);
+      }, 2000);
       set({ _pingInterval: interval });
     }
   },
@@ -321,15 +477,12 @@ export const createServersSlice: StateCreator<
   },
 
   testAllPings: async (activeOnly?: boolean) => {
-    const api = getAPI();
-    if (!api) return;
-
     const state = get();
-    const servers = state.servers.filter((s) => s.id !== "smart-optimal");
+    const servers = state.servers.filter((s): s is PingableServer => s.id !== "smart-optimal" && isPingableServer(s));
     if (servers.length === 0) return;
 
     // Choose servers to ping
-    let serversToPing: ServerConfig[];
+    let serversToPing: PingableServer[];
     if (activeOnly) {
       const active = servers.find((s) => s.id === state.selectedServerId);
       serversToPing = active ? [active] : [];
@@ -337,79 +490,75 @@ export const createServersSlice: StateCreator<
       serversToPing = [];
       const activeServer = servers.find((s) => s.id === state.selectedServerId);
       if (activeServer) serversToPing.push(activeServer);
-      servers.forEach((s) => {
-        if (s.id !== state.selectedServerId) serversToPing.push(s);
-      });
+      for (const server of servers) {
+        if (server.id !== state.selectedServerId) {
+          serversToPing.push(server);
+        }
+      }
     }
 
     if (serversToPing.length === 0) return;
-    const newPings = new Map<string, number>();
+    const pingResults = await pingServers(serversToPing, 3_000, 5);
 
-    for (let i = 0; i < serversToPing.length; i += 5) {
-      const chunk = serversToPing.slice(i, i + 5);
-      const results = await Promise.all(
-        chunk.map(async (s: ServerConfig) => {
-          try {
-            const p = await api.system.ping(s._host!, s._port!);
-            return { id: s.id, ping: p };
-          } catch {
-            return { id: s.id, ping: -1 };
-          }
-        })
-      );
-      results.forEach((r) => newPings.set(r.id, r.ping));
-    }
-
-    set((state) => ({
-      servers: state.servers.map((s) => {
-        const p = newPings.get(s.id);
-        return p !== undefined && p > 0 ? { ...s, ping: p } : s;
-      })
+    set((currentState) => ({
+      servers: applyPingProbeResults(currentState.servers, pingResults)
     }));
   },
 
   smartConnect: async () => {
-    const api = getAPI();
-    if (!api) return;
-
     const state = get();
-    const servers = state.servers.filter((s) => s._host && s._port);
+    const servers = state.servers.filter(isPingableServer);
     if (servers.length === 0) return;
 
-    // Пингуем все серверы параллельно (батчами по 5)
-    const pingResults: { id: string; ping: number }[] = [];
-    for (let i = 0; i < servers.length; i += 5) {
-      const chunk = servers.slice(i, i + 5);
-      const results = await Promise.all(
-        chunk.map(async (s) => {
-          try {
-            const p = await api.system.ping(s._host!, s._port!);
-            return { id: s.id, ping: p > 0 ? p : Infinity };
-          } catch {
-            return { id: s.id, ping: Infinity };
-          }
-        })
-      );
-      pingResults.push(...results);
+    const cachedSamples = servers.map(toSmartCandidate);
+    const immediateCandidates = rankFreshSmartCandidates(
+      cachedSamples,
+      undefined,
+      SMART_CONNECT_CANDIDATE_LIMIT,
+      Date.now(),
+      SMART_CONNECT_FRESH_TTL_MS
+    );
+    const probeBudget = immediateCandidates.length > 0 ? 6 : SMART_CONNECT_PROBE_BUDGET;
+    const probeTargets = buildSmartProbeTargets(
+      cachedSamples,
+      undefined,
+      probeBudget,
+      Date.now(),
+      SMART_CONNECT_FRESH_TTL_MS
+    )
+      .map((candidate) => servers.find((server) => server.id === candidate.id))
+      .filter((server): server is PingableServer => !!server);
+    const probeResults = await pingServers(
+      probeTargets,
+      SMART_CONNECT_TIMEOUT_MS,
+      Math.max(1, Math.min(SMART_CONNECT_PROBE_BUDGET, probeTargets.length))
+    );
+
+    if (probeResults.length > 0) {
+      set((currentState) => ({
+        servers: applyPingProbeResults(currentState.servers, probeResults)
+      }));
     }
 
-    // Обновляем пинги в store
-    const newPings = new Map(pingResults.map((r) => [r.id, r.ping]));
-    set((state) => ({
-      servers: state.servers.map((s) => {
-        const p = newPings.get(s.id);
-        return p !== undefined && p > 0 && p < Infinity ? { ...s, ping: p } : s;
-      })
-    }));
+    const mergedCandidates = mergeSmartCandidates(
+      immediateCandidates,
+      probeResults.map((result) => ({
+        ...toSmartCandidate(servers.find((server) => server.id === result.id) ?? { id: result.id, ping: result.ping }),
+        ping: result.ping,
+        checkedAt: result.checkedAt
+      }))
+    );
+    const candidates = rankSmartCandidates(mergedCandidates, undefined, SMART_CONNECT_CANDIDATE_LIMIT);
+    const fallbackCandidates =
+      candidates.length > 0 ? candidates : rankSmartCandidates(cachedSamples, undefined, SMART_CONNECT_CANDIDATE_LIMIT);
 
-    // Выбираем сервер с минимальным пингом
-    const reachable = pingResults.filter((r) => r.ping < Infinity);
-    if (reachable.length === 0) return;
-    reachable.sort((a, b) => a.ping - b.ping);
-    const bestId = reachable[0]!.id;
-
-    // Подключаемся
-    await get().connectToServer(bestId);
+    for (const candidate of fallbackCandidates) {
+      await get().connectToServer(candidate.id);
+      const currentState = get();
+      if (currentState.isConnected && currentState.connectedServerId === candidate.id) {
+        return;
+      }
+    }
   },
 
   installRuntime: async () => {

@@ -1,9 +1,11 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { ShieldLogo } from "../components/ShieldLogo";
 import { useAppStore } from "../store/useAppStore";
 
 type Step = "welcome" | "setup" | "done";
+type DragRegionStyle = CSSProperties & { WebkitAppRegion: "drag" };
+const DRAG_REGION_STYLE: DragRegionStyle = { WebkitAppRegion: "drag" };
 
 // ─── Animated particles for premium ambience (CSS-based for performance) ───
 function FloatingParticles() {
@@ -25,18 +27,20 @@ function FloatingParticles() {
         <div
           key={p.id}
           className="absolute rounded-full animate-float-particle"
-          style={{
-            left: `${p.x}%`,
-            top: `${p.y}%`,
-            width: p.size,
-            height: p.size,
-            background: `rgba(255, 107, 0, ${p.opacity})`,
-            animationDelay: `${p.delay}s`,
-            '--particle-duration': `${p.duration}s`,
-            '--particle-dx': `${p.dx}px`,
-            '--particle-dy': `${p.dy}px`,
-            '--particle-opacity': `${p.opacity}`
-          } as React.CSSProperties}
+          style={
+            {
+              left: `${p.x}%`,
+              top: `${p.y}%`,
+              width: p.size,
+              height: p.size,
+              background: `rgba(var(--es-brand), ${p.opacity})`,
+              animationDelay: `${p.delay}s`,
+              "--particle-duration": `${p.duration}s`,
+              "--particle-dx": `${p.dx}px`,
+              "--particle-dy": `${p.dy}px`,
+              "--particle-opacity": `${p.opacity}`
+            } as React.CSSProperties
+          }
         />
       ))}
     </div>
@@ -70,7 +74,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
         transition={{ delay: 0.6, duration: 0.5 }}
         className="space-y-3"
       >
-        <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-orange-400 via-orange-500 to-amber-400 bg-clip-text text-transparent">
+        <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-brand-light via-brand to-brand-light bg-clip-text text-transparent">
           Добро пожаловать
         </h1>
         <p className="text-lg text-muted max-w-xs leading-relaxed">
@@ -92,7 +96,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
             transition={{ delay: 1.1 + i * 0.15, duration: 0.4 }}
             className="flex items-center gap-3 text-sm text-muted"
           >
-            <span className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-[10px] text-white font-black shrink-0">
+            <span className="w-5 h-5 rounded-full bg-gradient-to-br from-brand to-brand-light flex items-center justify-center text-[10px] text-white font-black shrink-0">
               ✓
             </span>
             {text}
@@ -109,8 +113,8 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
         onClick={onNext}
         className="mt-4 px-10 py-3.5 rounded-2xl font-black text-base text-white relative overflow-hidden cursor-pointer border-0 outline-none"
         style={{
-          background: "linear-gradient(135deg, #FF4D00, #FF6B00, #FF8C38)",
-          boxShadow: "0 8px 32px rgba(255,107,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)"
+          background: "linear-gradient(135deg, rgb(var(--es-brand-light)), rgb(var(--es-brand)))",
+          boxShadow: "0 8px 32px rgba(var(--es-brand),0.4), inset 0 1px 0 rgba(255,255,255,0.1)"
         }}
       >
         <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
@@ -126,6 +130,11 @@ function SetupStep({ onComplete }: { onComplete: () => void }) {
   const [statusText, setStatusText] = useState("Подготовка...");
   const installRuntime = useAppStore((s) => s.installRuntime);
   const syncWithBackend = useAppStore((s) => s.syncWithBackend);
+  const progressRef = useRef(0);
+  const updateProgress = useCallback((nextProgress: number): void => {
+    progressRef.current = nextProgress;
+    setProgress(nextProgress);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,10 +149,12 @@ function SetupStep({ onComplete }: { onComplete: () => void }) {
       { at: 100, text: "Готово!" }
     ];
 
-    async function run() {
+    async function run(): Promise<void> {
       // Animate progress smoothly, pausing at key points for real work
       for (const step of steps) {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         // Animate from current to step.at
         setStatusText(step.text);
 
@@ -151,25 +162,25 @@ function SetupStep({ onComplete }: { onComplete: () => void }) {
         if (step.at === 25) {
           try {
             await installRuntime();
-          } catch {
-            // continue on failure
+          } catch (error: unknown) {
+            console.warn("[Onboarding] Runtime installation failed", error);
           }
         }
         if (step.at === 85) {
           try {
             await syncWithBackend();
-          } catch {
-            // continue on failure
+          } catch (error: unknown) {
+            console.warn("[Onboarding] Backend sync failed", error);
           }
         }
 
         // Smooth animate to target
         const start = performance.now();
         const duration = step.at === 100 ? 400 : 600 + Math.random() * 400;
-        const from = progress;
+        const from = progressRef.current;
 
         await new Promise<void>((resolve) => {
-          function tick() {
+          function tick(): void {
             if (cancelled) {
               resolve();
               return;
@@ -177,7 +188,7 @@ function SetupStep({ onComplete }: { onComplete: () => void }) {
             const elapsed = performance.now() - start;
             const t = Math.min(elapsed / duration, 1);
             const eased = 1 - (1 - t) ** 3;
-            setProgress(from + (step.at - from) * eased);
+            updateProgress(from + (step.at - from) * eased);
             if (t < 1) {
               requestAnimationFrame(tick);
             } else {
@@ -189,21 +200,25 @@ function SetupStep({ onComplete }: { onComplete: () => void }) {
 
         // Small delay between steps for visual breathing room
         if (step.at < 100) {
-          await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 200 + Math.random() * 300);
+          });
         }
       }
 
       if (!cancelled) {
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 600);
+        });
         onComplete();
       }
     }
 
-    run();
+    void run();
     return () => {
       cancelled = true;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [installRuntime, onComplete, syncWithBackend, updateProgress]);
 
   return (
     <motion.div
@@ -232,8 +247,8 @@ function SetupStep({ onComplete }: { onComplete: () => void }) {
             className="absolute inset-y-0 left-0 rounded-full"
             style={{
               width: `${progress}%`,
-              background: "linear-gradient(90deg, #ff641f, #ff9340, #ffb300)",
-              boxShadow: "0 0 20px rgba(255, 100, 31, 0.5)"
+              background: "linear-gradient(90deg, rgb(var(--es-brand-light)), rgb(var(--es-brand)))",
+              boxShadow: "0 0 20px rgba(var(--es-brand), 0.5)"
             }}
             transition={{ duration: 0.1 }}
           />
@@ -251,7 +266,7 @@ function SetupStep({ onComplete }: { onComplete: () => void }) {
 
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted">{statusText}</span>
-          <span className="font-mono font-bold text-orange-400">{Math.round(progress)}%</span>
+          <span className="font-mono font-bold text-brand">{Math.round(progress)}%</span>
         </div>
       </div>
     </motion.div>
@@ -280,7 +295,7 @@ function DoneStep({ onFinish }: { onFinish: () => void }) {
         <motion.div
           className="absolute inset-0 rounded-full"
           style={{
-            background: "radial-gradient(circle, rgba(255,122,31,0.25) 0%, transparent 70%)"
+            background: "radial-gradient(circle, rgba(var(--es-brand),0.25) 0%, transparent 70%)"
           }}
           animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0.2, 0.5] }}
           transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
@@ -294,7 +309,7 @@ function DoneStep({ onFinish }: { onFinish: () => void }) {
         transition={{ delay: 0.4, duration: 0.5 }}
         className="space-y-2"
       >
-        <h1 className="text-2xl font-black bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+        <h1 className="text-2xl font-black bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
           Ваш щит активирован!
         </h1>
         <p className="text-sm text-muted max-w-xs leading-relaxed">
@@ -311,13 +326,15 @@ function DoneStep({ onFinish }: { onFinish: () => void }) {
         onClick={onFinish}
         className="group mt-2 px-10 py-3.5 rounded-2xl font-black text-base text-white relative overflow-hidden cursor-pointer border-0 outline-none flex items-center justify-center gap-2"
         style={{
-          background: "linear-gradient(135deg, #FF4D00, #FF6B00, #FF8C38)",
-          boxShadow: "0 8px 32px rgba(255,107,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)"
+          background: "linear-gradient(135deg, rgb(var(--es-brand-light)), rgb(var(--es-brand)))",
+          boxShadow: "0 8px 32px rgba(var(--es-brand),0.4), inset 0 1px 0 rgba(255,255,255,0.1)"
         }}
       >
         <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
         <span className="relative z-10">Начать</span>
         <svg
+          aria-hidden="true"
+          focusable="false"
           className="w-5 h-5 relative z-10 group-hover:translate-x-1 transition-transform"
           viewBox="0 0 24 24"
           fill="none"
@@ -350,15 +367,15 @@ export function Onboarding() {
         className="absolute inset-0 pointer-events-none"
         style={{
           background: `
-            radial-gradient(800px 500px at 30% 20%, rgba(255, 122, 31, 0.12), transparent 60%),
-            radial-gradient(600px 400px at 70% 80%, rgba(255, 80, 20, 0.08), transparent 55%)
+            radial-gradient(800px 500px at 30% 20%, rgba(var(--es-brand), 0.12), transparent 60%),
+            radial-gradient(600px 400px at 70% 80%, rgba(var(--es-brand), 0.08), transparent 55%)
           `
         }}
       />
       <FloatingParticles />
 
       {/* Draggable titlebar zone */}
-      <div className="h-10 w-full shrink-0" style={{ WebkitAppRegion: "drag" } as any} />
+      <div className="h-10 w-full shrink-0" style={DRAG_REGION_STYLE} />
 
       {/* Content area */}
       <div className="flex-1 relative z-10">
@@ -378,7 +395,10 @@ export function Onboarding() {
             style={{
               width: step === s ? 24 : 8,
               height: 8,
-              background: step === s ? "linear-gradient(90deg, #ff641f, #ff9340)" : "rgba(255, 255, 255, 0.12)"
+              background:
+                step === s
+                  ? "linear-gradient(90deg, rgb(var(--es-brand-light)), rgb(var(--es-brand)))"
+                  : "rgba(255, 255, 255, 0.12)"
             }}
             animate={{ width: step === s ? 24 : 8 }}
             transition={{ duration: 0.3 }}

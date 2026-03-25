@@ -8,12 +8,44 @@ import { Socket } from "node:net";
 import tls from "node:tls";
 import { Notification, ipcMain } from "electron";
 import { updateTrayMenu } from "../main";
-import {
-  PingInputSchema,
-  StressTestInputSchema
-} from "./ipc-schemas";
+import type { RuntimeStatus } from "./contracts";
 import type { IpcContext } from "./ipc-context";
-import logger from "./logger";
+import { PingInputSchema, StressTestInputSchema } from "./ipc-schemas";
+import logger, { formatRuntimeLogEvent } from "./logger";
+
+function logVpnStatusEvent(
+  level: "info" | "warn" | "error" | "debug",
+  message: string,
+  status: RuntimeStatus
+): void {
+  const payload = formatRuntimeLogEvent({
+    timestamp: new Date().toISOString(),
+    level,
+    lifecycle: status.lifecycle,
+    reason: status.diagnostic.reason,
+    message,
+    nodeId: status.activeNodeId,
+    runtimeKind: status.runtimeKind,
+    proxyPort: status.proxyPort
+  });
+
+  if (level === "error") {
+    logger.error(payload);
+    return;
+  }
+
+  if (level === "warn") {
+    logger.warn(payload);
+    return;
+  }
+
+  if (level === "debug") {
+    logger.debug(payload);
+    return;
+  }
+
+  logger.info(payload);
+}
 
 export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext): void {
   ipcMain.handle("vpn:connect", async (_event, requestedNodeId?: string) => {
@@ -24,27 +56,57 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
     const activeNode = state.nodes.find((node) => node.id === targetNodeId) ?? null;
 
     if (!activeNode) {
-      logger.error("[vpn:connect] Node not found. targetNodeId:", targetNodeId, "requestedNodeId:", requestedNodeId, "stateActiveNodeId:", state.activeNodeId);
-      return { ...(await runtimeManager.status()), lastError: `Узел не найден (ID: ${targetNodeId || "не указан"}). Выберите сервер.` };
-    }
-
-    // Синхронизируем activeNodeId в state если он отличается
-    if (state.activeNodeId !== activeNode.id) {
-      await stateStore.patch({ activeNodeId: activeNode.id });
+      logger.error(
+        "[vpn:connect] Node not found. targetNodeId:",
+        targetNodeId,
+        "requestedNodeId:",
+        requestedNodeId,
+        "stateActiveNodeId:",
+        state.activeNodeId
+      );
+      return {
+        ...(await runtimeManager.status()),
+        lastError: `Узел не найден (ID: ${targetNodeId || "не указан"}). Выберите сервер.`,
+        lifecycle: "failed" as const,
+        diagnostic: {
+          reason: "server_unreachable" as const,
+          details: `Узел не найден (ID: ${targetNodeId || "не указан"}). Выберите сервер.`,
+          updatedAt: new Date().toISOString(),
+          fallbackAttempted: false,
+          fallbackTarget: null
+        }
+      };
     }
 
     logger.info("[vpn:connect] Connecting to:", activeNode.name, "id:", activeNode.id);
 
-    const result = await runtimeManager.connect(activeNode, state.domainRules, state.processRules, state.settings);
+    const result = await runtimeManager.connect(activeNode, state.domainRules, [], {
+      ...state.settings,
+      useTunMode: false
+    });
+
+    if (result.connected && result.activeNodeId === activeNode.id && state.activeNodeId !== activeNode.id) {
+      await stateStore.patch({ activeNodeId: activeNode.id });
+    }
 
     if (Notification.isSupported()) {
       const currentState = stateStore.get();
       const notificationsEnabled = currentState.settings.notifications !== false;
+      const connectedNode =
+        currentState.nodes.find((node) => node.id === result.activeNodeId) ??
+        currentState.nodes.find((node) => node.id === activeNode.id) ??
+        activeNode;
       if (notificationsEnabled) {
-        if (result.connected) {
+        if (result.connected && result.activeNodeId === activeNode.id) {
           new Notification({
             title: "EgoistShield: Защита включена",
             body: `Подключено к: ${activeNode.name}`,
+            silent: true
+          }).show();
+        } else if (result.connected && connectedNode) {
+          new Notification({
+            title: "EgoistShield: Переключение отменено",
+            body: `Сохранено текущее соединение: ${connectedNode.name}`,
             silent: true
           }).show();
         } else if (result.lastError) {
@@ -57,6 +119,7 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
     }
 
     updateTrayMenu(result.connected);
+    logVpnStatusEvent(result.connected ? "info" : "warn", "vpn:connect completed", result);
 
     return result;
   });
@@ -77,6 +140,7 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
     }
 
     updateTrayMenu(false);
+    logVpnStatusEvent("info", "vpn:disconnect completed", result);
 
     return result;
   });
@@ -86,7 +150,20 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
   });
 
   ipcMain.handle("vpn:diagnose", async () => {
-    return runtimeManager.diagnose();
+    const result = await runtimeManager.diagnose();
+    logger.debug(
+      formatRuntimeLogEvent({
+        timestamp: new Date().toISOString(),
+        level: "debug",
+        lifecycle: result.lifecycle ?? "failed",
+        reason: result.failureReason ?? null,
+        message: result.message,
+        nodeId: null,
+        runtimeKind: null,
+        proxyPort: null
+      })
+    );
+    return result;
   });
 
   ipcMain.handle("vpn:stress-test", async (_event, rawIterations: unknown) => {
@@ -104,7 +181,13 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
       };
     }
 
-    return runtimeManager.stressTest(activeNode, state.domainRules, state.processRules, state.settings, iterations);
+    return runtimeManager.stressTest(
+      activeNode,
+      state.domainRules,
+      [],
+      { ...state.settings, useTunMode: false },
+      iterations
+    );
   });
 
   // DNS Leak Test
@@ -126,15 +209,18 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
           dispatcher,
           signal: AbortSignal.timeout(8000)
         });
-        const ipData = await ipRes.json() as { ip?: string };
+        const ipData = (await ipRes.json()) as { ip?: string };
         vpnIp = ipData.ip || null;
-      } catch {
+      } catch (error: unknown) {
+        logger.debug("[vpn:dns-leak-test] Proxy exit IP fetch failed, trying direct fallback:", error);
         // fallback: try without proxy
         try {
           const ipRes2 = await fetch("https://ipwho.is/?fields=ip", { signal: AbortSignal.timeout(5000) });
-          const ipData2 = await ipRes2.json() as { ip?: string };
+          const ipData2 = (await ipRes2.json()) as { ip?: string };
           vpnIp = ipData2.ip || null;
-        } catch { /* ignore */ }
+        } catch (fallbackError: unknown) {
+          logger.debug("[vpn:dns-leak-test] Direct exit IP fallback failed:", fallbackError);
+        }
       }
 
       // 2. Проверяем DNS серверы (прямой запрос без прокси)
@@ -143,11 +229,13 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
         const dnsRes = await fetch("https://ipwho.is/?fields=ip,country_code", {
           signal: AbortSignal.timeout(5000)
         });
-        const dnsData = await dnsRes.json() as { ip?: string };
+        const dnsData = (await dnsRes.json()) as { ip?: string };
         if (dnsData.ip) {
           dnsServers.push(dnsData.ip);
         }
-      } catch { /* ignore */ }
+      } catch (error: unknown) {
+        logger.debug("[vpn:dns-leak-test] Direct DNS probe failed:", error);
+      }
 
       // 3. Делаем DNS запрос через VPN прокси
       const vpnDnsServers: string[] = [];
@@ -156,16 +244,20 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
           dispatcher,
           signal: AbortSignal.timeout(8000)
         });
-        const vpnDnsData = await vpnDnsRes.json() as { ip?: string };
+        const vpnDnsData = (await vpnDnsRes.json()) as { ip?: string };
         if (vpnDnsData.ip) {
           vpnDnsServers.push(vpnDnsData.ip);
         }
-      } catch { /* ignore */ }
+      } catch (error: unknown) {
+        logger.debug("[vpn:dns-leak-test] Proxy DNS probe failed:", error);
+      }
 
       // Утечка: DNS запрос без прокси и через прокси идут с одного IP
-      const leaked = dnsServers.length > 0 && vpnDnsServers.length > 0
-        && dnsServers.some((dns) => vpnDnsServers.includes(dns))
-        && dnsServers.some((dns) => dns !== vpnIp);
+      const leaked =
+        dnsServers.length > 0 &&
+        vpnDnsServers.length > 0 &&
+        dnsServers.some((dns) => vpnDnsServers.includes(dns)) &&
+        dnsServers.some((dns) => dns !== vpnIp);
 
       return {
         leaked,
@@ -180,8 +272,9 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
   });
 
   // TCP Ping
-  ipcMain.handle("vpn:ping", async (_event, rawHost: unknown, rawPort: unknown) => {
-    const { host, port } = PingInputSchema.parse({ host: rawHost, port: rawPort });
+  ipcMain.handle("vpn:ping", async (_event, rawHost: unknown, rawPort: unknown, rawTimeoutMs?: unknown) => {
+    const { host, port, timeoutMs } = PingInputSchema.parse({ host: rawHost, port: rawPort, timeoutMs: rawTimeoutMs });
+    const effectiveTimeoutMs = timeoutMs ?? 3000;
     return new Promise<number>((resolve) => {
       const socket = new Socket();
       const start = Date.now();
@@ -189,7 +282,7 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
       const timeout = setTimeout(() => {
         socket.destroy();
         resolve(-1);
-      }, 3000);
+      }, effectiveTimeoutMs);
 
       socket.on("connect", () => {
         clearTimeout(timeout);
@@ -257,14 +350,19 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
       if (samples.length === 0) return -1;
       samples.sort((a, b) => a - b);
       return samples[Math.floor(samples.length / 2)];
-    } catch {
+    } catch (error: unknown) {
+      logger.debug("[vpn:ping-active-proxy] Ping failed:", error);
       return -1;
     }
   });
 
   // Get real external IP + country through proxy
   ipcMain.handle("vpn:get-my-ip", async () => {
-    const result: { ip: string | null; countryCode: string | null; error: string | null } = { ip: null, countryCode: null, error: null };
+    const result: { ip: string | null; countryCode: string | null; error: string | null } = {
+      ip: null,
+      countryCode: null,
+      error: null
+    };
 
     const parseIpWho = (body: string) => {
       try {
@@ -297,35 +395,57 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
         });
 
         proxyReq.on("connect", (_res, socket) => {
-          const tlsSocket = tls.connect(
-            { socket, servername: "ipwho.is", rejectUnauthorized: true },
-            () => {
-              tlsSocket.write(
-                "GET /?fields=ip,country_code HTTP/1.1\r\n" +
-                "Host: ipwho.is\r\n" +
-                "Connection: close\r\n\r\n"
-              );
+          const tlsSocket = tls.connect({ socket, servername: "ipwho.is", rejectUnauthorized: true }, () => {
+            tlsSocket.write(
+              "GET /?fields=ip,country_code HTTP/1.1\r\n" + "Host: ipwho.is\r\n" + "Connection: close\r\n\r\n"
+            );
 
-              let body = "";
-              let headersDone = false;
-              tlsSocket.on("data", (chunk: Buffer) => {
-                const str = chunk.toString();
-                if (!headersDone) {
-                  const idx = str.indexOf("\r\n\r\n");
-                  if (idx >= 0) { headersDone = true; body += str.slice(idx + 4); }
-                } else { body += str; }
-              });
+            let body = "";
+            let headersDone = false;
+            tlsSocket.on("data", (chunk: Buffer) => {
+              const str = chunk.toString();
+              if (!headersDone) {
+                const idx = str.indexOf("\r\n\r\n");
+                if (idx >= 0) {
+                  headersDone = true;
+                  body += str.slice(idx + 4);
+                }
+              } else {
+                body += str;
+              }
+            });
 
-              tlsSocket.on("end", () => { parseIpWho(body); resolve(); });
-              tlsSocket.on("error", (e: Error) => { result.error = e.message; resolve(); });
-              setTimeout(() => { if (!tlsSocket.destroyed) { tlsSocket.destroy(); result.error = "Timeout"; resolve(); } }, 8000);
-            }
-          );
-          tlsSocket.on("error", (e: Error) => { result.error = e.message; resolve(); });
+            tlsSocket.on("end", () => {
+              parseIpWho(body);
+              resolve();
+            });
+            tlsSocket.on("error", (e: Error) => {
+              result.error = e.message;
+              resolve();
+            });
+            setTimeout(() => {
+              if (!tlsSocket.destroyed) {
+                tlsSocket.destroy();
+                result.error = "Timeout";
+                resolve();
+              }
+            }, 8000);
+          });
+          tlsSocket.on("error", (e: Error) => {
+            result.error = e.message;
+            resolve();
+          });
         });
 
-        proxyReq.on("error", (e: Error) => { result.error = e.message; resolve(); });
-        proxyReq.on("timeout", () => { proxyReq.destroy(); result.error = "Timeout"; resolve(); });
+        proxyReq.on("error", (e: Error) => {
+          result.error = e.message;
+          resolve();
+        });
+        proxyReq.on("timeout", () => {
+          proxyReq.destroy();
+          result.error = "Timeout";
+          resolve();
+        });
         proxyReq.end();
       });
 
@@ -335,14 +455,14 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
       if (status.connected && status.proxyPort) {
         await proxyFetchFn(status.proxyPort);
         if (!result.ip) {
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, 1000));
           await proxyFetchFn(status.proxyPort);
         }
         if (!result.ip) await directFetch();
       } else {
         await directFetch();
         if (!result.ip) {
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, 1000));
           await directFetch();
         }
       }

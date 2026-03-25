@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { UsageRecord } from "../shared/types";
 import type {
   DiagnosticResult,
   ImportResult,
   PersistedState,
+  RuntimeLogSummary,
   RuntimeInstallResult,
   RuntimeStatus,
   RuntimeUpdateSummary,
@@ -50,7 +52,8 @@ const api = {
       ipcRenderer.invoke("system:pick-file", filters),
     listProcesses: (): Promise<Array<{ name: string; path: string }>> => ipcRenderer.invoke("system:list-processes"),
     getAppIcon: (exePath: string): Promise<string | null> => ipcRenderer.invoke("system:get-app-icon", exePath),
-    ping: (host: string, port: number): Promise<number> => ipcRenderer.invoke("vpn:ping", host, port),
+    ping: (host: string, port: number, timeoutMs?: number): Promise<number> =>
+      ipcRenderer.invoke("vpn:ping", host, port, timeoutMs),
     pingActiveProxy: (): Promise<number> => ipcRenderer.invoke("vpn:ping-active-proxy"),
     speedtest: (): Promise<{ speed: number; bytes?: number; timeMs?: number; error: string | null }> =>
       ipcRenderer.invoke("vpn:speedtest"),
@@ -58,11 +61,19 @@ const api = {
       ipcRenderer.invoke("system:geoip", host),
     internetFix: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke("system:internet-fix"),
     readClipboard: (): Promise<string> => ipcRenderer.invoke("system:read-clipboard"),
-    getMyIp: (): Promise<{ ip: string | null; countryCode: string | null; error: string | null }> => ipcRenderer.invoke("vpn:get-my-ip"),
-    dnsLeakTest: (): Promise<{ leaked: boolean; dnsServers: string[]; vpnIp: string | null; error: string | null }> => ipcRenderer.invoke("vpn:dns-leak-test")
+    setDnsServers: (dnsServers: string): Promise<{ ok: boolean; message: string; servers: string[] }> =>
+      ipcRenderer.invoke("system:set-dns-servers", dnsServers),
+    resetDnsServers: (): Promise<{ ok: boolean; message: string; servers: string[] }> =>
+      ipcRenderer.invoke("system:reset-dns-servers"),
+    getMyIp: (): Promise<{ ip: string | null; countryCode: string | null; error: string | null }> =>
+      ipcRenderer.invoke("vpn:get-my-ip"),
+    dnsLeakTest: (): Promise<{ leaked: boolean; dnsServers: string[]; vpnIp: string | null; error: string | null }> =>
+      ipcRenderer.invoke("vpn:dns-leak-test")
   },
   window: {
     minimize: (): Promise<boolean> => ipcRenderer.invoke("window:minimize"),
+    toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke("window:toggle-maximize"),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke("window:is-maximized"),
     close: (): Promise<boolean> => ipcRenderer.invoke("window:close")
   },
   traffic: {
@@ -97,6 +108,18 @@ const api = {
     onAutoConnect: (callback: (serverId: string) => void) => {
       ipcRenderer.on("auto-connect", (_event, serverId) => callback(serverId));
     }
+  },
+  logs: {
+    getRecent: (maxLines?: number): Promise<Array<{ timestamp: string; level: string; message: string }>> =>
+      ipcRenderer.invoke("logs:get-recent", maxLines),
+    getRuntimeSummary: (maxLines?: number): Promise<RuntimeLogSummary[]> =>
+      ipcRenderer.invoke("logs:get-runtime-summary", maxLines),
+    getPath: (): Promise<string> => ipcRenderer.invoke("logs:get-path"),
+    openFolder: (): Promise<boolean> => ipcRenderer.invoke("logs:open-folder")
+  },
+  usage: {
+    saveRecord: (record: UsageRecord): Promise<boolean> => ipcRenderer.invoke("usage:save-record", record),
+    getHistory: (): Promise<UsageRecord[]> => ipcRenderer.invoke("usage:get-history")
   }
 };
 

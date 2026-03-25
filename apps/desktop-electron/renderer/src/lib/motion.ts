@@ -102,3 +102,47 @@ export const shimmerEffect = {
   animate: { x: "100%" },
   transition: { duration: 1.5, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY }
 };
+
+// ═══════════════════════════════════════════════════════════
+// MOTION v2 — Structured API (use for new components)
+// Replaces inline { type: "spring", stiffness: N, damping: N }
+// ═══════════════════════════════════════════════════════════
+
+export const MOTION = {
+  /** Spring presets — use as transition={MOTION.spring.snappy} */
+  spring: {
+    /** Buttons, toggles, quick tactile feedback */
+    snappy: springSnappy,
+    /** Panels, cards, navigation transitions */
+    gentle: springSmooth,
+    /** Playful: orbit particles, power button release */
+    bouncy: springBouncy,
+    /** Modal/dialog entrance — firm with minimal overshoot */
+    modal: springSnappy
+  },
+
+  /** Easing presets (non-spring) */
+  ease: {
+    /** Standard enter: ease-out (decelerate) */
+    enter: { duration: 0.3, ease: [0.0, 0.0, 0.2, 1] as const },
+    /** Standard exit: ease-in (accelerate) */
+    exit: { duration: 0.2, ease: [0.4, 0.0, 1, 1] as const },
+    /** Emphasis: ease-in-out (symmetric) */
+    emphasis: { duration: 0.5, ease: [0.4, 0.0, 0.2, 1] as const }
+  },
+
+  /** Standard variant sets — spread onto motion components */
+  variants: {
+    fade: fadeIn,
+    slideUp,
+    scaleIn,
+    slideRight,
+    glassCard,
+    page: pageTransition,
+    dialog: {
+      initial: { scale: 0.95, y: 20, opacity: 0 },
+      animate: { scale: 1, y: 0, opacity: 1 },
+      exit: { scale: 0.95, y: 20, opacity: 0 }
+    }
+  }
+} as const;

@@ -1,0 +1,41 @@
+; ── EgoistShield NSIS Custom Script ──
+; Выполняется при установке/обновлении/удалении
+; Убивает зомби-процессы, очищает firewall rules, удаляет temp runtime
+
+!macro customInit
+  ; Убить все запущенные процессы EgoistShield / runtime
+  ; Без этого обновление может провалиться (файлы заблокированы)
+  nsExec::ExecToLog 'taskkill /F /IM xray.exe'
+  nsExec::ExecToLog 'taskkill /F /IM sing-box.exe'
+  nsExec::ExecToLog 'taskkill /F /IM EgoistShield.exe'
+
+  ; Короткая пауза чтобы процессы гарантированно завершились
+  Sleep 1000
+!macroend
+
+!macro customInstall
+  ; Очистка firewall rules от Kill Switch предыдущей версии
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=EgoistShield-KS-Block-All'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=EgoistShield-KS-Allow-VPN'
+
+  ; Очистка temp runtime файлов
+  RMDir /r "$TEMP\EgoistShield"
+!macroend
+
+!macro customUnInit
+  ; Убить процессы перед удалением
+  nsExec::ExecToLog 'taskkill /F /IM xray.exe'
+  nsExec::ExecToLog 'taskkill /F /IM sing-box.exe'
+  nsExec::ExecToLog 'taskkill /F /IM EgoistShield.exe'
+  Sleep 1000
+!macroend
+
+!macro customUnInstall
+  ; Очистка firewall rules
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=EgoistShield-KS-Block-All'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=EgoistShield-KS-Allow-VPN'
+
+  ; Очистка temp и AppData
+  RMDir /r "$TEMP\EgoistShield"
+  RMDir /r "$APPDATA\EgoistShield"
+!macroend

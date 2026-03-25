@@ -27,5 +27,6 @@ export function AnimatedNumber({
 }) {
   const spring = useAnimatedNumber(value);
   const display = useTransform(spring, (v) => (decimals > 0 ? v.toFixed(decimals) : Math.round(v).toString()));
+
   return <motion.span className={className}>{display}</motion.span>;
 }

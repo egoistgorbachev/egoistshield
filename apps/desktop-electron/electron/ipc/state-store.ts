@@ -18,11 +18,25 @@ const DEFAULT_STATE: PersistedState = {
     notifications: true,
     allowTelemetry: false,
     dnsMode: "auto",
+    systemDnsServers: "",
     subscriptionUserAgent: "auto",
     runtimePath: "",
     routeMode: "global"
-  }
+  },
+  usageHistory: []
 };
+
+function sanitizeState(state: PersistedState): PersistedState {
+  return {
+    ...state,
+    processRules: [],
+    settings: {
+      ...state.settings,
+      useTunMode: false,
+      systemDnsServers: state.settings.systemDnsServers ?? ""
+    }
+  };
+}
 
 type PersistedStatePatch = Omit<Partial<PersistedState>, "settings"> & {
   settings?: Partial<PersistedState["settings"]>;
@@ -52,6 +66,7 @@ export class StateStore {
       this.state = structuredClone(DEFAULT_STATE);
     }
 
+    this.state = sanitizeState(this.state);
     return this.get();
   }
 
@@ -60,20 +75,20 @@ export class StateStore {
   }
 
   public async set(next: PersistedState): Promise<PersistedState> {
-    this.state = structuredClone(next);
+    this.state = sanitizeState(structuredClone(next));
     await this.save();
     return this.get();
   }
 
   public async patch(next: PersistedStatePatch): Promise<PersistedState> {
-    this.state = {
+    this.state = sanitizeState({
       ...this.state,
       ...next,
       settings: {
         ...this.state.settings,
         ...(next.settings ?? {})
       }
-    };
+    });
     await this.save();
     return this.get();
   }

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Home, Server, Settings as SettingsIcon, Shield, Zap } from "lucide-react";
+import { Home, Server, Settings as SettingsIcon, Shield } from "lucide-react";
 import { useCallback, useState } from "react";
 import { cn } from "../lib/cn";
 import { type Screen, useAppStore } from "../store/useAppStore";
@@ -12,8 +12,7 @@ import { type Screen, useAppStore } from "../store/useAppStore";
    ────────────────────────────────────────────────────────── */
 
 const navItems: { id: Screen; icon: typeof Home; label: string }[] = [
-  { id: "dashboard", icon: Home, label: "Главная" },
-  { id: "split-tunnel", icon: Zap, label: "Сплит" }
+  { id: "dashboard", icon: Home, label: "Главная" }
 ];
 const navItemsRight: { id: Screen; icon: typeof Server; label: string }[] = [
   { id: "servers" as Screen, icon: Server, label: "Серверы" },
@@ -24,7 +23,6 @@ export function BottomNav() {
   const currentScreen = useAppStore((s) => s.currentScreen);
   const setScreen = useAppStore((s) => s.setScreen);
   const isConnected = useAppStore((s) => s.isConnected);
-  const tunMode = useAppStore((s) => s.tunMode);
 
   return (
     <div className="relative z-20 w-full px-3 pb-3">
@@ -32,24 +30,22 @@ export function BottomNav() {
         aria-label="Основная навигация"
         className="relative max-w-[460px] mx-auto h-[62px] flex items-center justify-between px-2"
         style={{
-          background: "rgba(8,8,12,0.92)",
+          background: "linear-gradient(180deg, rgba(8,32,50,0.96), rgba(12,36,54,0.94))",
           backdropFilter: "blur(28px) saturate(1.6)",
           borderRadius: "22px",
-          border: "1px solid rgba(255,107,0,0.06)",
+          border: "1px solid rgba(51,71,86,0.45)",
           boxShadow:
-            "0 -4px 30px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02), inset 0 1px 0 rgba(255,255,255,0.04)"
+            "0 -8px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.02), inset 0 1px 0 rgba(255,255,255,0.05)"
         }}
       >
         {navItems.map((item) => {
-          const disabled = item.id === "split-tunnel" && !tunMode;
           return (
             <DockItem
               key={item.id}
               Icon={item.icon}
               label={item.label}
               active={currentScreen === item.id}
-              disabled={disabled}
-              onClick={() => !disabled && setScreen(item.id)}
+              onClick={() => setScreen(item.id)}
             />
           );
         })}
@@ -71,8 +67,8 @@ export function BottomNav() {
             transition={{ duration: 3, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
             style={{
               background: isConnected
-                ? "radial-gradient(circle, rgba(16,185,129,0.3) 0%, transparent 70%)"
-                : "radial-gradient(circle, rgba(255,107,0,0.35) 0%, transparent 70%)"
+                ? "radial-gradient(circle, rgba(34,181,122,0.36) 0%, transparent 70%)"
+                : "radial-gradient(circle, rgba(255,76,41,0.38) 0%, transparent 70%)"
             }}
           />
 
@@ -81,11 +77,11 @@ export function BottomNav() {
             className="relative w-[56px] h-[56px] rounded-full flex items-center justify-center z-10 transition-all duration-500"
             style={{
               background: isConnected
-                ? "linear-gradient(135deg, #059669, #10B981)"
-                : "linear-gradient(135deg, #FF4D00, #FF6B00, #FF8C38)",
+                ? "linear-gradient(135deg, #168A62, #22B57A, #4ED39A)"
+                : "linear-gradient(135deg, #D63B1B, #FF4C29, #FF6B47)",
               boxShadow: isConnected
-                ? "0 6px 24px rgba(16,185,129,0.5), inset 0 1px 0 rgba(255,255,255,0.2)"
-                : "0 6px 24px rgba(255,107,0,0.5), inset 0 1px 0 rgba(255,255,255,0.2)"
+                ? "0 6px 24px rgba(34,181,122,0.4), inset 0 1px 0 rgba(255,255,255,0.2)"
+                : "0 6px 24px rgba(255,76,41,0.5), inset 0 1px 0 rgba(255,255,255,0.2)"
             }}
           >
             {/* Glass highlight */}
@@ -156,9 +152,9 @@ function DockItem({
             initial={{ opacity: 0, y: 6, scale: 0.93 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4 }}
-            className="absolute -top-12 left-1/2 -translate-x-1/2 whitespace-nowrap bg-[#1a1a22] text-white/80 text-[10px] font-semibold px-3 py-2 rounded-xl border border-brand/15 shadow-xl z-50"
+            className="absolute -top-12 left-1/2 -translate-x-1/2 whitespace-nowrap bg-[#2C394B] text-white/80 text-[10px] font-semibold px-3 py-2 rounded-xl border border-brand/15 shadow-xl z-50"
           >
-            Включите TUN + Sing-box
+            Недоступно
           </motion.div>
         )}
       </AnimatePresence>
@@ -169,9 +165,9 @@ function DockItem({
           layoutId="dock-active"
           className="absolute inset-0 rounded-2xl"
           style={{
-            background: "linear-gradient(135deg, rgba(255,107,0,0.1), rgba(255,107,0,0.04))",
-            border: "1px solid rgba(255,107,0,0.18)",
-            boxShadow: "0 0 12px rgba(255,107,0,0.08)"
+            background: "linear-gradient(145deg, rgba(255,76,41,0.18), rgba(44,57,75,0.42))",
+            border: "1px solid rgba(255,76,41,0.28)",
+            boxShadow: "0 0 16px rgba(255,76,41,0.14), inset 0 1px 0 rgba(255,255,255,0.04)"
           }}
           transition={{ type: "spring", stiffness: 400, damping: 28 }}
         />

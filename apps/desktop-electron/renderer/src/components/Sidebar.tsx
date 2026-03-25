@@ -1,8 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Home, Server, Settings as SettingsIcon, Shield, Zap } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Globe2, Home, Server, Settings as SettingsIcon, Shield } from "lucide-react";
+import { useCallback, useState } from "react";
 import { cn } from "../lib/cn";
-import { getAPI } from "../lib/api";
 import { type Screen, useAppStore } from "../store/useAppStore";
 
 /* ──────────────────────────────────────────────────────────
@@ -11,10 +10,10 @@ import { type Screen, useAppStore } from "../store/useAppStore";
    Glassmorphism, brand accent, tooltip on hover.
    ────────────────────────────────────────────────────────── */
 
-const navItems: { id: Screen; icon: typeof Home; label: string; requiresTun?: boolean }[] = [
+const navItems: { id: Screen; icon: typeof Home; label: string }[] = [
   { id: "dashboard", icon: Home, label: "Главная" },
-  { id: "split-tunnel", icon: Zap, label: "Сплит-туннель", requiresTun: true },
   { id: "servers" as Screen, icon: Server, label: "Серверы" },
+  { id: "dns", icon: Globe2, label: "DNS" },
   { id: "settings", icon: SettingsIcon, label: "Настройки" }
 ];
 
@@ -22,29 +21,18 @@ export function Sidebar() {
   const currentScreen = useAppStore((s) => s.currentScreen);
   const setScreen = useAppStore((s) => s.setScreen);
   const isConnected = useAppStore((s) => s.isConnected);
-  const tunMode = useAppStore((s) => s.tunMode);
-  const [healthPing, setHealthPing] = useState<number | null>(null);
 
-  // Health indicator — ping every 5s when connected
-  useEffect(() => {
-    if (!isConnected) { setHealthPing(null); return; }
-    const doPing = async () => {
-      const api = getAPI();
-      if (api?.system?.pingActiveProxy) {
-        const p = await api.system.pingActiveProxy();
-        if (p > 0) setHealthPing(p);
+  const shieldStyle = isConnected
+    ? {
+        bg: "bg-gradient-to-br from-[#168A62] via-[#22B57A] to-[#4ED39A]",
+        shadow: "shadow-[0_6px_22px_rgba(34,181,122,0.42),inset_0_1px_0_rgba(255,255,255,0.22)]",
+        glow: "radial-gradient(circle, rgba(34,181,122,0.38) 0%, transparent 72%)"
       }
-    };
-    doPing();
-    const iv = setInterval(doPing, 5000);
-    return () => clearInterval(iv);
-  }, [isConnected]);
-
-  const healthColor = !healthPing ? null
-    : healthPing < 80 ? "bg-emerald-400"
-    : healthPing < 200 ? "bg-amber-400"
-    : "bg-red-400";
-
+    : {
+        bg: "bg-gradient-to-br from-[#FF6B47] via-[#FF4C29] to-[#D63B1B]",
+        shadow: "shadow-[0_6px_22px_rgba(255,76,41,0.42),inset_0_1px_0_rgba(255,255,255,0.22)]",
+        glow: "radial-gradient(circle, rgba(255,76,41,0.4) 0%, transparent 72%)"
+      };
 
   return (
     <nav
@@ -63,18 +51,13 @@ export function Sidebar() {
           {/* Glow ring — CSS-only, zero JS overhead */}
           <div
             className="absolute inset-[-6px] rounded-full pointer-events-none animate-glow-pulse"
-            style={{
-              background: isConnected
-                ? "radial-gradient(circle, rgba(16,185,129,0.35) 0%, transparent 70%)"
-                : "radial-gradient(circle, rgba(255,107,0,0.4) 0%, transparent 70%)"
-            }}
+            style={{ background: shieldStyle.glow }}
           />
           <div
             className={cn(
               "relative w-11 h-11 rounded-full flex items-center justify-center z-10 transition-all duration-500",
-              isConnected
-                ? "bg-gradient-to-br from-emerald-700 to-emerald-500 shadow-[0_4px_18px_rgba(16,185,129,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]"
-                : "bg-gradient-to-br from-[#FF4D00] via-brand to-[#FF8C38] shadow-[0_4px_18px_rgba(255,107,0,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]"
+              shieldStyle.bg,
+              shieldStyle.shadow
             )}
           >
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[70%] h-[38%] bg-gradient-to-b from-white/20 to-transparent rounded-full blur-[1px]" />
@@ -88,39 +71,19 @@ export function Sidebar() {
         </motion.button>
       </div>
 
-      {/* ── Health Indicator ── */}
-      {isConnected && healthColor && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="flex flex-col items-center gap-0.5 -mt-2 mb-1"
-          title={healthPing ? `${healthPing} мс` : undefined}
-        >
-          <div className="relative">
-            <div className={cn("w-2 h-2 rounded-full", healthColor)} />
-            <div className={cn("absolute inset-0 w-2 h-2 rounded-full animate-ping opacity-40", healthColor)} />
-          </div>
-          <span className="text-[7px] font-bold font-mono-metric text-white/30">
-            {healthPing}мс
-          </span>
-        </motion.div>
-      )}
-
       {/* ── Separator ── */}
       <div className="w-7 h-px bg-white/[0.06] mb-3" />
 
       {/* ── Nav Items ── */}
       <div className="flex flex-col items-center gap-1 flex-1">
         {navItems.map((item) => {
-          const disabled = item.requiresTun && !tunMode;
           return (
             <SidebarItem
               key={item.id}
               Icon={item.icon}
               label={item.label}
               active={currentScreen === item.id}
-              disabled={disabled}
-              onClick={() => !disabled && setScreen(item.id)}
+              onClick={() => setScreen(item.id)}
             />
           );
         })}
@@ -128,9 +91,7 @@ export function Sidebar() {
 
       {/* ── Version ── */}
       <div className="pb-3 pt-2">
-        <span className="text-[8px] font-mono-metric text-whisper tracking-wider">
-          v{__APP_VERSION__}
-        </span>
+        <span className="text-xs font-mono-metric text-whisper tracking-wider">v{__APP_VERSION__}</span>
       </div>
     </nav>
   );
@@ -182,9 +143,9 @@ function SidebarItem({
           layoutId="sidebar-active"
           className="absolute inset-0 rounded-xl"
           style={{
-            background: "linear-gradient(135deg, rgba(255,107,0,0.12), rgba(255,107,0,0.04))",
-            border: "1px solid rgba(255,107,0,0.2)",
-            boxShadow: "0 0 10px rgba(255,107,0,0.08)"
+            background: "linear-gradient(145deg, rgba(255,76,41,0.2), rgba(44,57,75,0.42))",
+            border: "1px solid rgba(255,76,41,0.28)",
+            boxShadow: "0 0 14px rgba(255,76,41,0.14), inset 0 1px 0 rgba(255,255,255,0.05)"
           }}
           transition={{ type: "spring", stiffness: 400, damping: 28 }}
         />
@@ -208,11 +169,11 @@ function SidebarItem({
               className={cn(
                 "text-[11px] font-bold px-3 py-1.5 rounded-lg shadow-xl border",
                 showTip
-                  ? "bg-[#1a1a22] text-white/70 border-brand/15"
-                  : "bg-[#1a1a22] text-white/70 border-white/8"
+                  ? "bg-[#2C394B]/95 text-[#D2D2D2] border-brand/25"
+                  : "bg-[#2C394B]/95 text-[#D2D2D2] border-white/8"
               )}
             >
-              {showTip ? "Включите TUN в Настройках" : label}
+              {showTip ? "Недоступно" : label}
             </div>
           </motion.div>
         )}

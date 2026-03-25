@@ -6,11 +6,13 @@ import type {
   DiagnosticResult,
   ImportResult,
   PersistedState,
+  RuntimeLogSummary,
   RuntimeInstallResult,
   RuntimeStatus,
   RuntimeUpdateSummary,
   StressResult
 } from "../../../electron/ipc/contracts";
+import type { UsageRecord } from "../../shared/types";
 
 export interface EgoistAPI {
   state: {
@@ -24,6 +26,10 @@ export interface EgoistAPI {
   subscription: {
     refreshOne(url: string): Promise<ImportResult>;
     refreshAll(): Promise<ImportResult>;
+    rename(url: string, newName: string): Promise<boolean>;
+  };
+  node: {
+    rename(id: string, newName: string): Promise<boolean>;
   };
   vpn: {
     connect(nodeId?: string): Promise<RuntimeStatus>;
@@ -46,17 +52,21 @@ export interface EgoistAPI {
     pickFile(filters: Array<{ name: string; extensions: string[] }>): Promise<string | null>;
     listProcesses(): Promise<Array<{ name: string; path: string }>>;
     getAppIcon(exePath: string): Promise<string | null>;
-    ping(host: string, port: number): Promise<number>;
+    ping(host: string, port: number, timeoutMs?: number): Promise<number>;
     pingActiveProxy(): Promise<number>;
     speedtest(): Promise<{ speed: number; bytes?: number; timeMs?: number; error: string | null }>;
     geoip(host: string): Promise<{ country: string; countryCode: string }>;
     internetFix(): Promise<{ ok: boolean; message: string }>;
     readClipboard(): Promise<string>;
+    setDnsServers(dnsServers: string): Promise<{ ok: boolean; message: string; servers: string[] }>;
+    resetDnsServers(): Promise<{ ok: boolean; message: string; servers: string[] }>;
     getMyIp(): Promise<{ ip: string | null; countryCode: string | null; error: string | null }>;
     dnsLeakTest(): Promise<{ leaked: boolean; dnsServers: string[]; vpnIp: string | null; error: string | null }>;
   };
   window: {
     minimize(): Promise<boolean>;
+    toggleMaximize(): Promise<boolean>;
+    isMaximized(): Promise<boolean>;
     close(): Promise<boolean>;
   };
   traffic: {
@@ -75,6 +85,16 @@ export interface EgoistAPI {
   };
   autoConnect: {
     onAutoConnect(callback: (serverId: string) => void): void;
+  };
+  logs: {
+    getRecent(maxLines?: number): Promise<Array<{ timestamp: string; level: string; message: string }>>;
+    getRuntimeSummary(maxLines?: number): Promise<RuntimeLogSummary[]>;
+    getPath(): Promise<string>;
+    openFolder(): Promise<boolean>;
+  };
+  usage: {
+    saveRecord(record: UsageRecord): Promise<boolean>;
+    getHistory(): Promise<UsageRecord[]>;
   };
 }
 

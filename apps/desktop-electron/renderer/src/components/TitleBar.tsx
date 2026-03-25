@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { Copy, Minus, Square, X } from "lucide-react";
-import { useState } from "react";
+import { type CSSProperties, type ReactElement, type ReactNode, useEffect, useState } from "react";
 import { getAPI } from "../lib/api";
 
 /* ──────────────────────────────────────────────────────────
@@ -8,8 +8,22 @@ import { getAPI } from "../lib/api";
    Close button red on hover. All buttons 10×10 hit area.
    ────────────────────────────────────────────────────────── */
 
-export function TitleBar() {
-  const handleClose = () => {
+type AppRegionStyle = CSSProperties & {
+  WebkitAppRegion: "drag" | "no-drag";
+};
+
+const DRAG_REGION_STYLE: AppRegionStyle = {
+  WebkitAppRegion: "drag",
+  background: "linear-gradient(180deg, rgba(5,5,8,0.98) 0%, rgba(5,5,8,0.7) 100%)",
+  backdropFilter: "blur(20px)"
+};
+
+const NO_DRAG_REGION_STYLE: AppRegionStyle = {
+  WebkitAppRegion: "no-drag"
+};
+
+export function TitleBar(): ReactElement {
+  const handleClose = (): void => {
     const api = getAPI();
     if (api) {
       api.window.close();
@@ -17,37 +31,70 @@ export function TitleBar() {
       window.close();
     }
   };
-  const handleMinimize = () => {
+  const handleMinimize = (): void => {
     const api = getAPI();
     if (api) {
       api.window.minimize();
     }
   };
   const [isMaximized, setIsMaximized] = useState(false);
-  const handleMaximize = () => {
+
+  useEffect(() => {
+    let isMounted = true;
     const api = getAPI();
-    if ((api?.window as any)?.maximize) {
-      (api?.window as any).maximize();
-      setIsMaximized(!isMaximized);
+    if (!api) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const syncMaximizeState = async (): Promise<void> => {
+      try {
+        const nextState = await api.window.isMaximized();
+        if (isMounted) {
+          setIsMaximized(nextState);
+        }
+      } catch (error: unknown) {
+        console.warn("[TitleBar] Failed to sync maximize state", error);
+      }
+    };
+
+    void syncMaximizeState();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleMaximize = (): void => {
+    const api = getAPI();
+    if (api) {
+      api.window
+        .toggleMaximize()
+        .then((nextState) => {
+          setIsMaximized(nextState);
+        })
+        .catch((error: unknown) => {
+          console.warn("[TitleBar] Failed to toggle maximize state", error);
+        });
     }
   };
 
   return (
     <div
       className="h-10 w-full flex items-center justify-between px-4 sticky top-0 z-50 select-none shrink-0"
-      style={
-        {
-          WebkitAppRegion: "drag",
-          background: "linear-gradient(180deg, rgba(5,5,8,0.98) 0%, rgba(5,5,8,0.7) 100%)",
-          backdropFilter: "blur(20px)"
-        } as any
-      }
+      style={DRAG_REGION_STYLE}
     >
       {/* Brand — text only */}
       <span className="font-display text-[11px] font-bold tracking-[0.3em] text-brand/70 uppercase">EgoistShield</span>
 
       {/* Window controls — bigger, more visible */}
-      <div className="flex items-center gap-0" style={{ WebkitAppRegion: "no-drag" } as any}>
+      <div
+        role="toolbar"
+        aria-label="Управление окном"
+        className="flex items-center gap-0"
+        style={NO_DRAG_REGION_STYLE}
+      >
         <WinButton onClick={handleMinimize} label="Свернуть">
           <Minus className="w-4 h-4" strokeWidth={2} />
         </WinButton>
@@ -70,9 +117,9 @@ function WinButton({
 }: {
   onClick: () => void;
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
   danger?: boolean;
-}) {
+}): ReactElement {
   return (
     <motion.button
       onClick={onClick}

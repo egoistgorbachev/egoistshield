@@ -10,9 +10,8 @@ export function Skeleton({ className }: { className?: string }) {
       <div
         className="absolute inset-0 animate-shimmer"
         style={{
-          background:
-            "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%)",
-          backgroundSize: "200% 100%",
+          background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%)",
+          backgroundSize: "200% 100%"
         }}
       />
     </div>

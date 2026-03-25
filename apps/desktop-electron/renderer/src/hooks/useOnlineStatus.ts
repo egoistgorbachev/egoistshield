@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 /** Подписка на online/offline события браузера */
-function subscribe(callback: () => void) {
+function subscribe(callback: () => void): () => void {
   window.addEventListener("online", callback);
   window.addEventListener("offline", callback);
   return () => {
@@ -10,11 +10,11 @@ function subscribe(callback: () => void) {
   };
 }
 
-function getSnapshot() {
+function getSnapshot(): boolean {
   return navigator.onLine;
 }
 
-function getServerSnapshot() {
+function getServerSnapshot(): boolean {
   return true; // SSR fallback — always online
 }
 

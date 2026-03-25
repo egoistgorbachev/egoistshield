@@ -1,6 +1,6 @@
-import sharp from "sharp";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import sharp from "sharp";
 
 /**
  * EgoistShield Icon Generator v3 — Ultra HD, 1:1, NO padding

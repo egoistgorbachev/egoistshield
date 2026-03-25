@@ -1,81 +1,66 @@
 /**
- * Settings Slice — Настройки, first-run
+ * Settings Slice — рабочие настройки приложения без legacy tunnel routing UI.
  */
 import type { StateCreator } from "zustand";
 import { getAPI } from "../../lib/api";
 
-export type Screen = "dashboard" | "split-tunnel" | "servers" | "settings";
-export type Protocol = "xray" | "singbox";
-
-export interface App {
-  name: string;
-  path?: string;
-  icon?: string;
-}
+export type Screen = "dashboard" | "servers" | "dns" | "settings";
 
 export interface SettingsSlice {
   currentScreen: Screen;
   isFirstRun: boolean | null;
-  tunMode: boolean;
   fakeDns: boolean;
   killSwitch: boolean;
+  autoUpdate: boolean;
   autoConnect: boolean;
   notifications: boolean;
   autoStart: boolean;
   hwAccel: boolean;
-  protocol: Protocol;
-
-  // Split Tunnel
-  proxyApps: App[];
-  bypassApps: App[];
-
-  // Favorites
+  systemDnsServers: string;
   favoriteServerIds: string[];
-
-  // Actions
   setScreen: (screen: Screen) => void;
   checkFirstRun: () => Promise<void>;
   completeFirstRun: () => Promise<void>;
-
   updateSetting: <K extends string>(key: K, value: unknown) => void;
-  addProxyApp: (app: App) => void;
-  removeProxyApp: (appName: string) => void;
-  addBypassApp: (app: App) => void;
-  removeBypassApp: (appName: string) => void;
   toggleFavorite: (serverId: string) => void;
 }
 
-export const createSettingsSlice: StateCreator<
-  SettingsSlice & { isConnected: boolean; isConnecting: boolean; isDisconnecting: boolean; connectedServerId: string; errorMessage: string | null; toggleConnection: () => Promise<void> },
-  [],
-  [],
-  SettingsSlice
-> = (set, get) => ({
+function isBackendSyncedKey(key: string): boolean {
+  return (
+    key === "killSwitch" ||
+    key === "autoUpdate" ||
+    key === "autoStart" ||
+    key === "autoConnect" ||
+    key === "notifications" ||
+    key === "fakeDns" ||
+    key === "systemDnsServers"
+  );
+}
+
+export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSlice> = (set, get) => ({
   currentScreen: "dashboard",
   isFirstRun: null,
-  tunMode: false,
   fakeDns: true,
   killSwitch: false,
+  autoUpdate: true,
   autoConnect: false,
   notifications: true,
   autoStart: false,
   hwAccel: true,
-  protocol: "xray",
-
-  proxyApps: [],
-  bypassApps: [],
+  systemDnsServers: "",
   favoriteServerIds: [],
 
   setScreen: (screen) => set({ currentScreen: screen }),
 
   checkFirstRun: async () => {
     const api = getAPI();
-    if (api) {
-      const first = await api.app.isFirstRun();
-      set({ isFirstRun: first });
-    } else {
+    if (!api) {
       set({ isFirstRun: false });
+      return;
     }
+
+    const isFirstRun = await api.app.isFirstRun();
+    set({ isFirstRun });
   },
 
   completeFirstRun: async () => {
@@ -83,63 +68,47 @@ export const createSettingsSlice: StateCreator<
     if (api) {
       await api.app.markFirstRunDone();
     }
+
     set({ isFirstRun: false });
   },
 
   updateSetting: (key, value) => {
-    const wasConnected = get().isConnected;
     set((state) => ({ ...state, [key]: value }));
 
+    if (!isBackendSyncedKey(key)) {
+      return;
+    }
+
     const api = getAPI();
-    if (api) {
-      const settingsMap: Record<string, string> = {
-        tunMode: "useTunMode",
-        killSwitch: "killSwitch",
-        autoStart: "autoStart",
-        autoConnect: "autoConnect"
-      };
-      const backendKey = settingsMap[key];
-      const isFakeDns = key === "fakeDns";
-
-      if (backendKey || isFakeDns) {
-        api.state.get().then((st) => {
-          const updates: Partial<typeof st.settings> = {};
-          if (backendKey) (updates as Record<string, unknown>)[backendKey] = value;
-          if (isFakeDns) updates.dnsMode = (value ? "secure" : "auto") as "auto" | "secure" | "system" | "custom";
-          api.state.set({ ...st, settings: { ...st.settings, ...updates } });
-        });
-      }
+    if (!api) {
+      return;
     }
 
-    if (key === "protocol" && wasConnected) {
-      // Прямой disconnect→connect при смене протокола
-      const reconnectApi = getAPI();
-      if (reconnectApi) {
-        set({ isConnecting: true, isDisconnecting: true, errorMessage: null } as Partial<SettingsSlice>);
-        reconnectApi.vpn.disconnect()
-          .then(() => reconnectApi.vpn.connect((get() as unknown as { selectedServerId: string }).selectedServerId))
-          .then((status) => {
-            if (status.connected) {
-              set({ isConnected: true, isConnecting: false, isDisconnecting: false, errorMessage: null } as Partial<SettingsSlice>);
-            } else {
-              set({ isConnected: false, isConnecting: false, isDisconnecting: false, errorMessage: status.lastError || "Ошибка переключения протокола" } as Partial<SettingsSlice>);
-            }
-          })
-          .catch((e: unknown) => {
-            const msg = e instanceof Error ? e.message : "Ошибка переключения протокола";
-            set({ isConnected: false, isConnecting: false, isDisconnecting: false, errorMessage: msg } as Partial<SettingsSlice>);
-          });
-      }
-    }
+    void api.state.get().then((persistedState) => {
+      const currentState = get();
+
+      return api.state.set({
+        ...persistedState,
+        processRules: [],
+        settings: {
+          ...persistedState.settings,
+          useTunMode: false,
+          killSwitch: currentState.killSwitch,
+          autoUpdate: currentState.autoUpdate,
+          autoStart: currentState.autoStart,
+          autoConnect: currentState.autoConnect,
+          notifications: currentState.notifications,
+          dnsMode: currentState.fakeDns ? "secure" : "auto",
+          systemDnsServers: currentState.systemDnsServers
+        }
+      });
+    });
   },
 
-  addProxyApp: (app) => set((state) => ({ proxyApps: [...state.proxyApps, app] })),
-  removeProxyApp: (appName) => set((state) => ({ proxyApps: state.proxyApps.filter((a) => a.name !== appName) })),
-  addBypassApp: (app) => set((state) => ({ bypassApps: [...state.bypassApps, app] })),
-  removeBypassApp: (appName) => set((state) => ({ bypassApps: state.bypassApps.filter((a) => a.name !== appName) })),
-  toggleFavorite: (serverId) => set((state) => ({
-    favoriteServerIds: state.favoriteServerIds.includes(serverId)
-      ? state.favoriteServerIds.filter((id) => id !== serverId)
-      : [...state.favoriteServerIds, serverId]
-  }))
+  toggleFavorite: (serverId) =>
+    set((state) => ({
+      favoriteServerIds: state.favoriteServerIds.includes(serverId)
+        ? state.favoriteServerIds.filter((id) => id !== serverId)
+        : [...state.favoriteServerIds, serverId]
+    }))
 });

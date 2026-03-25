@@ -1,9 +1,8 @@
-import type { ForgeConfig } from "@electron-forge/shared-types";
+import path from "node:path";
 import { MakerZIP } from "@electron-forge/maker-zip";
-import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { VitePlugin } from "@electron-forge/plugin-vite";
-import path from "node:path";
+import type { ForgeConfig } from "@electron-forge/shared-types";
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -20,9 +19,8 @@ const config: ForgeConfig = {
     extraResource: [path.resolve(__dirname, "runtime")]
   },
   makers: [
-    new MakerSquirrel({
-      setupIcon: path.resolve(__dirname, "renderer/public/assets/icon.ico")
-    }),
+    // Продакшн инсталлер: electron-builder + NSIS (npm run dist)
+    // MakerZIP оставлен для портативных сборок через Forge
     new MakerZIP({}, ["win32"])
   ],
   plugins: [

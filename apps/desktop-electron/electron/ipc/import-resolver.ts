@@ -1,6 +1,6 @@
-﻿import type { VpnNode } from "./contracts";
+﻿import log from "electron-log";
+import type { VpnNode } from "./contracts";
 import { isSubscriptionUrl, parseNodesFromText } from "./node-parser";
-import log from "electron-log";
 
 type ParsedImport = {
   nodes: VpnNode[];
@@ -63,10 +63,14 @@ export async function resolveImportPayload(
     try {
       log.info(`[import-resolver] Fetching subscription: ${url}`);
       const response = await readUrlText(url);
-      log.info(`[import-resolver] Subscription response received: ${response.text.length} bytes, name="${response.name}"`);
+      log.info(
+        `[import-resolver] Subscription response received: ${response.text.length} bytes, name="${response.name}"`
+      );
 
       const subParsed = parseNodesFromText(response.text);
-      log.info(`[import-resolver] Parsed ${subParsed.nodes.length} nodes from subscription, ${subParsed.issues.length} issues`);
+      log.info(
+        `[import-resolver] Parsed ${subParsed.nodes.length} nodes from subscription, ${subParsed.issues.length} issues`
+      );
 
       nodes.push(...subParsed.nodes);
 

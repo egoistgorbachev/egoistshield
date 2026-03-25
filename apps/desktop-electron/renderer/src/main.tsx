@@ -21,7 +21,7 @@ function ErrorFallback({ error, resetErrorBoundary }: { error: unknown; resetErr
       <button
         type="button"
         onClick={resetErrorBoundary}
-        className="px-6 py-2.5 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400 font-bold text-sm hover:bg-orange-500/20 transition-colors"
+        className="px-6 py-2.5 rounded-xl bg-brand/10 border border-brand/30 text-brand font-bold text-sm hover:bg-brand/20 transition-colors"
       >
         Перезагрузить приложение
       </button>

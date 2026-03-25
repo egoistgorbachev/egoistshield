@@ -4,8 +4,7 @@ import { resolveImportPayload } from "../electron/ipc/import-resolver";
 describe("import-resolver", () => {
   it("загружает подписку по URL и парсит узлы", async () => {
     const payload = "https://example.com/subscription";
-    const vless =
-      "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443?security=tls#AutoSub";
+    const vless = "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443?security=tls#AutoSub";
 
     const result = await resolveImportPayload(payload, async (url) => {
       expect(url).toBe(payload);

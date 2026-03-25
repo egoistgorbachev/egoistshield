@@ -1,7 +1,7 @@
-import type { AppSettings, SubscriptionUserAgent, VpnNode } from "./contracts";
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
 import log from "electron-log";
+import type { AppSettings, SubscriptionUserAgent, VpnNode } from "./contracts";
 
 const USER_AGENT_BY_PROFILE: Record<Exclude<SubscriptionUserAgent, "auto">, string> = {
   egoistshield: "EgoistShield/3.0",
@@ -166,4 +166,3 @@ export async function readUrlText(
     clearTimeout(timeout);
   }
 }
-

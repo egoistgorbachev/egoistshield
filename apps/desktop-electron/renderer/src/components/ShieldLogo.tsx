@@ -5,7 +5,7 @@ import { useId, useMemo } from "react";
    ShieldLogo v7 — "Inferno Bolt"
    2026 Design: Clean sharp shield with lightning bolt.
    No rings, no orbits. Pure geometric power.
-   Connected = cyan shift. Disconnected = blazing orange.
+   Connected = cyan shift. Disconnected = turquoise brand.
    ────────────────────────────────────────────────────────── */
 
 export function ShieldLogo({
@@ -29,23 +29,26 @@ export function ShieldLogo({
   }, [uid]);
 
   // ── Palette ──
-  const shieldC1 = isConnected ? "#0891B2" : "#FF4D00";
-  const shieldC2 = isConnected ? "#22D3EE" : "#FF6B00";
-  const shieldC3 = isConnected ? "#67E8F9" : "#FF8C38";
+  const shieldC1 = isConnected ? "#C03010" : "#E0401E";
+  const shieldC2 = isConnected ? "#FF4C29" : "#FF4C29";
+  const shieldC3 = isConnected ? "#FF8A6C" : "#FF6B47";
   const boltC1 = isConnected ? "#FFFFFF" : "#FFFFFF";
-  const boltC2 = isConnected ? "#A5F3FC" : "#FFD6A5";
-  const glowColor = isConnected ? "rgba(34,211,238,0.6)" : "rgba(255,107,0,0.6)";
+  const boltC2 = isConnected ? "#FFD6A5" : "#FFD6A5";
+  const glowColor = isConnected ? "rgba(255,76,41,0.6)" : "rgba(255,76,41,0.5)";
+  const pixelSize = size === "small" ? 64 : size === "large" ? 144 : 104;
 
   return (
     <motion.svg
       viewBox="0 0 200 200"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
       className={className}
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      style={{ overflow: "visible" }}
+      style={{ overflow: "visible", width: pixelSize, height: pixelSize }}
     >
       <defs>
         {/* Shield gradient */}

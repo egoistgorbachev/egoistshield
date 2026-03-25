@@ -10,22 +10,34 @@ import {
   UploadCloud,
   X
 } from "lucide-react";
-import { type ChangeEvent, type DragEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ChangeEvent, type DragEvent, useCallback, useEffect, useRef, useState } from "react";
+import { getAPI } from "../lib/api";
 import { cn } from "../lib/cn";
-import { type ServerConfig, useAppStore } from "../store/useAppStore";
+import { useAppStore } from "../store/useAppStore";
 
 interface AddServerModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+type AddServerTab = "url" | "file" | "qr" | "clipboard";
+
+const NO_DRAG_STYLE = { WebkitAppRegion: "no-drag" } as CSSProperties;
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
 export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
-  const [activeTab, setActiveTab] = useState<"url" | "file" | "qr" | "clipboard">("clipboard");
+  const [activeTab, setActiveTab] = useState<AddServerTab>("clipboard");
   const [urlInput, setUrlInput] = useState("");
   const [clipboardText, setClipboardText] = useState("");
   const [clipboardLoading, setClipboardLoading] = useState(false);
   const [clipboardDone, setClipboardDone] = useState(false);
-  const { addServer } = useAppStore();
 
   // QR Code Scanning State
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -50,7 +62,6 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
     }
   }, [isOpen]);
 
-
   useEffect(() => {
     if (activeTab === "qr" && isOpen) {
       startScan();
@@ -62,29 +73,35 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
 
   const handleImportUrl = async () => {
     if (!urlInput.trim()) return;
+
+    const api = getAPI();
+    if (!api) {
+      return;
+    }
+
     try {
-      await window.egoistAPI?.import.text(urlInput);
+      await api.import.text(urlInput);
       await useAppStore.getState().syncWithBackend();
-    } catch (err) {
-      console.error(err);
+    } catch (error: unknown) {
+      console.error(error);
     }
     onClose();
   };
 
   const handleImportFile = async () => {
-    const globalWindow = window as any;
-    if (!globalWindow.egoistAPI) return;
+    const api = getAPI();
+    if (!api) return;
 
-    const pickedFile = await globalWindow.egoistAPI.system.pickFile([
+    const pickedFile = await api.system.pickFile([
       { name: "VPN Config files", extensions: ["json", "yaml", "txt", "conf"] }
     ]);
     if (pickedFile) {
       try {
-        await globalWindow.egoistAPI.import.file(pickedFile);
+        await api.import.file(pickedFile);
         await useAppStore.getState().syncWithBackend();
         onClose();
-      } catch (err) {
-        console.error("Failed to import server file", err);
+      } catch (error: unknown) {
+        console.error("Failed to import server file", error);
       }
     }
   };
@@ -93,10 +110,10 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
     setClipboardLoading(true);
     setClipboardDone(false);
     try {
-      const gw = window as any;
+      const api = getAPI();
       let text = "";
-      if (gw.egoistAPI?.system?.readClipboard) {
-        text = await gw.egoistAPI.system.readClipboard();
+      if (api?.system?.readClipboard) {
+        text = await api.system.readClipboard();
       } else {
         text = await navigator.clipboard.readText();
       }
@@ -107,27 +124,28 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
       }
       setClipboardText(text.substring(0, 200) + (text.length > 200 ? "..." : ""));
 
-      if (gw.egoistAPI) {
+      if (api) {
         try {
-          const result = await gw.egoistAPI.import.text(text);
+          const result = await api.import.text(text);
           await useAppStore.getState().syncWithBackend();
           if (result && (result.added > 0 || result.subscriptionsAdded > 0)) {
             setClipboardDone(true);
             setTimeout(() => onClose(), 800);
           } else {
-            setClipboardText(`Узлов не найдено. Убедитесь, что ссылка корректна.`);
+            setClipboardText("Узлов не найдено. Убедитесь, что ссылка корректна.");
           }
-        } catch (importErr: any) {
-          setClipboardText(`Ошибка импорта: ${importErr.message || "не удалось обработать"}`);
+        } catch (importError: unknown) {
+          setClipboardText(`Ошибка импорта: ${getErrorMessage(importError, "не удалось обработать")}`);
         }
       } else {
         setClipboardDone(true);
         setTimeout(() => onClose(), 800);
       }
-    } catch (err: any) {
-      setClipboardText(`Ошибка: ${err.message || "не удалось прочитать"}`);
+    } catch (error: unknown) {
+      setClipboardText(`Ошибка: ${getErrorMessage(error, "не удалось прочитать")}`);
+    } finally {
+      setClipboardLoading(false);
     }
-    setClipboardLoading(false);
   }, [onClose]);
 
   // Global Ctrl+V handler when modal is open
@@ -150,17 +168,31 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
   useEffect(() => {
     if (!isOpen) return;
     const handleTab = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
       if (e.key !== "Tab" || !modalRef.current) return;
       const focusable = modalRef.current.querySelectorAll<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       );
       if (focusable.length === 0) return;
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
+      const first = focusable.item(0);
+      const last = focusable.item(focusable.length - 1);
+      if (!first || !last) return;
+
       if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
       } else {
-        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener("keydown", handleTab);
@@ -169,8 +201,7 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
       modalRef.current?.querySelector<HTMLElement>("button, input")?.focus();
     });
     return () => window.removeEventListener("keydown", handleTab);
-  }, [isOpen]);
-
+  }, [isOpen, onClose]);
 
   const startScan = async () => {
     setScanError("");
@@ -186,8 +217,8 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
         setScanning(true);
         requestAnimationFrame(scanLoop);
       }
-    } catch (err: any) {
-      console.error("Screen share error", err);
+    } catch (error: unknown) {
+      console.error("Screen share error", error);
       setScanError("Не удалось получить доступ к экрану для сканирования QR-кода.");
       scanningRef.current = false;
       setScanning(false);
@@ -199,14 +230,22 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
     setScanning(false);
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach((track) => track.stop());
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
       videoRef.current.srcObject = null;
     }
   };
 
   const handleQrDetected = async (data: string) => {
+    const api = getAPI();
+    if (!api) {
+      setScanError("Импорт недоступен в текущем окружении.");
+      return;
+    }
+
     try {
-      const result = await window.egoistAPI?.import.text(data);
+      const result = await api.import.text(data);
       await useAppStore.getState().syncWithBackend();
       const added = (result?.added ?? 0) + (result?.subscriptionsAdded ?? 0);
       if (added > 0) {
@@ -215,8 +254,8 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
       } else {
         setScanError("QR-код распознан, но VPN-конфигурация не найдена.");
       }
-    } catch (err: any) {
-      setScanError(`Ошибка импорта: ${err.message || "не удалось обработать"}`);
+    } catch (error: unknown) {
+      setScanError(`Ошибка импорта: ${getErrorMessage(error, "не удалось обработать")}`);
     }
   };
 
@@ -255,6 +294,7 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
     if (!file) return;
     setScanError("");
     setScanSuccess(null);
+    const objectUrl = URL.createObjectURL(file);
 
     const img = new Image();
     img.onload = () => {
@@ -273,9 +313,13 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
       } else {
         setScanError("QR-код не найден на изображении. Попробуйте другое фото.");
       }
+      URL.revokeObjectURL(objectUrl);
     };
-    img.onerror = () => setScanError("Не удалось загрузить изображение.");
-    img.src = URL.createObjectURL(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      setScanError("Не удалось загрузить изображение.");
+    };
+    img.src = objectUrl;
 
     // Reset file input
     e.target.value = "";
@@ -286,21 +330,22 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
       {isOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
-          style={{ WebkitAppRegion: "no-drag" } as any}
-          onClick={onClose}
+          style={NO_DRAG_STYLE}
+          onMouseDown={onClose}
         >
           <motion.div
             ref={modalRef}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-surface rounded-[2rem] border border-white/10 shadow-2xl overflow-hidden relative"
+            onMouseDown={(event) => event.stopPropagation()}
+            className="w-full max-w-sm bg-panel/95 backdrop-blur-md border border-white/5 rounded-[2rem] shadow-2xl overflow-hidden relative"
           >
             {/* Header */}
             <div className="p-6 pb-4 border-b border-white/5 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white tracking-wide">Добавить Сервер</h2>
               <button
+                type="button"
                 onClick={onClose}
                 className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-muted hover:text-white transition-colors"
               >
@@ -309,7 +354,7 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
             </div>
 
             {/* Tabs */}
-            <div className="flex p-2 bg-surface-app">
+            <div className="flex p-1 bg-surface rounded-lg mx-6 mb-4">
               <TabBtn
                 active={activeTab === "clipboard"}
                 onClick={() => setActiveTab("clipboard")}
@@ -352,19 +397,15 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                     placeholder="vless://..."
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/20 focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50 transition-all font-mono text-sm"
+                    className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/20 focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/50 transition-all font-mono text-sm"
                   />
                   <button
+                    type="button"
                     onClick={handleImportUrl}
-                    className="w-full py-3.5 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 mt-2 relative overflow-hidden"
-                    style={{
-                      background: "linear-gradient(135deg, #FF4D00, #FF6B00, #FF8C38)",
-                      boxShadow: "0 4px 20px rgba(255,107,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)"
-                    }}
+                    className="w-full py-3.5 text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2 mt-2 bg-brand hover:brightness-110"
                   >
-                    <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
-                    <CheckCircle2 className="w-5 h-5 relative z-10" />{" "}
-                    <span className="relative z-10">Добавить сервер</span>
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span>Добавить сервер</span>
                   </button>
                 </motion.div>
               )}
@@ -374,38 +415,49 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   className="flex flex-col gap-4 items-center justify-center py-6"
-                  onDragOver={(e: DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
-                  onDragLeave={(e: DragEvent) => { e.preventDefault(); setIsDragOver(false); }}
+                  onDragOver={(e: DragEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDragOver(true);
+                  }}
+                  onDragLeave={(e: DragEvent) => {
+                    e.preventDefault();
+                    setIsDragOver(false);
+                  }}
                   onDrop={async (e: DragEvent) => {
                     e.preventDefault();
                     e.stopPropagation();
                     setIsDragOver(false);
-                    const file = e.dataTransfer.files[0];
+                    const file = e.dataTransfer.files.item(0);
+                    const api = getAPI();
                     if (file) {
                       const text = await file.text();
                       try {
-                        await window.egoistAPI?.import.text(text);
+                        await api?.import.text(text);
                         await useAppStore.getState().syncWithBackend();
                         onClose();
-                      } catch (err: any) {
-                        console.error("DnD import error", err);
+                      } catch (error: unknown) {
+                        console.error("DnD import error", error);
                       }
                     }
                   }}
                 >
-                  <div className={cn(
-                    "w-16 h-16 rounded-2xl border flex items-center justify-center mb-2 transition-all duration-300",
-                    isDragOver
-                      ? "bg-brand/20 border-brand/40 scale-110"
-                      : "bg-orange-500/10 border-orange-500/20"
-                  )}>
-                    <UploadCloud className={cn("w-8 h-8 transition-colors", isDragOver ? "text-brand" : "text-orange-400")} />
+                  <div
+                    className={cn(
+                      "w-16 h-16 rounded-2xl border flex items-center justify-center mb-2 transition-all duration-300",
+                      isDragOver ? "bg-brand/20 border-brand/40 scale-110" : "bg-brand/10 border-brand/20"
+                    )}
+                  >
+                    <UploadCloud
+                      className={cn("w-8 h-8 transition-colors", isDragOver ? "text-brand" : "text-brand/70")}
+                    />
                   </div>
                   <p className="text-sm text-center text-muted mb-2">
                     {isDragOver ? "Отпустите файл для импорта" : "Перетащите файл сюда или выберите вручную"}
                   </p>
                   <p className="text-xs text-center text-white/20 mb-2">.json, .yaml, .txt, .conf</p>
                   <button
+                    type="button"
                     onClick={handleImportFile}
                     className="py-3 px-6 text-white/80 hover:text-white rounded-xl transition-all font-bold flex items-center gap-2 relative overflow-hidden"
                     style={{
@@ -424,7 +476,7 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                   animate={{ opacity: 1, x: 0 }}
                   className="flex flex-col gap-4 items-center justify-center py-4"
                 >
-                  <div className="w-16 h-16 rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-1">
+                  <div className="w-16 h-16 rounded-2xl bg-brand/10 border border-brand/20 flex items-center justify-center mb-1">
                     {clipboardDone ? (
                       <CheckCircle2 className="w-8 h-8 text-emerald-400" />
                     ) : clipboardLoading ? (
@@ -432,10 +484,10 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                         animate={{ rotate: 360 }}
                         transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
                       >
-                        <Loader2 className="w-8 h-8 text-orange-400" />
+                        <Loader2 className="w-8 h-8 text-brand" />
                       </motion.div>
                     ) : (
-                      <ClipboardPaste className="w-8 h-8 text-orange-400" />
+                      <ClipboardPaste className="w-8 h-8 text-brand" />
                     )}
                   </div>
                   <p className="text-sm text-center text-muted mb-1">
@@ -459,17 +511,13 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                   )}
                   {!clipboardDone && (
                     <button
+                      type="button"
                       onClick={handleClipboardImport}
                       disabled={clipboardLoading}
-                      className="w-full py-3.5 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 relative overflow-hidden disabled:opacity-50"
-                      style={{
-                        background: "linear-gradient(135deg, #FF4D00, #FF6B00, #FF8C38)",
-                        boxShadow: "0 4px 20px rgba(255,107,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)"
-                      }}
+                      className="w-full py-3.5 text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2 bg-brand hover:brightness-110 disabled:opacity-50"
                     >
-                      <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
-                      <ClipboardPaste className="w-5 h-5 relative z-10" />
-                      <span className="relative z-10">Вставить из буфера</span>
+                      <ClipboardPaste className="w-5 h-5" />
+                      <span>Вставить из буфера</span>
                     </button>
                   )}
                 </motion.div>
@@ -491,7 +539,9 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                     </div>
                   ) : (
                     <>
-                      <p className="text-sm text-center text-muted mb-2">Сканируйте экран или загрузите изображение с QR-кодом</p>
+                      <p className="text-sm text-center text-muted mb-2">
+                        Сканируйте экран или загрузите изображение с QR-кодом
+                      </p>
 
                       <div className="w-full aspect-[4/3] bg-black border border-white/10 rounded-2xl overflow-hidden relative flex items-center justify-center">
                         <video
@@ -504,21 +554,24 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
 
                         {!scanning && !scanError && (
                           <button
+                            type="button"
                             onClick={startScan}
                             className="relative z-10 py-2.5 px-5 text-white rounded-xl font-bold overflow-hidden"
                             style={{
-                              background: "linear-gradient(135deg, #FF4D00, #FF6B00)",
-                              boxShadow: "0 4px 16px rgba(255,107,0,0.4)"
+                              background: "linear-gradient(135deg, #E0401E, #FF4C29)",
+                              boxShadow: "0 4px 16px rgba(255,76,41,0.4)"
                             }}
                           >
                             <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
-                            <span className="relative z-10 flex items-center gap-2"><QrCode className="w-4 h-4" /> Сканировать экран</span>
+                            <span className="relative z-10 flex items-center gap-2">
+                              <QrCode className="w-4 h-4" /> Сканировать экран
+                            </span>
                           </button>
                         )}
 
                         {scanning && (
-                          <div className="absolute inset-0 border-2 border-orange-500/50 rounded-2xl flex items-center justify-center pointer-events-none">
-                            <div className="w-3/4 h-3/4 border-2 border-orange-400 rounded-lg animate-pulse" />
+                          <div className="absolute inset-0 border-2 border-brand/50 rounded-2xl flex items-center justify-center pointer-events-none">
+                            <div className="w-3/4 h-3/4 border-2 border-brand rounded-lg animate-pulse" />
                           </div>
                         )}
 
@@ -528,6 +581,7 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                       <div className="flex gap-2 w-full">
                         {scanning ? (
                           <button
+                            type="button"
                             onClick={stopScan}
                             className="flex-1 py-2.5 text-white/60 hover:text-white text-sm font-bold rounded-xl transition-colors bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15]"
                           >
@@ -535,6 +589,7 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                           </button>
                         ) : (
                           <button
+                            type="button"
                             onClick={() => fileInputRef.current?.click()}
                             className="flex-1 py-2.5 text-white/80 hover:text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-white/[0.04] border border-white/[0.08] hover:border-brand/30 hover:bg-brand/5"
                           >
@@ -570,20 +625,21 @@ function TabBtn({
 }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
-        "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-all relative rounded-t-xl",
-        active ? "text-orange-400" : "text-white/40 hover:text-white/80"
+        "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-all relative rounded-md z-10",
+        active ? "text-white" : "text-white/40 hover:text-white/80"
       )}
     >
-      {icon} {label}
       {active && (
         <motion.div
           layoutId="active-tab-indicator"
-          className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-400"
+          className="absolute inset-0 bg-brand/90 rounded-md -z-10"
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
         />
       )}
+      {icon} {label}
     </button>
   );
 }

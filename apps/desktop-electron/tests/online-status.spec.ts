@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Тесты для online/offline event-модели,
@@ -9,77 +9,97 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  */
 
 describe("useOnlineStatus", () => {
-    let listeners: Map<string, Set<() => void>>;
+  let listeners: Map<string, Set<() => void>>;
 
-    beforeEach(() => {
-        listeners = new Map();
+  const getListenerSet = (event: string): Set<() => void> => {
+    const existingListeners = listeners.get(event);
+    if (existingListeners) {
+      return existingListeners;
+    }
 
-        vi.spyOn(window, "addEventListener").mockImplementation(((event: string, handler: EventListenerOrEventListenerObject) => {
-            if (!listeners.has(event)) listeners.set(event, new Set());
-            listeners.get(event)!.add(handler as () => void);
-        }) as typeof window.addEventListener);
+    const nextListeners = new Set<() => void>();
+    listeners.set(event, nextListeners);
+    return nextListeners;
+  };
 
-        vi.spyOn(window, "removeEventListener").mockImplementation(((event: string, handler: EventListenerOrEventListenerObject) => {
-            listeners.get(event)?.delete(handler as () => void);
-        }) as typeof window.removeEventListener);
-    });
+  beforeEach(() => {
+    listeners = new Map();
 
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
+    vi.spyOn(window, "addEventListener").mockImplementation(((
+      event: string,
+      handler: EventListenerOrEventListenerObject
+    ) => {
+      getListenerSet(event).add(handler as () => void);
+    }) as typeof window.addEventListener);
 
-    it("navigator.onLine возвращает boolean", () => {
-        expect(typeof navigator.onLine).toBe("boolean");
-    });
+    vi.spyOn(window, "removeEventListener").mockImplementation(((
+      event: string,
+      handler: EventListenerOrEventListenerObject
+    ) => {
+      listeners.get(event)?.delete(handler as () => void);
+    }) as typeof window.removeEventListener);
+  });
 
-    it("subscribe регистрирует online и offline listeners", () => {
-        const callback = vi.fn();
-        window.addEventListener("online", callback);
-        window.addEventListener("offline", callback);
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
-        expect(listeners.has("online")).toBe(true);
-        expect(listeners.has("offline")).toBe(true);
-    });
+  it("navigator.onLine возвращает boolean", () => {
+    expect(typeof navigator.onLine).toBe("boolean");
+  });
 
-    it("events online/offline триггерят callbacks", () => {
-        const callback = vi.fn();
+  it("subscribe регистрирует online и offline listeners", () => {
+    const callback = vi.fn();
+    window.addEventListener("online", callback);
+    window.addEventListener("offline", callback);
 
-        window.addEventListener("online", callback);
-        window.addEventListener("offline", callback);
+    expect(listeners.has("online")).toBe(true);
+    expect(listeners.has("offline")).toBe(true);
+  });
 
-        // Триггерим online
-        listeners.get("online")?.forEach(fn => fn());
-        expect(callback).toHaveBeenCalledTimes(1);
+  it("events online/offline триггерят callbacks", () => {
+    const callback = vi.fn();
 
-        // Триггерим offline
-        listeners.get("offline")?.forEach(fn => fn());
-        expect(callback).toHaveBeenCalledTimes(2);
-    });
+    window.addEventListener("online", callback);
+    window.addEventListener("offline", callback);
 
-    it("removeEventListener очищает callbacks", () => {
-        const callback = vi.fn();
+    // Триггерим online
+    for (const listener of listeners.get("online") ?? []) {
+      listener();
+    }
+    expect(callback).toHaveBeenCalledTimes(1);
 
-        window.addEventListener("online", callback);
-        expect(listeners.get("online")?.has(callback)).toBe(true);
+    // Триггерим offline
+    for (const listener of listeners.get("offline") ?? []) {
+      listener();
+    }
+    expect(callback).toHaveBeenCalledTimes(2);
+  });
 
-        window.removeEventListener("online", callback);
-        expect(listeners.get("online")?.has(callback)).toBe(false);
-    });
+  it("removeEventListener очищает callbacks", () => {
+    const callback = vi.fn();
 
-    it("subscribe и unsubscribe корректно работают", () => {
-        const cb1 = vi.fn();
-        const cb2 = vi.fn();
+    window.addEventListener("online", callback);
+    expect(listeners.get("online")?.has(callback)).toBe(true);
 
-        window.addEventListener("online", cb1);
-        window.addEventListener("offline", cb2);
+    window.removeEventListener("online", callback);
+    expect(listeners.get("online")?.has(callback)).toBe(false);
+  });
 
-        expect(listeners.get("online")?.size).toBe(1);
-        expect(listeners.get("offline")?.size).toBe(1);
+  it("subscribe и unsubscribe корректно работают", () => {
+    const cb1 = vi.fn();
+    const cb2 = vi.fn();
 
-        window.removeEventListener("online", cb1);
-        window.removeEventListener("offline", cb2);
+    window.addEventListener("online", cb1);
+    window.addEventListener("offline", cb2);
 
-        expect(listeners.get("online")?.size).toBe(0);
-        expect(listeners.get("offline")?.size).toBe(0);
-    });
+    expect(listeners.get("online")?.size).toBe(1);
+    expect(listeners.get("offline")?.size).toBe(1);
+
+    window.removeEventListener("online", cb1);
+    window.removeEventListener("offline", cb2);
+
+    expect(listeners.get("online")?.size).toBe(0);
+    expect(listeners.get("offline")?.size).toBe(0);
+  });
 });

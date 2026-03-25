@@ -1,6 +1,6 @@
-import { useEffect, useRef, type ReactNode } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { cn } from "../lib/cn";
 
 interface DialogProps {
@@ -15,21 +15,15 @@ interface DialogProps {
  * Reusable accessible dialog component with focus trap,
  * Escape-to-close, backdrop click, and ARIA attributes.
  */
-export function Dialog({
-  isOpen,
-  onClose,
-  title,
-  children,
-  maxWidth = "max-w-sm",
-}: DialogProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
+export function Dialog({ isOpen, onClose, title, children, maxWidth = "max-w-sm" }: DialogProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const previousActiveRef = useRef<HTMLElement | null>(null);
 
   // Focus trap + Escape
   useEffect(() => {
     if (!isOpen) return;
 
-    previousActiveRef.current = document.activeElement as HTMLElement;
+    previousActiveRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -44,8 +38,9 @@ export function Dialog({
         );
         if (focusable.length === 0) return;
 
-        const first = focusable[0]!;
-        const last = focusable[focusable.length - 1]!;
+        const first = focusable.item(0);
+        const last = focusable.item(focusable.length - 1);
+        if (!first || !last) return;
 
         if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
@@ -93,9 +88,9 @@ export function Dialog({
           />
 
           {/* Dialog */}
-          <motion.div
+          <motion.dialog
             ref={dialogRef}
-            role="dialog"
+            open
             aria-modal="true"
             aria-label={title}
             initial={{ scale: 0.95, y: 20, opacity: 0 }}
@@ -122,7 +117,7 @@ export function Dialog({
 
             {/* Content */}
             <div className="p-5">{children}</div>
-          </motion.div>
+          </motion.dialog>
         </motion.div>
       )}
     </AnimatePresence>

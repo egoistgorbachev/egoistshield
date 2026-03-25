@@ -9,22 +9,9 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "types": [
-      "node",
-      "vite/client"
-    ],
+    "types": ["node", "vite/client"],
     "baseUrl": "."
   },
-  "include": [
-    "electron",
-    "renderer",
-    "shared",
-    "vite.*.config.ts",
-    "forge.config.ts"
-  ],
-  "exclude": [
-    "tests",
-    "e2e",
-    "node_modules"
-  ]
+  "include": ["electron", "renderer", "shared", "vite.*.config.ts", "forge.config.ts"],
+  "exclude": ["tests", "e2e", "node_modules"]
 }

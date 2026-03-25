@@ -19,7 +19,7 @@ export function OfflineBanner() {
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
           className="relative z-40 overflow-hidden"
         >
-          <div className="flex items-center justify-center gap-3 px-4 py-2.5 bg-gradient-to-r from-red-500/15 via-orange-500/10 to-red-500/15 border-b border-red-500/20 backdrop-blur-md">
+          <div className="flex items-center justify-center gap-3 px-4 py-2.5 bg-gradient-to-r from-red-500/15 via-red-500/10 to-red-500/15 border-b border-red-500/20 backdrop-blur-md">
             <motion.div
               animate={{ scale: [1, 1.15, 1] }}
               transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}

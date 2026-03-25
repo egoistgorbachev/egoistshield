@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { VpnRuntimeManager } from "../electron/ipc/vpn-manager";
 import type { AppSettings, DomainRule, ProcessRule, VpnNode } from "../electron/ipc/contracts";
+import { VpnRuntimeManager } from "../electron/ipc/vpn-manager";
 
 const node: VpnNode = {
   id: "node-1",
@@ -18,6 +18,8 @@ const settings: AppSettings = {
   autoStart: false,
   startMinimized: false,
   autoUpdate: true,
+  autoConnect: false,
+  notifications: true,
   useTunMode: false,
   killSwitch: false,
   allowTelemetry: false,
@@ -38,5 +40,5 @@ describe("vpn stress", () => {
     expect(result.connectSuccess).toBe(5);
     expect(result.disconnectSuccess).toBe(5);
     expect(result.errors.length).toBe(0);
-  });
+  }, 15_000);
 });

@@ -3,9 +3,11 @@
  *
  * Уровни: error, warn, info, debug.
  * Запись в файл (ротация) + DevTools console.
- * Файлы логов: %AppData%/EgoistShield/logs/
+ * Путь к логам задаётся main process через configureLoggerPaths().
  */
+import path from "node:path";
 import log from "electron-log";
+import type { RuntimeLogSummary } from "./contracts";
 
 // Настройка формата
 log.transports.file.format = "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}";
@@ -17,6 +19,16 @@ log.transports.file.maxSize = 5 * 1024 * 1024;
 // Уровень логирования
 log.transports.file.level = "info";
 log.transports.console.level = "debug";
+
+export function configureLoggerPaths(logsDir: string): void {
+  log.transports.file.resolvePathFn = () => path.join(logsDir, "main.log");
+}
+
+export const RUNTIME_EVENT_PREFIX = "[runtime-event]";
+
+export function formatRuntimeLogEvent(entry: RuntimeLogSummary): string {
+  return `${RUNTIME_EVENT_PREFIX} ${JSON.stringify(entry)}`;
+}
 
 export const logger = {
   error: (...args: unknown[]) => log.error(...args),

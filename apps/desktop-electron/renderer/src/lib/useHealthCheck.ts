@@ -27,6 +27,29 @@ export function useHealthCheck() {
         if (!status.connected && isConnected) {
           console.warn("[HealthCheck] Runtime disconnected unexpectedly, syncing state...");
           useAppStore.getState().syncWithBackend();
+          return;
+        }
+
+        if (status.lifecycle === "degraded" && status.lastError) {
+          useAppStore.setState({ errorMessage: status.lastError });
+        }
+
+        if (status.connected && status.activeNodeId) {
+          const diagnosis = await api.vpn.diagnose();
+          useAppStore.setState((currentState) => ({
+            activePing: diagnosis.runtimeReachable ? diagnosis.latencyMs : currentState.activePing,
+            servers: currentState.servers.map((server) =>
+              server.id === status.activeNodeId
+                ? {
+                    ...server,
+                    ping: diagnosis.runtimeReachable ? diagnosis.latencyMs : server.ping,
+                    lastPingAt: Date.now(),
+                    jitterMs: diagnosis.jitterMs,
+                    lossPercent: diagnosis.lossPercent
+                  }
+                : server
+            )
+          }));
         }
       } catch {
         // API недоступен — критическая потеря соединения

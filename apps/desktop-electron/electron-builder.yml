@@ -1,0 +1,61 @@
+appId: com.egoistshield.app
+productName: EgoistShield
+copyright: Copyright © 2026 EgoistShield Team
+
+directories:
+  output: out/dist
+  buildResources: packaging/build-resources
+
+# ── Что включить в сборку ──
+files:
+  - .vite/**/*
+  - package.json
+  - node_modules/**/*
+  - "!node_modules/**/{test,tests,__tests__,spec,docs,example,examples}/**"
+  - "!node_modules/**/*.{md,map,ts,flow}"
+  - "!node_modules/**/{.github,.npmignore,LICENSE,CHANGELOG}*"
+
+# ── Asar: пакуем код, но НЕ бинарники runtime ──
+asar: true
+asarUnpack:
+  - "node_modules/sharp/**/*"
+
+extraResources:
+  - from: runtime
+    to: runtime
+    filter:
+      - "**/*"
+
+# ── Windows ──
+win:
+  target: nsis
+  icon: renderer/public/assets/icon.ico
+  requestedExecutionLevel: requireAdministrator
+
+# ── NSIS: минималистичный one-click инсталлятор ──
+# Без визардов, без выбора папки, мгновенная установка
+nsis:
+  oneClick: true
+  perMachine: true
+  allowElevation: true
+
+  # Иконки
+  installerIcon: renderer/public/assets/icon.ico
+  uninstallerIcon: renderer/public/assets/icon.ico
+
+  # Кастомный скрипт (taskkill + cleanup)
+  include: packaging/nsis/installer.nsh
+
+  # Ярлыки Desktop + Start Menu (автоматически)
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: EgoistShield
+
+  # Удалять AppData при деинсталляции
+  deleteAppDataOnUninstall: true
+
+  # Русский по умолчанию (LCID 1049)
+  language: 1049
+
+  # Имя выходного файла
+  artifactName: "EgoistShield-${version}-Setup.${ext}"

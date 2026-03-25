@@ -11,7 +11,7 @@ type FlagSVG = ReactElement;
 
 // Горизонтальный триколор
 const tH = (c1: string, c2: string, c3: string): FlagSVG => (
-  <svg viewBox="0 0 100 100" width="100%" height="100%">
+  <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
     <rect width="100" height="34" fill={c1} />
     <rect y="33" width="100" height="34" fill={c2} />
     <rect y="66" width="100" height="34" fill={c3} />
@@ -20,7 +20,7 @@ const tH = (c1: string, c2: string, c3: string): FlagSVG => (
 
 // Вертикальный триколор
 const tV = (c1: string, c2: string, c3: string): FlagSVG => (
-  <svg viewBox="0 0 100 100" width="100%" height="100%">
+  <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
     <rect width="34" height="100" fill={c1} />
     <rect x="33" width="34" height="100" fill={c2} />
     <rect x="66" width="34" height="100" fill={c3} />
@@ -29,7 +29,7 @@ const tV = (c1: string, c2: string, c3: string): FlagSVG => (
 
 // Двухцветный горизонтальный
 const bH = (c1: string, c2: string): FlagSVG => (
-  <svg viewBox="0 0 100 100" width="100%" height="100%">
+  <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
     <rect width="100" height="50" fill={c1} />
     <rect y="50" width="100" height="50" fill={c2} />
   </svg>
@@ -61,7 +61,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // США
   us: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#B22234" />
       {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => (
         <rect key={i} y={i * 7.69} width="100" height="7.69" fill={i % 2 === 0 ? "#B22234" : "#FFF"} />
@@ -72,7 +72,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Великобритания
   gb: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#012169" />
       <path d="M0,0 L100,100 M100,0 L0,100" stroke="#FFF" strokeWidth="16" />
       <path d="M0,0 L100,100 M100,0 L0,100" stroke="#C8102E" strokeWidth="8" />
@@ -83,7 +83,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Япония
   jp: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#FFF" />
       <circle cx="50" cy="50" r="20" fill="#BC002D" />
     </svg>
@@ -91,7 +91,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Турция
   tr: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#E30A17" />
       <circle cx="42" cy="50" r="18" fill="#FFF" />
       <circle cx="47" cy="50" r="14" fill="#E30A17" />
@@ -100,7 +100,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Швейцария
   ch: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#D52B1E" />
       <rect x="38" y="20" width="24" height="60" rx="2" fill="#FFF" />
       <rect x="20" y="38" width="60" height="24" rx="2" fill="#FFF" />
@@ -109,7 +109,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Канада
   ca: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="25" height="100" fill="#FF0000" />
       <rect x="25" width="50" height="100" fill="#FFF" />
       <rect x="75" width="25" height="100" fill="#FF0000" />
@@ -119,7 +119,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Швеция
   se: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#006AA7" />
       <rect x="30" width="12" height="100" fill="#FECC02" />
       <rect y="40" width="100" height="12" fill="#FECC02" />
@@ -128,7 +128,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Финляндия
   fi: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#FFF" />
       <rect x="30" width="12" height="100" fill="#003580" />
       <rect y="40" width="100" height="12" fill="#003580" />
@@ -137,7 +137,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Норвегия
   no: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#BA0C2F" />
       <rect x="28" width="16" height="100" fill="#FFF" />
       <rect y="38" width="100" height="16" fill="#FFF" />
@@ -148,7 +148,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Дания
   dk: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#C60C30" />
       <rect x="30" width="12" height="100" fill="#FFF" />
       <rect y="40" width="100" height="12" fill="#FFF" />
@@ -157,7 +157,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Бразилия
   br: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#009C3B" />
       <polygon points="50,15 90,50 50,85 10,50" fill="#FFDF00" />
       <circle cx="50" cy="50" r="16" fill="#002776" />
@@ -166,7 +166,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Индия
   in: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="34" fill="#FF9933" />
       <rect y="33" width="100" height="34" fill="#FFF" />
       <rect y="66" width="100" height="34" fill="#138808" />
@@ -176,7 +176,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Испания
   es: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="25" fill="#AA151B" />
       <rect y="25" width="100" height="50" fill="#F1BF00" />
       <rect y="75" width="100" height="25" fill="#AA151B" />
@@ -185,7 +185,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Чехия
   cz: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="50" fill="#FFF" />
       <rect y="50" width="100" height="50" fill="#D7141A" />
       <polygon points="0,0 50,50 0,100" fill="#11457E" />
@@ -194,7 +194,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Сингапур
   sg: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="50" fill="#EF3340" />
       <rect y="50" width="100" height="50" fill="#FFF" />
       <circle cx="30" cy="28" r="12" fill="#FFF" />
@@ -204,7 +204,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Австралия
   au: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#012169" />
       <path d="M0,0 L45,45 M45,0 L0,45" stroke="#FFF" strokeWidth="6" />
       <path d="M0,0 L45,45 M45,0 L0,45" stroke="#C8102E" strokeWidth="3" />
@@ -218,7 +218,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Израиль
   il: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#FFF" />
       <rect y="15" width="100" height="12" fill="#0038B8" />
       <rect y="73" width="100" height="12" fill="#0038B8" />
@@ -229,7 +229,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // ОАЭ
   ae: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="34" fill="#00732F" />
       <rect y="33" width="100" height="34" fill="#FFF" />
       <rect y="66" width="100" height="34" fill="#000" />
@@ -239,7 +239,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // ЮАР
   za: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="34" fill="#DE3831" />
       <rect y="33" width="100" height="2" fill="#FFF" />
       <rect y="35" width="100" height="30" fill="#007A4D" />
@@ -252,7 +252,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Вьетнам
   vn: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#DA251D" />
       <polygon points="50,25 56,43 75,43 60,53 66,72 50,60 34,72 40,53 25,43 44,43" fill="#FF0" />
     </svg>
@@ -260,7 +260,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Таиланд
   th: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="17" fill="#A51931" />
       <rect y="17" width="100" height="16" fill="#F4F5F8" />
       <rect y="33" width="100" height="34" fill="#2D2A4A" />
@@ -271,7 +271,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Казахстан
   kz: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#00AFCA" />
       <circle cx="50" cy="45" r="14" fill="#FEC50C" />
     </svg>
@@ -279,7 +279,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Грузия
   ge: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#FFF" />
       <rect x="42" width="16" height="100" fill="#FF0000" />
       <rect y="42" width="100" height="16" fill="#FF0000" />
@@ -288,7 +288,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Тайвань
   tw: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#FE0000" />
       <rect width="50" height="50" fill="#000095" />
       <circle cx="25" cy="25" r="10" fill="#FFF" />
@@ -297,7 +297,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Аргентина
   ar: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="34" fill="#74ACDF" />
       <rect y="33" width="100" height="34" fill="#FFF" />
       <rect y="66" width="100" height="34" fill="#74ACDF" />
@@ -307,7 +307,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Гонконг
   hk: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#DE2910" />
       <polygon points="50,25 56,43 75,43 60,53 66,72 50,60 34,72 40,53 25,43 44,43" fill="#FFF" />
     </svg>
@@ -315,7 +315,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Португалия
   pt: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="40" height="100" fill="#006600" />
       <rect x="40" width="60" height="100" fill="#FF0000" />
       <circle cx="40" cy="50" r="12" fill="#FFD700" />
@@ -324,7 +324,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Южная Корея
   kr: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       <rect width="100" height="100" fill="#FFF" />
       <circle cx="50" cy="50" r="20" fill="#CD2E3A" />
       <path d="M50,30 A20,20 0 0,1 50,70" fill="#0047A0" />
@@ -335,7 +335,7 @@ const FLAGS: Record<string, FlagSVG> = {
 
   // Малайзия
   my: (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
+    <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">
       {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((i) => (
         <rect key={i} y={i * 7.14} width="100" height="7.14" fill={i % 2 === 0 ? "#CC0001" : "#FFF"} />
       ))}

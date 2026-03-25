@@ -6,8 +6,8 @@
 import { promises as fs } from "node:fs";
 import { ipcMain } from "electron";
 import type { ImportResult, VpnNode } from "./contracts";
-import type { IpcContext } from "./ipc-context";
 import { resolveImportPayload } from "./import-resolver";
+import type { IpcContext } from "./ipc-context";
 import {
   ImportFileInputSchema,
   ImportTextInputSchema,
@@ -42,8 +42,9 @@ function mergeImportResults(
       expire: sub.userinfo?.expire
     };
     if (idx >= 0) {
-      const existingId = newSubs[idx]?.id ?? subItem.id;
-      newSubs[idx] = { ...newSubs[idx]!, ...subItem, id: existingId };
+      const existingSub = newSubs[idx];
+      const existingId = existingSub?.id ?? subItem.id;
+      newSubs[idx] = { ...existingSub, ...subItem, id: existingId };
       subIdByUrl.set(sub.url, existingId);
     } else {
       newSubs.push(subItem);
@@ -51,7 +52,9 @@ function mergeImportResults(
     }
   }
 
-  const defaultSubId = subscriptions.length === 1 ? subIdByUrl.get(subscriptions[0]!.url) : undefined;
+  const firstSubscription = subscriptions[0];
+  const defaultSubId =
+    subscriptions.length === 1 && firstSubscription ? subIdByUrl.get(firstSubscription.url) : undefined;
   const taggedNodes = nodes.map((n) => ({
     ...n,
     subscriptionId: n.subscriptionId || defaultSubId
@@ -108,9 +111,10 @@ export function registerImportHandlers({ stateStore }: IpcContext): void {
     const next = {
       ...current,
       nodes: freshNodes,
-      activeNodeId: current.activeNodeId && freshNodes.some((n) => n.id === current.activeNodeId)
-        ? current.activeNodeId
-        : freshNodes[0]?.id ?? null,
+      activeNodeId:
+        current.activeNodeId && freshNodes.some((n) => n.id === current.activeNodeId)
+          ? current.activeNodeId
+          : (freshNodes[0]?.id ?? null),
       subscriptions: current.subscriptions.map((item) =>
         item.url === url
           ? {
@@ -158,11 +162,7 @@ export function registerImportHandlers({ stateStore }: IpcContext): void {
       }
     }
 
-    const refreshedSubIds = new Set(
-      enabledSubs
-        .filter((s) => refreshedSubs.has(s.url))
-        .map((s) => s.id)
-    );
+    const refreshedSubIds = new Set(enabledSubs.filter((s) => refreshedSubs.has(s.url)).map((s) => s.id));
     let freshNodes = current.nodes.filter((n) => !n.subscriptionId || !refreshedSubIds.has(n.subscriptionId));
     for (const { nodes: taggedNodes } of refreshedSubs.values()) {
       freshNodes = [...freshNodes, ...taggedNodes];
@@ -172,9 +172,10 @@ export function registerImportHandlers({ stateStore }: IpcContext): void {
     const next = {
       ...current,
       nodes: freshNodes,
-      activeNodeId: current.activeNodeId && freshNodes.some((n) => n.id === current.activeNodeId)
-        ? current.activeNodeId
-        : freshNodes[0]?.id ?? null,
+      activeNodeId:
+        current.activeNodeId && freshNodes.some((n) => n.id === current.activeNodeId)
+          ? current.activeNodeId
+          : (freshNodes[0]?.id ?? null),
       subscriptions: current.subscriptions.map((item) => {
         const data = refreshedSubs.get(item.url);
         if (data) {

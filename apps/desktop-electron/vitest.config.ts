@@ -6,7 +6,7 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.spec.ts"],
     typecheck: {
-      tsconfig: "./tsconfig.json",
+      tsconfig: "./tsconfig.json"
     },
     coverage: {
       provider: "v8",
@@ -15,7 +15,7 @@ export default defineConfig({
       exclude: ["**/node_modules/**", "tests/**", "**/*.d.ts"],
       thresholds: {
         statements: 60,
-        branches: 55,
+        branches: 55
       }
     }
   }

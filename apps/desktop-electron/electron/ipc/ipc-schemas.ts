@@ -86,9 +86,20 @@ export const AppSettingsSchema = z.object({
   notifications: z.boolean(),
   allowTelemetry: z.boolean(),
   dnsMode: DnsModeSchema,
+  systemDnsServers: z.string().default(""),
   subscriptionUserAgent: SubscriptionUserAgentSchema,
   runtimePath: z.string(),
   routeMode: RouteModeSchema
+});
+
+export const UsageRecordSchema = z.object({
+  id: z.string(),
+  timestamp: z.number(),
+  serverId: z.string(),
+  ping: z.number(),
+  down: z.number(),
+  up: z.number(),
+  durationSec: z.number()
 });
 
 export const PersistedStateSchema = z.object({
@@ -97,7 +108,8 @@ export const PersistedStateSchema = z.object({
   subscriptions: z.array(SubscriptionItemSchema),
   processRules: z.array(ProcessRuleSchema),
   domainRules: z.array(DomainRuleSchema),
-  settings: AppSettingsSchema
+  settings: AppSettingsSchema,
+  usageHistory: z.array(UsageRecordSchema)
 });
 
 // ── IPC Input Schemas ──
@@ -120,7 +132,8 @@ export const StressTestInputSchema = z.number().int().min(1).max(1000);
 /** vpn:ping — хост и порт */
 export const PingInputSchema = z.object({
   host: z.string().min(1),
-  port: z.number().int().min(1).max(65535)
+  port: z.number().int().min(1).max(65535),
+  timeoutMs: z.number().int().min(250).max(5000).optional()
 });
 
 /** system:pick-file — фильтры файлов */
@@ -136,6 +149,9 @@ export const GeoipInputSchema = z.string().min(1, "Host не может быть
 
 /** system:get-app-icon — путь к exe */
 export const AppIconInputSchema = z.string().min(1);
+
+/** system:set-dns-servers — список DNS */
+export const SystemDnsServersInputSchema = z.string().min(1, "DNS-список не может быть пустым");
 
 /** subscription:rename — URL подписки и новое имя */
 export const RenameSubscriptionInputSchema = z.object({

@@ -8,6 +8,9 @@ $projectRoot = (Resolve-Path "$PSScriptRoot\..\..").Path
 $buildRoot = Join-Path $projectRoot "packaging\build"
 $outputRoot = Join-Path $projectRoot "packaging\output"
 $releaseRoot = Join-Path $projectRoot "..\..\artifacts\release-electron\single-exe"
+$packageJsonPath = Join-Path $projectRoot "package.json"
+$packageJson = Get-Content -Path $packageJsonPath -Raw | ConvertFrom-Json
+$appVersion = [string]$packageJson.version
 
 New-Item -ItemType Directory -Force $buildRoot | Out-Null
 New-Item -ItemType Directory -Force $outputRoot | Out-Null
@@ -65,7 +68,7 @@ EgoistShield single-file launcher
 Как работает:
 - Это один EXE без установки.
 - При первом запуске EXE распакует runtime во внутренний кэш:
-  %LOCALAPPDATA%\EgoistShield\runtime\2.0.0
+  %LOCALAPPDATA%\EgoistShield\runtime\$appVersion
 - Затем запустит EgoistShield автоматически.
 
 Важно:
