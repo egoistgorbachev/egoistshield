@@ -13,11 +13,7 @@ import type { IpcContext } from "./ipc-context";
 import { PingInputSchema, StressTestInputSchema } from "./ipc-schemas";
 import logger, { formatRuntimeLogEvent } from "./logger";
 
-function logVpnStatusEvent(
-  level: "info" | "warn" | "error" | "debug",
-  message: string,
-  status: RuntimeStatus
-): void {
+function logVpnStatusEvent(level: "info" | "warn" | "error" | "debug", message: string, status: RuntimeStatus): void {
   const payload = formatRuntimeLogEvent({
     timestamp: new Date().toISOString(),
     level,

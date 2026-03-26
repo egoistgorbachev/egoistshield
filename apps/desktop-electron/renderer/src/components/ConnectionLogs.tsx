@@ -147,38 +147,39 @@ export function ConnectionLogs() {
             {/* Log entries */}
             {runtimeEvents.length > 0 && (
               <div className="mb-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
-                <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted">
-                  Runtime summary
-                </div>
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted">Runtime summary</div>
                 <div className="space-y-2">
-                  {runtimeEvents.slice(-4).reverse().map((event) => (
-                    <div
-                      key={`${event.timestamp}-${event.lifecycle}-${event.reason ?? "none"}-${event.message}`}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-brand">
-                            {event.lifecycle}
-                          </span>
-                          {event.reason && (
-                            <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                              {event.reason}
+                  {runtimeEvents
+                    .slice(-4)
+                    .reverse()
+                    .map((event) => (
+                      <div
+                        key={`${event.timestamp}-${event.lifecycle}-${event.reason ?? "none"}-${event.message}`}
+                        className="flex items-start justify-between gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-brand">
+                              {event.lifecycle}
                             </span>
-                          )}
-                          {event.runtimeKind && (
-                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-white/65">
-                              {event.runtimeKind}
-                            </span>
-                          )}
+                            {event.reason && (
+                              <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                                {event.reason}
+                              </span>
+                            )}
+                            {event.runtimeKind && (
+                              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-white/65">
+                                {event.runtimeKind}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-[11px] leading-relaxed text-white/75">{event.message}</p>
                         </div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-white/75">{event.message}</p>
+                        <span className="shrink-0 text-[10px] font-mono text-subtle">
+                          {event.timestamp.split("T")[1]?.split(".")[0] ?? event.timestamp}
+                        </span>
                       </div>
-                      <span className="shrink-0 text-[10px] font-mono text-subtle">
-                        {event.timestamp.split("T")[1]?.split(".")[0] ?? event.timestamp}
-                      </span>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </div>
             )}

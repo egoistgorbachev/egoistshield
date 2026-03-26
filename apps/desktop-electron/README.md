@@ -2,13 +2,13 @@
 
 Desktop-клиент `EgoistShield` для Windows 10/11.
 
-Текущая ветка документации соответствует релизному состоянию **3.1.0**.
+Текущая ветка документации соответствует релизному состоянию **3.3.0**.
 
 ## Что есть в desktop-версии
 
 - **Мультипротокольный импорт и подключение**: VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria2, TUIC, WireGuard.
 - **Dual-runtime**: Xray + Sing-box.
-- **Smart Connect v2**: health-score выбор узлов, fallback по кандидатам, быстрый warm-switch.
+- **Smart Connect v3.3 handoff**: adaptive health-score выбор узлов, protocol-aware ranking, make-before-break cutover, rollback на предыдущую сессию при срыве нового runtime.
 - **System DNS Center**: установка и сброс системного DNS Windows с валидацией ввода.
 - **Kill Switch**: управление firewall-правилами Windows для защиты при обрыве соединения.
 - **Автозапуск и авто-подключение**.

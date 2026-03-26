@@ -4,8 +4,8 @@ import type {
   DiagnosticResult,
   ImportResult,
   PersistedState,
-  RuntimeLogSummary,
   RuntimeInstallResult,
+  RuntimeLogSummary,
   RuntimeStatus,
   RuntimeUpdateSummary,
   StressResult

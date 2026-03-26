@@ -5,8 +5,8 @@
  * selectedServerId — ID выбранного в списке сервера (для подсветки в ServerList).
  */
 import type { StateCreator } from "zustand";
-import type { RuntimeStatus } from "../../../../electron/ipc/contracts";
 import { getAPI } from "../../lib/api";
+import type { ServersSlice } from "./servers-slice";
 
 export type ConnectionMode = "smart" | "default";
 
@@ -27,7 +27,10 @@ export interface ConnectionSlice {
 }
 
 export const createConnectionSlice: StateCreator<
-  ConnectionSlice & { selectedServerId: string },
+  ConnectionSlice &
+    Pick<ServersSlice, "connectToServer" | "startSmartModeMonitoring" | "stopSmartModeMonitoring"> & {
+      selectedServerId: string;
+    },
   [],
   [],
   ConnectionSlice
@@ -43,12 +46,23 @@ export const createConnectionSlice: StateCreator<
   connectionMode: "default",
   activePing: null,
 
-  setConnectionMode: (mode) => set({ connectionMode: mode }),
+  setConnectionMode: (mode) => {
+    set({ connectionMode: mode });
+    if (mode === "smart" && get().isConnected) {
+      get().startSmartModeMonitoring();
+      return;
+    }
+
+    get().stopSmartModeMonitoring();
+  },
+
   setActivePing: (ping) => set({ activePing: ping }),
 
   toggleConnection: async () => {
     const { isConnected, isConnecting } = get();
-    if (isConnecting) return;
+    if (isConnecting) {
+      return;
+    }
 
     const api = getAPI();
     if (!api) {
@@ -56,86 +70,39 @@ export const createConnectionSlice: StateCreator<
       return;
     }
 
-    set({ isConnecting: true, isDisconnecting: isConnected, errorMessage: null });
-
-    try {
-      if (isConnected) {
+    if (isConnected) {
+      set({ isConnecting: true, isDisconnecting: true, errorMessage: null });
+      try {
         await api.vpn.disconnect();
+        get().stopSmartModeMonitoring();
         set({
           isConnected: false,
           isConnecting: false,
           isDisconnecting: false,
           connectedServerId: "",
+          errorMessage: null,
           sessionStartTime: null,
           sessionBytesRx: 0,
-          sessionBytesTx: 0
+          sessionBytesTx: 0,
+          activePing: null
         });
-      } else {
-        const connectId = get().selectedServerId;
-
-        // Timeout to prevent infinite hang if IPC fails
-        const connectPromise = api.vpn.connect(connectId || undefined);
-        const timeoutPromise = new Promise<RuntimeStatus>((resolve) =>
-          setTimeout(
-            () =>
-              resolve({
-                connected: false,
-                isMock: false,
-                pid: null,
-                startedAt: null,
-                activeNodeId: null,
-                lastError: "Превышено время ожидания ответа от VPN-ядра. Попробуйте снова.",
-                isAdmin: false,
-                resolvedRuntimePath: null,
-                runtimeKind: null,
-                processRulesApplied: false,
-                proxyPort: null,
-                lifecycle: "failed",
-                diagnostic: {
-                  reason: "tcp_timeout",
-                  details: "Превышено время ожидания ответа от VPN-ядра. Попробуйте снова.",
-                  updatedAt: new Date().toISOString(),
-                  fallbackAttempted: false,
-                  fallbackTarget: null
-                }
-              }),
-            15000
-          )
-        );
-
-        const status = await Promise.race([connectPromise, timeoutPromise]);
-
-        if (status.connected) {
-          set({
-            isConnected: true,
-            isConnecting: false,
-            connectedServerId: connectId,
-            errorMessage: null,
-            sessionStartTime: Date.now(),
-            sessionBytesRx: 0,
-            sessionBytesTx: 0
-          });
-        } else {
-          set({
-            isConnected: false,
-            isConnecting: false,
-            connectedServerId: "",
-            errorMessage: status.lastError || "Ошибка подключения"
-          });
-        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Неизвестная ошибка";
+        set({
+          isConnecting: false,
+          isDisconnecting: false,
+          errorMessage: message
+        });
       }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
-      set({
-        isConnected: false,
-        isConnecting: false,
-        isDisconnecting: false,
-        connectedServerId: "",
-        errorMessage: msg,
-        sessionStartTime: null,
-        sessionBytesRx: 0,
-        sessionBytesTx: 0
-      });
+      return;
     }
+
+    const connectId = get().selectedServerId;
+    if (!connectId) {
+      set({ errorMessage: "Выберите сервер перед подключением." });
+      return;
+    }
+
+    await get().connectToServer(connectId);
   }
 });

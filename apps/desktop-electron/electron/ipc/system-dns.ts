@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { parseDnsServers, splitDnsServersByFamily, type ParsedDnsServers } from "../../shared/system-dns";
+import { type ParsedDnsServers, parseDnsServers, splitDnsServersByFamily } from "../../shared/system-dns";
 
 const execFileAsync = promisify(execFile);
 const WINDOWS_SCRIPT_TIMEOUT_MS = 20_000;

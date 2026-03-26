@@ -355,14 +355,15 @@ export namespace ConfigBuilder {
 
     if (node.protocol === "vless" || node.protocol === "vmess" || node.protocol === "trojan") {
       const metadata = node.metadata ?? {};
-      const network = node.protocol === "vmess" ? metadata.net ?? "tcp" : metadata.type ?? "tcp";
+      const network = node.protocol === "vmess" ? (metadata.net ?? "tcp") : (metadata.type ?? "tcp");
       const alpn = metadata.alpn
         ?.split(",")
         .map((value: string) => value.trim())
         .filter(Boolean);
 
       return {
-        xrayTlsAlpn: alpn && alpn.length > 0 ? alpn : network === "grpc" || network === "h2" ? ["h2", "http/1.1"] : ["http/1.1"]
+        xrayTlsAlpn:
+          alpn && alpn.length > 0 ? alpn : network === "grpc" || network === "h2" ? ["h2", "http/1.1"] : ["http/1.1"]
       };
     }
 

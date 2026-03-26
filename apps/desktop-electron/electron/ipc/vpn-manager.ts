@@ -16,9 +16,9 @@ import type {
   ProcessRule,
   RuntimeDiagnostic,
   RuntimeFailureReason,
+  RuntimeInstallResult,
   RuntimeKind,
   RuntimeLifecycle,
-  RuntimeInstallResult,
   RuntimeStatus,
   StressResult,
   VpnNode
@@ -63,11 +63,29 @@ type PreparedConnection = {
   effectiveSettings: AppSettings;
   resolvedRuntime: ResolvedRuntime;
   session: RuntimeSession;
+  fallbackTarget: RuntimeKind | null;
 };
 
 type SessionCleanupOptions = {
   disableSystemProxy: boolean;
   clearKillSwitch: boolean;
+};
+
+type ProxyProbeResult = {
+  ok: boolean;
+  successfulProbes: number;
+  latencyMs: number;
+  jitterMs: number;
+  lossPercent: number;
+  failureReason: RuntimeFailureReason | null;
+  details: string | null;
+};
+
+type PendingHandoff = {
+  nextSessionGeneration: number;
+  previousSession: RuntimeSession;
+  fallbackTarget: RuntimeKind | null;
+  verifyTimer: NodeJS.Timeout;
 };
 
 const DEFAULT_RUNTIME_CANDIDATES: Record<RuntimeKind, string[]> = {
@@ -76,6 +94,28 @@ const DEFAULT_RUNTIME_CANDIDATES: Record<RuntimeKind, string[]> = {
 };
 
 const SINGBOX_PROTOCOLS = new Set<VpnNode["protocol"]>(["hysteria2", "tuic", "wireguard"]);
+const DNS_FAILURE_PATTERNS = ["dns", "resolve", "lookup", "no such host", "server misbehaving"];
+const TLS_FAILURE_PATTERNS = ["tls", "handshake", "x509", "certificate", "reality"];
+const AUTH_FAILURE_PATTERNS = ["auth", "invalid user", "wrong password", "unauthorized", "forbidden"];
+const QUIC_FAILURE_PATTERNS = ["quic", "udp", "no recent network activity"];
+const NETWORK_FAILURE_PATTERNS = [
+  "connection refused",
+  "actively refused",
+  "timed out",
+  "timeout",
+  "network is unreachable",
+  "connection reset",
+  "no route to host",
+  "unreachable"
+] as const;
+const PREPARED_SESSION_PROBES = 3;
+const PREPARED_SESSION_TIMEOUT_MS = 1_200;
+const PREPARED_SESSION_MIN_SUCCESS = 2;
+const HANDOFF_VERIFY_DELAY_MS = 2_500;
+const HANDOFF_RETIRE_GRACE_MS = 8_000;
+const HANDOFF_VERIFY_PROBES = 4;
+const HANDOFF_VERIFY_TIMEOUT_MS = 1_200;
+const HANDOFF_VERIFY_MIN_SUCCESS = 3;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -115,6 +155,8 @@ export class VpnRuntimeManager extends EventEmitter {
   private cachedIsAdmin: boolean | null = null;
   private operationMutex: Promise<unknown> = Promise.resolve();
   private readonly retiringSessions = new Map<number, { session: RuntimeSession; timer: NodeJS.Timeout }>();
+  private readonly nodeRuntimePreferences = new Map<string, RuntimeKind>();
+  private pendingHandoff: PendingHandoff | null = null;
 
   public constructor(appRoot: string, userDataDir: string) {
     super();
@@ -157,7 +199,11 @@ export class VpnRuntimeManager extends EventEmitter {
       runtimeKind: this.snapshot.runtimeKind,
       processRulesApplied: this.snapshot.processRulesApplied,
       proxyPort: this.snapshot.proxyPort,
-      lifecycle: connected ? (this.snapshot.lifecycle === "failed" ? "active" : this.snapshot.lifecycle) : this.snapshot.lifecycle,
+      lifecycle: connected
+        ? this.snapshot.lifecycle === "failed"
+          ? "active"
+          : this.snapshot.lifecycle
+        : this.snapshot.lifecycle,
       diagnostic: { ...this.snapshot.diagnostic }
     };
   }
@@ -202,13 +248,13 @@ export class VpnRuntimeManager extends EventEmitter {
     logger.info(payload);
   }
 
-  private clearDiagnostic(): void {
+  private clearDiagnostic(options?: { fallbackAttempted?: boolean; fallbackTarget?: RuntimeKind | null }): void {
     this.snapshot.diagnostic = {
       reason: null,
       details: null,
       updatedAt: new Date().toISOString(),
-      fallbackAttempted: false,
-      fallbackTarget: null
+      fallbackAttempted: options?.fallbackAttempted ?? false,
+      fallbackTarget: options?.fallbackTarget ?? null
     };
   }
 
@@ -227,6 +273,48 @@ export class VpnRuntimeManager extends EventEmitter {
       fallbackTarget: options?.fallbackTarget ?? null
     };
     this.logRuntimeEvent("error", details, { reason, lifecycle: "failed" });
+  }
+
+  private classifyFailureReason(
+    rawOutput: string,
+    stage: "start" | "warmup" | "active",
+    node: VpnNode,
+    runtimeKind: RuntimeKind
+  ): RuntimeFailureReason {
+    const normalizedOutput = rawOutput.toLowerCase();
+
+    if (DNS_FAILURE_PATTERNS.some((pattern) => normalizedOutput.includes(pattern))) {
+      return "dns_failed";
+    }
+
+    if (AUTH_FAILURE_PATTERNS.some((pattern) => normalizedOutput.includes(pattern))) {
+      return "auth_rejected";
+    }
+
+    if (TLS_FAILURE_PATTERNS.some((pattern) => normalizedOutput.includes(pattern))) {
+      return "tls_handshake_failed";
+    }
+
+    if (
+      (node.protocol === "hysteria2" || node.protocol === "tuic" || runtimeKind === "sing-box") &&
+      QUIC_FAILURE_PATTERNS.some((pattern) => normalizedOutput.includes(pattern))
+    ) {
+      return "quic_blocked";
+    }
+
+    if (NETWORK_FAILURE_PATTERNS.some((pattern) => normalizedOutput.includes(pattern))) {
+      return stage === "active" ? "runtime_crashed" : "server_unreachable";
+    }
+
+    if (stage === "start") {
+      return "runtime_start_failed";
+    }
+
+    if (stage === "warmup") {
+      return "runtime_crashed";
+    }
+
+    return "runtime_crashed";
   }
 
   private getActiveSession(): RuntimeSession | null {
@@ -269,7 +357,7 @@ export class VpnRuntimeManager extends EventEmitter {
     };
   }
 
-  private applyActiveSession(session: RuntimeSession): void {
+  private applyActiveSession(session: RuntimeSession, fallbackTarget: RuntimeKind | null = null): void {
     this.snapshot.process = session.process;
     this.snapshot.processGeneration = session.processGeneration;
     this.snapshot.startedAt = session.startedAt;
@@ -282,7 +370,10 @@ export class VpnRuntimeManager extends EventEmitter {
     this.snapshot.processRulesApplied = session.processRulesApplied;
     this.snapshot.lastError = null;
     this.snapshot.lifecycle = "active";
-    this.clearDiagnostic();
+    this.clearDiagnostic({ fallbackAttempted: fallbackTarget !== null, fallbackTarget });
+    if (fallbackTarget) {
+      this.nodeRuntimePreferences.set(session.nodeId, fallbackTarget);
+    }
     this.logRuntimeEvent("info", "Runtime session activated.", {
       activeNodeId: session.nodeId,
       runtimeKind: session.runtimeKind,
@@ -310,7 +401,242 @@ export class VpnRuntimeManager extends EventEmitter {
     }
   }
 
+  private clearPendingHandoff(expectedGeneration?: number): PendingHandoff | null {
+    if (!this.pendingHandoff) {
+      return null;
+    }
+
+    if (typeof expectedGeneration === "number" && this.pendingHandoff.nextSessionGeneration !== expectedGeneration) {
+      return null;
+    }
+
+    const pendingHandoff = this.pendingHandoff;
+    clearTimeout(pendingHandoff.verifyTimer);
+    this.pendingHandoff = null;
+    return pendingHandoff;
+  }
+
+  private cancelSessionRetirement(processGeneration: number): RuntimeSession | null {
+    const existingRetirement = this.retiringSessions.get(processGeneration);
+    if (!existingRetirement) {
+      return null;
+    }
+
+    clearTimeout(existingRetirement.timer);
+    this.retiringSessions.delete(processGeneration);
+    return existingRetirement.session;
+  }
+
+  private async probeRuntimePort(
+    session: Pick<RuntimeSession, "proxyPort" | "activeRuntimePath">,
+    options: { probes: number; timeoutMs: number; minimumSuccesses: number }
+  ): Promise<ProxyProbeResult> {
+    if (this.mockMode && session.activeRuntimePath === "mock") {
+      return {
+        ok: true,
+        successfulProbes: options.probes,
+        latencyMs: 0,
+        jitterMs: 0,
+        lossPercent: 0,
+        failureReason: null,
+        details: null
+      };
+    }
+
+    const samples: number[] = [];
+    for (let index = 0; index < options.probes; index += 1) {
+      const startedAt = performance.now();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const { createConnection } = require("node:net") as typeof import("node:net");
+          const socket = createConnection(
+            {
+              host: "127.0.0.1",
+              port: session.proxyPort,
+              timeout: options.timeoutMs
+            },
+            () => {
+              socket.destroy();
+              resolve();
+            }
+          );
+          socket.on("error", (error) => {
+            socket.destroy();
+            reject(error);
+          });
+          socket.on("timeout", () => {
+            socket.destroy();
+            reject(new Error("timeout"));
+          });
+        });
+        samples.push(performance.now() - startedAt);
+      } catch {
+        samples.push(-1);
+      }
+    }
+
+    const successfulSamples = samples.filter((sample) => sample >= 0);
+    const averageLatency =
+      successfulSamples.length > 0
+        ? successfulSamples.reduce((total, sample) => total + sample, 0) / successfulSamples.length
+        : 0;
+    const variance =
+      successfulSamples.length > 1
+        ? successfulSamples.reduce((total, sample) => total + (sample - averageLatency) ** 2, 0) /
+          (successfulSamples.length - 1)
+        : 0;
+    const jitterMs = Math.sqrt(variance);
+    const lossPercent = Math.round(((samples.length - successfulSamples.length) / samples.length) * 100);
+    const ok = successfulSamples.length >= options.minimumSuccesses;
+
+    return {
+      ok,
+      successfulProbes: successfulSamples.length,
+      latencyMs: Math.round(averageLatency),
+      jitterMs: Math.round(jitterMs),
+      lossPercent,
+      failureReason: ok ? null : "runtime_port_unreachable",
+      details: ok
+        ? null
+        : `Runtime port ${session.proxyPort} не подтвердил стабильность: ${successfulSamples.length}/${samples.length} успешных probe.`
+    };
+  }
+
+  private async restorePreviousSession(
+    session: RuntimeSession,
+    reason: RuntimeFailureReason,
+    details: string,
+    fallbackTarget: RuntimeKind | null
+  ): Promise<boolean> {
+    if (session.process.exitCode !== null || session.process.killed) {
+      return false;
+    }
+
+    const cleanupIssues: string[] = [];
+    if (this.lastSettings?.killSwitch) {
+      try {
+        await this.killSwitch.enable(session.proxyPort, session.activeRuntimePath);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        cleanupIssues.push(`Kill Switch restore failed: ${message}`);
+      }
+    } else if (this.killSwitch.isActive()) {
+      await this.killSwitch.disable().catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        cleanupIssues.push(`Kill Switch disable failed: ${message}`);
+      });
+    }
+
+    try {
+      await enableSystemProxy(session.proxyPort);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      cleanupIssues.push(`System proxy restore failed: ${message}`);
+    }
+
+    this.applyActiveSession(session);
+    const combinedDetails = [details, ...cleanupIssues].join(" ");
+    this.snapshot.lifecycle = "degraded";
+    this.snapshot.lastError = combinedDetails;
+    this.snapshot.diagnostic = {
+      reason,
+      details: combinedDetails,
+      updatedAt: new Date().toISOString(),
+      fallbackAttempted: fallbackTarget !== null,
+      fallbackTarget
+    };
+    this.logRuntimeEvent("warn", combinedDetails, {
+      activeNodeId: session.nodeId,
+      runtimeKind: session.runtimeKind,
+      proxyPort: session.proxyPort,
+      lifecycle: "degraded",
+      reason
+    });
+    return true;
+  }
+
+  private beginPendingHandoff(
+    nextSession: RuntimeSession,
+    previousSession: RuntimeSession,
+    fallbackTarget: RuntimeKind | null
+  ): void {
+    this.clearPendingHandoff();
+    this.scheduleSessionRetirement(previousSession, HANDOFF_RETIRE_GRACE_MS);
+    const verifyTimer = setTimeout(() => {
+      void this.verifyPendingHandoff(nextSession.processGeneration);
+    }, HANDOFF_VERIFY_DELAY_MS);
+    this.pendingHandoff = {
+      nextSessionGeneration: nextSession.processGeneration,
+      previousSession,
+      fallbackTarget,
+      verifyTimer
+    };
+  }
+
+  private async rollbackPendingHandoff(
+    failedGeneration: number,
+    reason: RuntimeFailureReason,
+    details: string
+  ): Promise<boolean> {
+    const pendingHandoff = this.clearPendingHandoff(failedGeneration);
+    if (!pendingHandoff) {
+      return false;
+    }
+
+    const preservedSession =
+      this.cancelSessionRetirement(pendingHandoff.previousSession.processGeneration) ?? pendingHandoff.previousSession;
+    const activeSession = this.getActiveSession();
+    if (activeSession && activeSession.processGeneration === failedGeneration) {
+      await this.terminateSession(activeSession, {
+        disableSystemProxy: false,
+        clearKillSwitch: false
+      });
+    }
+
+    return this.restorePreviousSession(preservedSession, reason, details, pendingHandoff.fallbackTarget);
+  }
+
+  private async verifyPendingHandoff(nextSessionGeneration: number): Promise<void> {
+    const pendingHandoff = this.pendingHandoff;
+    if (!pendingHandoff || pendingHandoff.nextSessionGeneration !== nextSessionGeneration) {
+      return;
+    }
+
+    const activeSession = this.getActiveSession();
+    if (!activeSession || activeSession.processGeneration !== nextSessionGeneration) {
+      this.clearPendingHandoff(nextSessionGeneration);
+      return;
+    }
+
+    const probeResult = await this.probeRuntimePort(activeSession, {
+      probes: HANDOFF_VERIFY_PROBES,
+      timeoutMs: HANDOFF_VERIFY_TIMEOUT_MS,
+      minimumSuccesses: HANDOFF_VERIFY_MIN_SUCCESS
+    });
+    if (probeResult.ok && this.snapshot.lifecycle !== "failed") {
+      this.clearPendingHandoff(nextSessionGeneration);
+      this.logRuntimeEvent("info", "Make-before-break handoff verified.", {
+        activeNodeId: activeSession.nodeId,
+        runtimeKind: activeSession.runtimeKind,
+        proxyPort: activeSession.proxyPort,
+        lifecycle: this.snapshot.lifecycle,
+        reason: null
+      });
+      return;
+    }
+
+    const details =
+      probeResult.details ??
+      `Новая сессия ${activeSession.nodeId} не прошла handoff verification. Возвращаем предыдущее соединение.`;
+    await this.rollbackPendingHandoff(
+      nextSessionGeneration,
+      probeResult.failureReason ?? "runtime_port_unreachable",
+      details
+    );
+  }
+
   private async flushRetiringSessions(): Promise<void> {
+    this.clearPendingHandoff();
     const retirements = Array.from(this.retiringSessions.values());
     this.retiringSessions.clear();
 
@@ -402,11 +728,71 @@ export class VpnRuntimeManager extends EventEmitter {
     await Promise.all(cleanupTasks);
   }
 
+  private async handleUnexpectedSessionExit(
+    processGeneration: number,
+    reason: RuntimeFailureReason,
+    lastError: string,
+    startupPhase: boolean
+  ): Promise<void> {
+    const rolledBack = await this.rollbackPendingHandoff(processGeneration, reason, lastError);
+    if (rolledBack) {
+      return;
+    }
+
+    this.clearActiveSession(lastError);
+    this.snapshot.diagnostic = {
+      reason,
+      details: lastError,
+      updatedAt: new Date().toISOString(),
+      fallbackAttempted: false,
+      fallbackTarget: null
+    };
+    this.logRuntimeEvent("error", lastError, { reason, lifecycle: "failed" });
+
+    if (!startupPhase) {
+      this.emit("unexpected-exit", lastError);
+    }
+  }
+
   private async activatePreparedConnection(
     prepared: PreparedConnection,
     previousSession: RuntimeSession | null
   ): Promise<RuntimeStatus> {
     const { effectiveSettings, resolvedRuntime, session } = prepared;
+    const preparedProbe = await this.probeRuntimePort(session, {
+      probes: PREPARED_SESSION_PROBES,
+      timeoutMs: PREPARED_SESSION_TIMEOUT_MS,
+      minimumSuccesses: PREPARED_SESSION_MIN_SUCCESS
+    });
+    if (!preparedProbe.ok) {
+      await this.terminateSession(session, {
+        disableSystemProxy: false,
+        clearKillSwitch: false
+      });
+
+      const preparedFailureReason = preparedProbe.failureReason ?? "runtime_port_unreachable";
+      const preparedFailureDetails =
+        preparedProbe.details ??
+        `Runtime порт ${session.proxyPort} не готов для переключения. Сохраняем текущее соединение.`;
+      if (previousSession) {
+        const restored = await this.restorePreviousSession(
+          previousSession,
+          preparedFailureReason,
+          preparedFailureDetails,
+          prepared.fallbackTarget
+        );
+        if (restored) {
+          return this.status();
+        }
+      }
+
+      this.setFailure(preparedFailureReason, preparedFailureDetails, {
+        fallbackAttempted: prepared.fallbackTarget !== null,
+        fallbackTarget: prepared.fallbackTarget
+      });
+      return this.status();
+    }
+
     let degradedReason: RuntimeFailureReason | null = null;
     let degradedDetails: string | null = null;
 
@@ -434,11 +820,11 @@ export class VpnRuntimeManager extends EventEmitter {
       degradedDetails = degradedDetails ?? `System proxy enable failed: ${msg}`;
     }
 
-    this.applyActiveSession(session);
+    this.applyActiveSession(session, prepared.fallbackTarget);
     this.lastSettings = effectiveSettings;
 
     if (previousSession) {
-      this.scheduleSessionRetirement(previousSession, 5_000);
+      this.beginPendingHandoff(session, previousSession, prepared.fallbackTarget);
     }
 
     if (degradedReason && degradedDetails) {
@@ -448,8 +834,8 @@ export class VpnRuntimeManager extends EventEmitter {
         reason: degradedReason,
         details: degradedDetails,
         updatedAt: new Date().toISOString(),
-        fallbackAttempted: false,
-        fallbackTarget: null
+        fallbackAttempted: prepared.fallbackTarget !== null,
+        fallbackTarget: prepared.fallbackTarget
       };
       this.logRuntimeEvent("warn", degradedDetails, { reason: degradedReason, lifecycle: "degraded" });
     }
@@ -489,6 +875,7 @@ export class VpnRuntimeManager extends EventEmitter {
     processRules: ProcessRule[],
     settings: AppSettings
   ): Promise<RuntimeStatus> {
+    this.clearPendingHandoff();
     this.setLifecycle(this.getActiveSession() ? "reconnecting" : "probing");
     this.clearDiagnostic();
     const previousSession = this.getActiveSession();
@@ -504,7 +891,8 @@ export class VpnRuntimeManager extends EventEmitter {
     node: VpnNode,
     domainRules: DomainRule[],
     _processRules: ProcessRule[],
-    settings: AppSettings
+    settings: AppSettings,
+    fallbackTarget: RuntimeKind | null = null
   ): Promise<PreparedConnection | null> {
     const preferredRuntime = this.getPreferredRuntimeKind(node);
     const effectiveSettings = { ...settings, useTunMode: false };
@@ -534,11 +922,12 @@ export class VpnRuntimeManager extends EventEmitter {
       return {
         effectiveSettings,
         resolvedRuntime: { runtimeKind: preferredRuntime, runtimePath: "mock" },
-        session
+        session,
+        fallbackTarget
       };
     }
 
-    let resolvedRuntime = await this.resolveRuntimePath(settings.runtimePath, preferredRuntime, false);
+    let resolvedRuntime = await this.resolveRuntimePath(settings.runtimePath, preferredRuntime, true);
 
     if (!resolvedRuntime) {
       const installed = await (preferredRuntime === "xray"
@@ -548,7 +937,7 @@ export class VpnRuntimeManager extends EventEmitter {
         this.setFailure("runtime_install_failed", `Runtime ${preferredRuntime} install failed: ${installed.message}`);
         return null;
       }
-      resolvedRuntime = await this.resolveRuntimePath("", preferredRuntime, false);
+      resolvedRuntime = await this.resolveRuntimePath("", preferredRuntime, true);
     }
 
     if (!resolvedRuntime) {
@@ -656,8 +1045,14 @@ export class VpnRuntimeManager extends EventEmitter {
     child.on("error", (error) => {
       if (this.snapshot.processGeneration === processGeneration) {
         const details = this.formatRuntimeOutput(runtimeOutput);
+        const reason = this.classifyFailureReason(
+          `${error.message} ${details}`,
+          "start",
+          node,
+          resolvedRuntime.runtimeKind
+        );
         this.setFailure(
-          "runtime_start_failed",
+          reason,
           details ? `Runtime start error: ${error.message}. ${details}` : `Runtime start error: ${error.message}`
         );
       }
@@ -671,22 +1066,16 @@ export class VpnRuntimeManager extends EventEmitter {
 
       if (this.snapshot.processGeneration === processGeneration) {
         const details = this.formatRuntimeOutput(runtimeOutput);
+        const reason = this.classifyFailureReason(
+          details,
+          startupPhase ? "warmup" : "active",
+          node,
+          resolvedRuntime.runtimeKind
+        );
         const lastError = details
           ? `Runtime exited unexpectedly (code ${code ?? signal}): ${details}`
           : `Runtime exited unexpectedly (code ${code ?? signal})`;
-        this.clearActiveSession(lastError);
-        this.snapshot.diagnostic = {
-          reason: "runtime_crashed",
-          details: lastError,
-          updatedAt: new Date().toISOString(),
-          fallbackAttempted: false,
-          fallbackTarget: null
-        };
-        this.logRuntimeEvent("error", lastError, { reason: "runtime_crashed", lifecycle: "failed" });
-
-        if (!startupPhase) {
-          this.emit("unexpected-exit", lastError);
-        }
+        void this.handleUnexpectedSessionExit(processGeneration, reason, lastError, startupPhase);
       }
     });
 
@@ -694,6 +1083,8 @@ export class VpnRuntimeManager extends EventEmitter {
     const ready = await waitForPort(proxyPort, 3000);
     if (!ready && child.exitCode !== null) {
       const canFallbackToXray = resolvedRuntime.runtimeKind === "sing-box" && !SINGBOX_PROTOCOLS.has(node.protocol);
+      const runtimeLog = this.formatRuntimeOutput(runtimeOutput);
+      const classifiedReason = this.classifyFailureReason(runtimeLog, "warmup", node, resolvedRuntime.runtimeKind);
       await this.terminateSession(session, {
         disableSystemProxy: false,
         clearKillSwitch: false
@@ -702,29 +1093,37 @@ export class VpnRuntimeManager extends EventEmitter {
       if (canFallbackToXray) {
         const fallbackSettings = { ...settings, useTunMode: false };
         this.snapshot.diagnostic = {
-          reason: "runtime_crashed",
-          details: `Runtime ${resolvedRuntime.runtimeKind} crashed during warmup, retrying with xray.`,
+          reason: classifiedReason,
+          details: `Runtime ${resolvedRuntime.runtimeKind} failed during warmup, retrying with xray.`,
           updatedAt: new Date().toISOString(),
           fallbackAttempted: true,
           fallbackTarget: "xray"
         };
         this.snapshot.lifecycle = "reconnecting";
-        this.logRuntimeEvent("warn", `Runtime ${resolvedRuntime.runtimeKind} crashed during warmup, retrying with xray.`, {
-          reason: "runtime_crashed",
-          lifecycle: "reconnecting",
-          runtimeKind: resolvedRuntime.runtimeKind
-        });
-        return this.prepareConnection(node, domainRules, [], fallbackSettings);
+        this.logRuntimeEvent(
+          "warn",
+          `Runtime ${resolvedRuntime.runtimeKind} failed during warmup, retrying with xray.`,
+          {
+            reason: classifiedReason,
+            lifecycle: "reconnecting",
+            runtimeKind: resolvedRuntime.runtimeKind
+          }
+        );
+        return this.prepareConnection(node, domainRules, [], fallbackSettings, "xray");
       }
 
       if (SINGBOX_PROTOCOLS.has(node.protocol)) {
-        const runtimeLog = this.formatRuntimeOutput(runtimeOutput);
         this.setFailure(
-          "runtime_crashed",
+          classifiedReason,
           `Протокол ${node.protocol} требует sing-box, но runtime крашнулся при старте.${runtimeLog ? ` Лог: ${runtimeLog}` : ""}`
         );
       } else {
-        this.setFailure("runtime_crashed", "Runtime exited immediately after start.");
+        this.setFailure(
+          classifiedReason,
+          runtimeLog
+            ? `Runtime exited immediately after start. ${runtimeLog}`
+            : "Runtime exited immediately after start."
+        );
       }
       return null;
     }
@@ -751,7 +1150,8 @@ export class VpnRuntimeManager extends EventEmitter {
     return {
       effectiveSettings,
       resolvedRuntime,
-      session
+      session,
+      fallbackTarget
     };
   }
 
@@ -765,6 +1165,7 @@ export class VpnRuntimeManager extends EventEmitter {
   }
 
   private async _disconnect(): Promise<RuntimeStatus> {
+    this.clearPendingHandoff();
     this.setLifecycle("idle");
     const activeSession = this.getActiveSession();
     this.clearActiveSession();
@@ -927,6 +1328,10 @@ export class VpnRuntimeManager extends EventEmitter {
 
   private getPreferredRuntimeKind(node: VpnNode): RuntimeKind {
     if (SINGBOX_PROTOCOLS.has(node.protocol)) return "sing-box";
+    const preferredRuntime = this.nodeRuntimePreferences.get(node.id);
+    if (preferredRuntime) {
+      return preferredRuntime;
+    }
     return "xray";
   }
 

@@ -17,7 +17,7 @@ import {
   WifiOff,
   Zap
 } from "lucide-react";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { ConnectionTimeline } from "../components/ConnectionTimeline";
 import { DepthBackground } from "../components/DepthBackground";
 import { FlagIcon } from "../components/FlagIcon";
@@ -28,18 +28,6 @@ import { getAPI } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatSpeed, getPingStyle } from "../lib/dashboard-utils";
 import { MOTION } from "../lib/motion";
-import {
-  SMART_CONNECT_FRESH_TTL_MS,
-  SMART_CONNECT_TIMEOUT_MS,
-  SMART_SWITCH_PROBE_BUDGET,
-  buildSmartProbeTargets,
-  computeSmartScore,
-  mergeSmartCandidates,
-  rankFreshSmartCandidates,
-  rankSmartCandidates,
-  shouldSwitchToCandidate,
-  toSmartCandidate
-} from "../lib/smart-connect";
 import { useHealthCheck } from "../lib/useHealthCheck";
 import type { ConnectionMode } from "../store/slices/connection-slice";
 import { useAppStore } from "../store/useAppStore";
@@ -55,13 +43,6 @@ type OrbitParticleStyle = CSSProperties & {
   "--orbit-radius": string;
   "--orbit-duration": string;
   "--orbit-delay": string;
-};
-type PingableServer = {
-  id: string;
-  _host: string;
-  _port: number;
-  ping?: number;
-  lastPingAt?: number | null;
 };
 
 const NO_DRAG_REGION_STYLE: AppRegionStyle = { WebkitAppRegion: "no-drag" };
@@ -88,10 +69,6 @@ const CONNECTION_MODE_TOOLTIP_CONTENT: Record<
     accentClass: "text-white/90 border-white/10"
   }
 };
-
-function isPingableServer<T extends { _host?: string; _port?: number }>(server: T): server is T & PingableServer {
-  return typeof server._host === "string" && server._host.length > 0 && typeof server._port === "number";
-}
 
 /* ── InternetFixButton — gradient style ─────────────────── */
 function InternetFixButton() {
@@ -331,133 +308,6 @@ export function Dashboard() {
     }
   };
 
-  // Smart auto-switch — бесшовный мониторинг при Smart режиме
-  const connectToServer = useAppStore((s) => s.connectToServer);
-  const connectedId = connectedServerId;
-  const lastSwitchRef = useRef(0); // cooldown tracker
-  useEffect(() => {
-    if (!isConnected || connectionMode !== "smart") return;
-    let cancelled = false;
-    let isSwitching = false;
-
-    const checkBetterServer = async () => {
-      if (cancelled || isSwitching) return;
-
-      // Cooldown: не проверяем 60с после переключения
-      if (Date.now() - lastSwitchRef.current < 60_000) return;
-
-      const api = getAPI();
-      if (!api || !connectedId) return;
-
-      // Не переключаем пока идёт другое подключение
-      const state = useAppStore.getState();
-      if (state.isConnecting || state.isDisconnecting) return;
-
-      const allServers = state.servers.filter(isPingableServer);
-      if (allServers.length <= 1) return;
-
-      const cachedSamples = allServers.map((server) => toSmartCandidate({ ...server, ping: server.ping ?? 0 }));
-      const immediateCandidates = rankFreshSmartCandidates(
-        cachedSamples,
-        connectedId,
-        3,
-        Date.now(),
-        SMART_CONNECT_FRESH_TTL_MS
-      );
-      const probeTargetIds = buildSmartProbeTargets(
-        cachedSamples,
-        connectedId,
-        immediateCandidates.length > 0 ? 4 : SMART_SWITCH_PROBE_BUDGET,
-        Date.now(),
-        SMART_CONNECT_FRESH_TTL_MS
-      ).map((candidate) => candidate.id);
-      const probeTargets: PingableServer[] = [];
-      for (const candidateId of probeTargetIds) {
-        const target = allServers.find((server) => server.id === candidateId);
-        if (target) {
-          probeTargets.push(target);
-        }
-      }
-      const probeResults: Array<{ id: string; ping: number; checkedAt: number }> = [];
-
-      for (let index = 0; index < probeTargets.length; index += SMART_SWITCH_PROBE_BUDGET) {
-        if (cancelled) return;
-
-        const chunk = probeTargets.slice(index, index + SMART_SWITCH_PROBE_BUDGET);
-        const chunkResults = await Promise.all(
-          chunk.map(async (server) => {
-            try {
-              const ping = await api.system.ping(server._host, server._port, SMART_CONNECT_TIMEOUT_MS);
-              return { id: server.id, ping, checkedAt: Date.now() };
-            } catch {
-              return { id: server.id, ping: -1, checkedAt: Date.now() };
-            }
-          })
-        );
-        probeResults.push(...chunkResults);
-      }
-
-      if (cancelled) return;
-
-      const currentPing =
-        state.activePing ??
-        probeResults.find((result) => result.id === connectedId)?.ping ??
-        cachedSamples.find((sample) => sample.id === connectedId)?.ping ??
-        Number.POSITIVE_INFINITY;
-      const currentScore = computeSmartScore(
-        probeResults.find((result) => result.id === connectedId) ??
-          cachedSamples.find((sample) => sample.id === connectedId) ?? { id: connectedId, ping: currentPing }
-      );
-      const candidates = rankSmartCandidates(
-        mergeSmartCandidates(
-          immediateCandidates,
-          probeResults.map((result) => ({
-            ...toSmartCandidate(allServers.find((server) => server.id === result.id) ?? { id: result.id, ping: result.ping }),
-            ping: result.ping,
-            checkedAt: result.checkedAt
-          }))
-        ),
-        connectedId
-      ).filter((candidate) => shouldSwitchToCandidate(currentPing, candidate.ping, currentScore, computeSmartScore(candidate)));
-
-      if (candidates.length > 0) {
-        if (cancelled || isSwitching) return;
-        isSwitching = true;
-        console.log(`[smart-switch] Бесшовное переключение: ${currentPing}мс → ${candidates[0]?.ping ?? "?"}мс`);
-        try {
-          for (const candidate of candidates) {
-            if (cancelled) {
-              return;
-            }
-
-            await connectToServer(candidate.id);
-            const nextState = useAppStore.getState();
-            if (nextState.isConnected && nextState.connectedServerId === candidate.id) {
-              lastSwitchRef.current = Date.now();
-              break;
-            }
-          }
-        } catch (e) {
-          console.warn("[smart-switch] Ошибка переключения:", e);
-        } finally {
-          isSwitching = false;
-        }
-      }
-    };
-
-    // Первая проверка через 15с, затем каждые 30с
-    const timeout = setTimeout(() => {
-      if (!cancelled) checkBetterServer();
-    }, 15_000);
-    const interval = setInterval(checkBetterServer, 30_000);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-      clearInterval(interval);
-    };
-  }, [isConnected, connectionMode, connectedId, connectToServer]);
-
   const downMBs = traffic.down / 1024;
   const upMBs = traffic.up / 1024;
   const maxSpeed = Math.max(downMBs, upMBs, 10);
@@ -511,482 +361,484 @@ export function Dashboard() {
         className="relative z-10 h-full w-full overflow-y-auto overflow-x-hidden custom-scrollbar"
       >
         <div className="mx-auto flex min-h-full w-full max-w-[36rem] flex-col items-center justify-center gap-4 px-5 py-4 sm:px-6">
-        {/* ═══ CONNECT BUTTON ═══ */}
-        <div className="relative flex items-center justify-center w-full mt-2" style={NO_DRAG_REGION_STYLE}>
-          {/* Ambient glow — CSS-only, zero JS overhead */}
-          <div
-            className="absolute w-44 h-44 rounded-full pointer-events-none animate-glow-pulse-slow"
-            style={{
-              background: isConnected
-                ? "radial-gradient(circle, rgba(16,185,129,0.35) 0%, transparent 65%)"
-                : "radial-gradient(circle, rgba(255,76,41,0.4) 0%, transparent 65%)"
-            }}
-          />
-
-          {/* Connecting pulse rings — CSS keyframes for compositor thread */}
-          {isConnecting && (
-            <>
-              <div className="absolute w-36 h-36 rounded-full border-2 border-brand/40 pointer-events-none animate-connect-ring" />
-              <div
-                className="absolute w-36 h-36 rounded-full border-2 border-brand/25 pointer-events-none animate-connect-ring"
-                style={{ animationDelay: "0.5s" }}
-              />
-              {/* Status Ring — circular progress arc */}
-              <svg
-                aria-hidden="true"
-                focusable="false"
-                className="absolute w-[168px] h-[168px] animate-status-ring pointer-events-none"
-                viewBox="0 0 168 168"
-              >
-                <circle cx="84" cy="84" r="78" fill="none" stroke="rgba(255,76,41,0.12)" strokeWidth="3" />
-                <circle
-                  cx="84"
-                  cy="84"
-                  r="78"
-                  fill="none"
-                  stroke="url(#glow-grad)"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeDasharray="160 330"
-                  style={{ filter: "drop-shadow(0 0 6px rgba(255,76,41,0.5))" }}
-                />
-                <defs>
-                  <linearGradient id="glow-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FF4C29" stopOpacity="1" />
-                    <stop offset="100%" stopColor="#FF4C29" stopOpacity="0.1" />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </>
-          )}
-
-          {/* VPN data flow particles — orbit around button when connected */}
-          {isConnected &&
-            ORBIT_PARTICLES.map((particle) => (
-              <div
-                key={particle.id}
-                className="absolute rounded-full pointer-events-none animate-vpn-orbit"
-                style={
-                  {
-                    top: "50%",
-                    left: "50%",
-                    width: `${particle.size}px`,
-                    height: `${particle.size}px`,
-                    background: "radial-gradient(circle, rgba(16,185,129,0.95), rgba(16,185,129,0.4))",
-                    boxShadow: "0 0 8px 2px rgba(16,185,129,0.7)",
-                    "--orbit-start": particle.start,
-                    "--orbit-radius": particle.radius,
-                    "--orbit-duration": particle.duration,
-                    "--orbit-delay": particle.delay
-                  } as OrbitParticleStyle
-                }
-              />
-            ))}
-
-          {/* Power Button */}
-          <motion.button
-            onClick={handleConnectClick}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.88 }}
-            transition={MOTION.spring.bouncy}
-            aria-label={isConnecting ? "Подключение..." : isConnected ? "Отключить VPN" : "Подключить VPN"}
-            className={cn(
-              "relative w-36 h-36 rounded-full focus:outline-none z-10 group",
-              isConnected && !isConnecting && !isDisconnecting && "animate-shield-breathe"
-            )}
-          >
-            {/* Pulsing focus ring (keyboard a11y) — CSS-only, zero GPU when not focused */}
-            <div className="absolute inset-[-6px] rounded-full pointer-events-none opacity-0 group-focus-visible:opacity-100 group-focus-visible:animate-pulse-ring transition-opacity" />
-
-            {/* Gradient fill — smooth transition on ping color change */}
-            <motion.div
-              className="absolute inset-0 rounded-full"
-              animate={{ boxShadow: btnShadow }}
-              transition={{ duration: 0.8 }}
-              style={{ background: btnGrad, transition: "background 1s ease" }}
+          {/* ═══ CONNECT BUTTON ═══ */}
+          <div className="relative flex items-center justify-center w-full mt-2" style={NO_DRAG_REGION_STYLE}>
+            {/* Ambient glow — CSS-only, zero JS overhead */}
+            <div
+              className="absolute w-44 h-44 rounded-full pointer-events-none animate-glow-pulse-slow"
+              style={{
+                background: isConnected
+                  ? "radial-gradient(circle, rgba(16,185,129,0.35) 0%, transparent 65%)"
+                  : "radial-gradient(circle, rgba(255,76,41,0.4) 0%, transparent 65%)"
+              }}
             />
 
-            {/* Glass highlight */}
-            <div className="absolute inset-0 rounded-full overflow-hidden">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-[45%] bg-gradient-to-b from-white/20 to-transparent rounded-full blur-sm" />
-            </div>
-
-            {/* Inner border */}
-            <div className="absolute inset-[2px] rounded-full border border-white/10" />
-
-            {/* Icon */}
-            <div className="relative z-10 flex items-center justify-center w-full h-full">
-              {isConnecting ? (
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
-                >
-                  <Loader2 className="w-10 h-10 text-white" strokeWidth={2} />
-                </motion.div>
-              ) : (
-                <Power className="w-10 h-10 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]" strokeWidth={2.5} />
-              )}
-            </div>
-          </motion.button>
-        </div>
-
-        {/* ═══ STATUS TEXT ═══ */}
-        <div className="flex flex-col items-center gap-2 z-10 shrink-0">
-          <AnimatePresence mode="wait">
-            <motion.h1
-              key={isDisconnecting ? "disc" : isConnecting ? "conn" : isConnected ? "on" : "off"}
-              initial={{ opacity: 0, y: 8, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 300, damping: 25 }}
-              className={cn(
-                "text-2xl font-display font-bold tracking-[0.25em] uppercase",
-                isConnected ? "text-emerald-400" : "text-brand"
-              )}
-              style={{
-                textShadow: isConnected ? "0 0 24px rgba(16,185,129,0.6)" : "0 0 24px rgba(255,76,41,0.6)"
-              }}
-            >
-              {isDisconnecting
-                ? "ОТКЛЮЧЕНИЕ..."
-                : isConnecting
-                  ? "ПОДКЛЮЧЕНИЕ..."
-                  : isConnected
-                    ? "ЗАЩИЩЕНО"
-                    : "ОТКЛЮЧЕНО"}
-            </motion.h1>
-          </AnimatePresence>
-
-          {(isConnected || isConnecting || isDisconnecting) && currentServer && (
-            <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-3"
-            >
-              {/* Server name + flag during connecting */}
-              {(isConnecting || isDisconnecting) && (
-                <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
-                  <FlagIcon code={currentServer.countryCode || "un"} size={16} />
-                  {currentServer.name}
-                </span>
-              )}
-              {isConnected && (
-                <span className="uppercase text-[11px] tracking-[0.15em] font-medium text-muted bg-white/[0.04] px-3.5 py-1.5 rounded-full border border-white/[0.06] font-mono-metric">
-                  {(currentServer?.protocol ?? "VPN").toUpperCase()}
-                </span>
-              )}
-            </motion.div>
-          )}
-        </div>
-
-        {/* ═══ CONNECTION TIMELINE ═══ */}
-        {(isConnecting || isDisconnecting) && (
-          <ConnectionTimeline isConnecting={isConnecting} isConnected={false} serverName={currentServer?.name} />
-        )}
-
-        {/* ═══ SMART / DEFAULT MODE TOGGLE ═══ */}
-        {!isConnected && !isConnecting && !isDisconnecting && servers.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={NO_DRAG_REGION_STYLE}
-            className="relative z-20 flex flex-col items-center gap-3 shrink-0"
-          >
-            <div className="relative flex items-center gap-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-1 backdrop-blur-sm">
-              <button
-                type="button"
-                onClick={() => setConnectionMode("smart")}
-                onPointerEnter={() => setHoveredMode("smart")}
-                onPointerLeave={() => hideConnectionModeTooltip("smart")}
-                onMouseEnter={() => setHoveredMode("smart")}
-                onMouseLeave={() => hideConnectionModeTooltip("smart")}
-                onFocus={() => setHoveredMode("smart")}
-                onBlur={() => hideConnectionModeTooltip("smart")}
-                className={cn(
-                  "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300",
-                  connectionMode === "smart"
-                    ? "bg-brand/15 text-brand border border-brand/25 shadow-[0_0_12px_rgba(255,76,41,0.18)]"
-                    : "text-muted hover:text-white/60"
-                )}
-              >
-                <Zap className="w-3.5 h-3.5" />
-                Smart
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setConnectionMode("default")}
-                onPointerEnter={() => setHoveredMode("default")}
-                onPointerLeave={() => hideConnectionModeTooltip("default")}
-                onMouseEnter={() => setHoveredMode("default")}
-                onMouseLeave={() => hideConnectionModeTooltip("default")}
-                onFocus={() => setHoveredMode("default")}
-                onBlur={() => hideConnectionModeTooltip("default")}
-                className={cn(
-                  "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300",
-                  connectionMode === "default"
-                    ? "bg-white/[0.08] text-white/80 border border-white/[0.12] shadow-[0_0_12px_rgba(255,255,255,0.05)]"
-                    : "text-muted hover:text-white/60"
-                )}
-              >
-                <Lock className="w-3.5 h-3.5" />
-                Default
-              </button>
-            </div>
-
-            <div className="flex min-h-[58px] w-full items-start justify-center">
-              <AnimatePresence mode="wait">
-                {hoveredMode && (
-                  <motion.div
-                    key={hoveredMode}
-                    data-testid="connection-mode-tooltip"
-                    initial={{ opacity: 0, y: -4, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                    transition={{ duration: 0.16, ease: "easeOut" }}
-                    className="rounded-2xl border bg-[#2C394B]/96 px-3 py-2.5 text-center text-[10px] leading-tight text-white/90 shadow-[0_12px_36px_rgba(0,0,0,0.42)] backdrop-blur-md pointer-events-none"
-                    style={{ ...NO_DRAG_REGION_STYLE, width: 248, maxWidth: "calc(100vw - 112px)" }}
-                  >
-                    <span
-                      className={cn(
-                        "mb-1 block border-b pb-1 font-bold",
-                        CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].accentClass
-                      )}
-                    >
-                      {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].title}
-                    </span>
-                    {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].description}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </motion.div>
-        )}
-
-        {/* ═══ ERROR ═══ */}
-        <AnimatePresence>
-          {errorMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 px-4 py-2.5 rounded-2xl text-sm text-red-400 font-semibold max-w-[400px] z-10 backdrop-blur-sm"
-            >
-              <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span className="truncate">{errorMessage}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ═══ STATS GRID ═══ */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="z-10 flex w-full max-w-[480px] shrink-0 flex-col gap-2.5 overflow-visible"
-          style={NO_DRAG_REGION_STYLE}
-        >
-          {/* Quick-stats strip (Connected) */}
-          {isConnected && (
-            <InfoCard className="w-full py-3 px-4 flex-row items-center justify-between !cursor-default backdrop-blur-md bg-white/[0.04]">
-              <div
-                className="flex items-center gap-2 text-white/90 font-mono-metric text-[13px] font-medium"
-                title="Узел"
-              >
-                <Globe className="w-4 h-4 text-brand" />
-                <span>{currentServer?.countryCode?.toUpperCase() || "UN"}</span>
-              </div>
-              <div className="w-px h-4 bg-white/10" />
-              <div
-                className="flex items-center gap-2 text-white/90 font-mono-metric text-[13px] font-medium"
-                title="Задержка (Ping)"
-              >
-                <Wifi className={cn("w-4 h-4", pingDisplay.color.replace("bg-", "text-").replace("/10", ""))} />
-                <span>{pingDisplay.text}</span>
-              </div>
-              <div className="w-px h-4 bg-white/10" />
-              <div
-                className="flex items-center gap-2 text-white/90 font-mono-metric text-[13px] font-medium"
-                title="Время сессии"
-              >
-                <Clock className="w-4 h-4 text-violet-400" />
-                <span>
-                  {String(Math.floor(sessionElapsed / 3600)).padStart(2, "0")}:
-                  {String(Math.floor((sessionElapsed % 3600) / 60)).padStart(2, "0")}:
-                  {String(sessionElapsed % 60).padStart(2, "0")}
-                </span>
-              </div>
-            </InfoCard>
-          )}
-
-          {/* Cards Row */}
-          <div data-testid="dashboard-cards-grid" className="grid grid-cols-2 gap-2.5 w-full">
-            {/* IP Card */}
-            {!realIp && !isConnected ? (
-              <InfoCard
-                className={
-                  isConnected
-                    ? "col-span-2 flex-row justify-between items-center py-2 px-4 !cursor-default"
-                    : "flex-col"
-                }
-              >
-                <Skeleton className="w-5 h-4 rounded" />
-                <div className="flex flex-col gap-1.5 flex-1">
-                  <Skeleton className="h-3 w-8" />
-                  <Skeleton className="h-4 w-28" />
-                </div>
-              </InfoCard>
-            ) : (
-              <InfoCard
-                className={
-                  isConnected
-                    ? "col-span-2 flex-row justify-between items-center py-2 px-4 !cursor-default"
-                    : "flex-col"
-                }
-              >
+            {/* Connecting pulse rings — CSS keyframes for compositor thread */}
+            {isConnecting && (
+              <>
+                <div className="absolute w-36 h-36 rounded-full border-2 border-brand/40 pointer-events-none animate-connect-ring" />
                 <div
-                  className={cn(
-                    "flex shrink-0",
-                    isConnected ? "flex-row items-center gap-3" : "flex-col items-center gap-0.5"
-                  )}
+                  className="absolute w-36 h-36 rounded-full border-2 border-brand/25 pointer-events-none animate-connect-ring"
+                  style={{ animationDelay: "0.5s" }}
+                />
+                {/* Status Ring — circular progress arc */}
+                <svg
+                  aria-hidden="true"
+                  focusable="false"
+                  className="absolute w-[168px] h-[168px] animate-status-ring pointer-events-none"
+                  viewBox="0 0 168 168"
                 >
-                  {ipCountryCode ? (
-                    <img
-                      src={`https://flagcdn.com/w40/${ipCountryCode}.png`}
-                      alt={ipCountryCode}
-                      className="w-5 h-4 object-cover rounded-[3px] shadow-sm"
-                      style={{ imageRendering: "auto" }}
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <ShieldCheck className={cn("w-4 h-4", isConnected ? "text-[#FF6B47]" : "text-subtle")} />
-                  )}
-                  {ipCountryCode && !isConnected && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider text-muted leading-none">
-                      {ipCountryCode.toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div
-                  className={cn(
-                    "flex relative z-10",
-                    isConnected ? "flex-row items-center gap-3 flex-1 px-4" : "flex-col min-w-0 flex-1"
-                  )}
-                >
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-muted leading-tight">IP</span>
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={ipHidden ? "h" : "v"}
-                      initial={{ opacity: 0, filter: "blur(4px)" }}
-                      animate={{ opacity: 1, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, filter: "blur(4px)" }}
-                      className={cn(
-                        "text-[13px] font-semibold truncate tracking-wide font-mono-metric",
-                        isConnected ? "text-white/85 text-[14px]" : "text-subtle"
-                      )}
-                    >
-                      {ipHidden ? "•••.•••.•••" : realIp || "…"}
-                    </motion.span>
-                  </AnimatePresence>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0 relative z-10">
-                  {isConnected && (
-                    <button
-                      type="button"
-                      aria-label={ipHidden ? "Показать IP" : "Скрыть IP"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIpHidden(!ipHidden);
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-white/5 transition-all w-8 h-8 flex items-center justify-center shrink-0"
-                    >
-                      {ipHidden ? (
-                        <EyeOff className="w-3.5 h-3.5 text-whisper" />
-                      ) : (
-                        <Eye className="w-3.5 h-3.5 text-[#FF6B47]/50" />
-                      )}
-                    </button>
-                  )}
-                  {realIp && !ipHidden && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (realIp) {
-                          navigator.clipboard.writeText(realIp);
-                          setIpCopied(true);
-                          setTimeout(() => setIpCopied(false), 2000);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-white/5 transition-all w-8 h-8 flex items-center justify-center shrink-0"
-                      title="Скопировать IP"
-                    >
-                      {ipCopied ? (
-                        <Check className="w-3.5 h-3.5 text-[#FF6B47]" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5 text-whisper" />
-                      )}
-                    </button>
-                  )}
-                </div>
-              </InfoCard>
+                  <circle cx="84" cy="84" r="78" fill="none" stroke="rgba(255,76,41,0.12)" strokeWidth="3" />
+                  <circle
+                    cx="84"
+                    cy="84"
+                    r="78"
+                    fill="none"
+                    stroke="url(#glow-grad)"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray="160 330"
+                    style={{ filter: "drop-shadow(0 0 6px rgba(255,76,41,0.5))" }}
+                  />
+                  <defs>
+                    <linearGradient id="glow-grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#FF4C29" stopOpacity="1" />
+                      <stop offset="100%" stopColor="#FF4C29" stopOpacity="0.1" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </>
             )}
 
-            {/* Server Card - Show only when disconnected */}
-            {!isConnected && (
-              <InfoCard onClick={() => setScreen("servers")}>
-                {currentServer ? (
-                  <FlagIcon code={currentServer.countryCode || "un"} size={28} />
+            {/* VPN data flow particles — orbit around button when connected */}
+            {isConnected &&
+              ORBIT_PARTICLES.map((particle) => (
+                <div
+                  key={particle.id}
+                  className="absolute rounded-full pointer-events-none animate-vpn-orbit"
+                  style={
+                    {
+                      top: "50%",
+                      left: "50%",
+                      width: `${particle.size}px`,
+                      height: `${particle.size}px`,
+                      background: "radial-gradient(circle, rgba(16,185,129,0.95), rgba(16,185,129,0.4))",
+                      boxShadow: "0 0 8px 2px rgba(16,185,129,0.7)",
+                      "--orbit-start": particle.start,
+                      "--orbit-radius": particle.radius,
+                      "--orbit-duration": particle.duration,
+                      "--orbit-delay": particle.delay
+                    } as OrbitParticleStyle
+                  }
+                />
+              ))}
+
+            {/* Power Button */}
+            <motion.button
+              onClick={handleConnectClick}
+              whileHover={{ scale: 1.06 }}
+              whileTap={{ scale: 0.88 }}
+              transition={MOTION.spring.bouncy}
+              aria-label={isConnecting ? "Подключение..." : isConnected ? "Отключить VPN" : "Подключить VPN"}
+              className={cn(
+                "relative w-36 h-36 rounded-full focus:outline-none z-10 group",
+                isConnected && !isConnecting && !isDisconnecting && "animate-shield-breathe"
+              )}
+            >
+              {/* Pulsing focus ring (keyboard a11y) — CSS-only, zero GPU when not focused */}
+              <div className="absolute inset-[-6px] rounded-full pointer-events-none opacity-0 group-focus-visible:opacity-100 group-focus-visible:animate-pulse-ring transition-opacity" />
+
+              {/* Gradient fill — smooth transition on ping color change */}
+              <motion.div
+                className="absolute inset-0 rounded-full"
+                animate={{ boxShadow: btnShadow }}
+                transition={{ duration: 0.8 }}
+                style={{ background: btnGrad, transition: "background 1s ease" }}
+              />
+
+              {/* Glass highlight */}
+              <div className="absolute inset-0 rounded-full overflow-hidden">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-[45%] bg-gradient-to-b from-white/20 to-transparent rounded-full blur-sm" />
+              </div>
+
+              {/* Inner border */}
+              <div className="absolute inset-[2px] rounded-full border border-white/10" />
+
+              {/* Icon */}
+              <div className="relative z-10 flex items-center justify-center w-full h-full">
+                {isConnecting ? (
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
+                  >
+                    <Loader2 className="w-10 h-10 text-white" strokeWidth={2} />
+                  </motion.div>
                 ) : (
-                  <div className="w-9 h-9 rounded-full bg-white/3 flex items-center justify-center shrink-0">
-                    <Globe className="w-[18px] h-[18px] text-subtle" />
-                  </div>
+                  <Power className="w-10 h-10 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]" strokeWidth={2.5} />
                 )}
-                <div className="flex flex-col min-w-0 flex-1 relative z-10">
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-muted leading-tight">Узел</span>
-                  <span className="text-lg font-semibold truncate text-white/75 group-hover:text-brand transition-colors">
-                    {currentServer ? currentServer.name : "Выбрать"}
+              </div>
+            </motion.button>
+          </div>
+
+          {/* ═══ STATUS TEXT ═══ */}
+          <div className="flex flex-col items-center gap-2 z-10 shrink-0">
+            <AnimatePresence mode="wait">
+              <motion.h1
+                key={isDisconnecting ? "disc" : isConnecting ? "conn" : isConnected ? "on" : "off"}
+                initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                className={cn(
+                  "text-2xl font-display font-bold tracking-[0.25em] uppercase",
+                  isConnected ? "text-emerald-400" : "text-brand"
+                )}
+                style={{
+                  textShadow: isConnected ? "0 0 24px rgba(16,185,129,0.6)" : "0 0 24px rgba(255,76,41,0.6)"
+                }}
+              >
+                {isDisconnecting
+                  ? "ОТКЛЮЧЕНИЕ..."
+                  : isConnecting
+                    ? "ПОДКЛЮЧЕНИЕ..."
+                    : isConnected
+                      ? "ЗАЩИЩЕНО"
+                      : "ОТКЛЮЧЕНО"}
+              </motion.h1>
+            </AnimatePresence>
+
+            {(isConnected || isConnecting || isDisconnecting) && currentServer && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-3"
+              >
+                {/* Server name + flag during connecting */}
+                {(isConnecting || isDisconnecting) && (
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                    <FlagIcon code={currentServer.countryCode || "un"} size={16} />
+                    {currentServer.name}
+                  </span>
+                )}
+                {isConnected && (
+                  <span className="uppercase text-[11px] tracking-[0.15em] font-medium text-muted bg-white/[0.04] px-3.5 py-1.5 rounded-full border border-white/[0.06] font-mono-metric">
+                    {(currentServer?.protocol ?? "VPN").toUpperCase()}
+                  </span>
+                )}
+              </motion.div>
+            )}
+          </div>
+
+          {/* ═══ CONNECTION TIMELINE ═══ */}
+          {(isConnecting || isDisconnecting) && (
+            <ConnectionTimeline isConnecting={isConnecting} isConnected={false} serverName={currentServer?.name} />
+          )}
+
+          {/* ═══ SMART / DEFAULT MODE TOGGLE ═══ */}
+          {!isConnected && !isConnecting && !isDisconnecting && servers.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={NO_DRAG_REGION_STYLE}
+              className="relative z-20 flex flex-col items-center gap-3 shrink-0"
+            >
+              <div className="relative flex items-center gap-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-1 backdrop-blur-sm">
+                <button
+                  type="button"
+                  onClick={() => setConnectionMode("smart")}
+                  onPointerEnter={() => setHoveredMode("smart")}
+                  onPointerLeave={() => hideConnectionModeTooltip("smart")}
+                  onMouseEnter={() => setHoveredMode("smart")}
+                  onMouseLeave={() => hideConnectionModeTooltip("smart")}
+                  onFocus={() => setHoveredMode("smart")}
+                  onBlur={() => hideConnectionModeTooltip("smart")}
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300",
+                    connectionMode === "smart"
+                      ? "bg-brand/15 text-brand border border-brand/25 shadow-[0_0_12px_rgba(255,76,41,0.18)]"
+                      : "text-muted hover:text-white/60"
+                  )}
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  Smart
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setConnectionMode("default")}
+                  onPointerEnter={() => setHoveredMode("default")}
+                  onPointerLeave={() => hideConnectionModeTooltip("default")}
+                  onMouseEnter={() => setHoveredMode("default")}
+                  onMouseLeave={() => hideConnectionModeTooltip("default")}
+                  onFocus={() => setHoveredMode("default")}
+                  onBlur={() => hideConnectionModeTooltip("default")}
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300",
+                    connectionMode === "default"
+                      ? "bg-white/[0.08] text-white/80 border border-white/[0.12] shadow-[0_0_12px_rgba(255,255,255,0.05)]"
+                      : "text-muted hover:text-white/60"
+                  )}
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  Default
+                </button>
+              </div>
+
+              <div className="flex min-h-[58px] w-full items-start justify-center">
+                <AnimatePresence mode="wait">
+                  {hoveredMode && (
+                    <motion.div
+                      key={hoveredMode}
+                      data-testid="connection-mode-tooltip"
+                      initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                      transition={{ duration: 0.16, ease: "easeOut" }}
+                      className="rounded-2xl border bg-[#2C394B]/96 px-3 py-2.5 text-center text-[10px] leading-tight text-white/90 shadow-[0_12px_36px_rgba(0,0,0,0.42)] backdrop-blur-md pointer-events-none"
+                      style={{ ...NO_DRAG_REGION_STYLE, width: 248, maxWidth: "calc(100vw - 112px)" }}
+                    >
+                      <span
+                        className={cn(
+                          "mb-1 block border-b pb-1 font-bold",
+                          CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].accentClass
+                        )}
+                      >
+                        {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].title}
+                      </span>
+                      {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].description}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ═══ ERROR ═══ */}
+          <AnimatePresence>
+            {errorMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 px-4 py-2.5 rounded-2xl text-sm text-red-400 font-semibold max-w-[400px] z-10 backdrop-blur-sm"
+              >
+                <ShieldAlert className="w-4 h-4 shrink-0" />
+                <span className="truncate">{errorMessage}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ═══ STATS GRID ═══ */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            className="z-10 flex w-full max-w-[480px] shrink-0 flex-col gap-2.5 overflow-visible"
+            style={NO_DRAG_REGION_STYLE}
+          >
+            {/* Quick-stats strip (Connected) */}
+            {isConnected && (
+              <InfoCard className="w-full py-3 px-4 flex-row items-center justify-between !cursor-default backdrop-blur-md bg-white/[0.04]">
+                <div
+                  className="flex items-center gap-2 text-white/90 font-mono-metric text-[13px] font-medium"
+                  title="Узел"
+                >
+                  <Globe className="w-4 h-4 text-brand" />
+                  <span>{currentServer?.countryCode?.toUpperCase() || "UN"}</span>
+                </div>
+                <div className="w-px h-4 bg-white/10" />
+                <div
+                  className="flex items-center gap-2 text-white/90 font-mono-metric text-[13px] font-medium"
+                  title="Задержка (Ping)"
+                >
+                  <Wifi className={cn("w-4 h-4", pingDisplay.color.replace("bg-", "text-").replace("/10", ""))} />
+                  <span>{pingDisplay.text}</span>
+                </div>
+                <div className="w-px h-4 bg-white/10" />
+                <div
+                  className="flex items-center gap-2 text-white/90 font-mono-metric text-[13px] font-medium"
+                  title="Время сессии"
+                >
+                  <Clock className="w-4 h-4 text-violet-400" />
+                  <span>
+                    {String(Math.floor(sessionElapsed / 3600)).padStart(2, "0")}:
+                    {String(Math.floor((sessionElapsed % 3600) / 60)).padStart(2, "0")}:
+                    {String(sessionElapsed % 60).padStart(2, "0")}
                   </span>
                 </div>
               </InfoCard>
             )}
-          </div>
 
-          {/* Speed Gauges */}
-          {isConnected && (
-            <InfoCard className="justify-center !cursor-default py-3">
-              <div className="flex items-center justify-center gap-8 w-full relative z-10">
-                <SpeedGraph
-                  value={downMBs}
-                  maxValue={maxSpeed}
-                  unit={downSpeed.unit}
-                  label="Приём"
-                  color="brand"
-                  isActive={traffic.down > 0}
-                />
-                <SpeedGraph
-                  value={upMBs}
-                  maxValue={maxSpeed}
-                  unit={upSpeed.unit}
-                  label="Отдача"
-                  color="emerald"
-                  isActive={traffic.up > 0}
-                />
-              </div>
-            </InfoCard>
-          )}
+            {/* Cards Row */}
+            <div data-testid="dashboard-cards-grid" className="grid grid-cols-2 gap-2.5 w-full">
+              {/* IP Card */}
+              {!realIp && !isConnected ? (
+                <InfoCard
+                  className={
+                    isConnected
+                      ? "col-span-2 flex-row justify-between items-center py-2 px-4 !cursor-default"
+                      : "flex-col"
+                  }
+                >
+                  <Skeleton className="w-5 h-4 rounded" />
+                  <div className="flex flex-col gap-1.5 flex-1">
+                    <Skeleton className="h-3 w-8" />
+                    <Skeleton className="h-4 w-28" />
+                  </div>
+                </InfoCard>
+              ) : (
+                <InfoCard
+                  className={
+                    isConnected
+                      ? "col-span-2 flex-row justify-between items-center py-2 px-4 !cursor-default"
+                      : "flex-col"
+                  }
+                >
+                  <div
+                    className={cn(
+                      "flex shrink-0",
+                      isConnected ? "flex-row items-center gap-3" : "flex-col items-center gap-0.5"
+                    )}
+                  >
+                    {ipCountryCode ? (
+                      <img
+                        src={`https://flagcdn.com/w40/${ipCountryCode}.png`}
+                        alt={ipCountryCode}
+                        className="w-5 h-4 object-cover rounded-[3px] shadow-sm"
+                        style={{ imageRendering: "auto" }}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <ShieldCheck className={cn("w-4 h-4", isConnected ? "text-[#FF6B47]" : "text-subtle")} />
+                    )}
+                    {ipCountryCode && !isConnected && (
+                      <span className="text-[8px] font-bold uppercase tracking-wider text-muted leading-none">
+                        {ipCountryCode.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className={cn(
+                      "flex relative z-10",
+                      isConnected ? "flex-row items-center gap-3 flex-1 px-4" : "flex-col min-w-0 flex-1"
+                    )}
+                  >
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted leading-tight">IP</span>
+                    <AnimatePresence mode="wait">
+                      <motion.span
+                        key={ipHidden ? "h" : "v"}
+                        initial={{ opacity: 0, filter: "blur(4px)" }}
+                        animate={{ opacity: 1, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, filter: "blur(4px)" }}
+                        className={cn(
+                          "text-[13px] font-semibold truncate tracking-wide font-mono-metric",
+                          isConnected ? "text-white/85 text-[14px]" : "text-subtle"
+                        )}
+                      >
+                        {ipHidden ? "•••.•••.•••" : realIp || "…"}
+                      </motion.span>
+                    </AnimatePresence>
+                  </div>
 
-          {/* Internet Fix */}
-          <div className="w-full mt-1 flex justify-center">
-            <InternetFixButton />
-          </div>
+                  <div className="flex items-center gap-1 shrink-0 relative z-10">
+                    {isConnected && (
+                      <button
+                        type="button"
+                        aria-label={ipHidden ? "Показать IP" : "Скрыть IP"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIpHidden(!ipHidden);
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-white/5 transition-all w-8 h-8 flex items-center justify-center shrink-0"
+                      >
+                        {ipHidden ? (
+                          <EyeOff className="w-3.5 h-3.5 text-whisper" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5 text-[#FF6B47]/50" />
+                        )}
+                      </button>
+                    )}
+                    {realIp && !ipHidden && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (realIp) {
+                            navigator.clipboard.writeText(realIp);
+                            setIpCopied(true);
+                            setTimeout(() => setIpCopied(false), 2000);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-white/5 transition-all w-8 h-8 flex items-center justify-center shrink-0"
+                        title="Скопировать IP"
+                      >
+                        {ipCopied ? (
+                          <Check className="w-3.5 h-3.5 text-[#FF6B47]" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5 text-whisper" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </InfoCard>
+              )}
 
-          {/* Usage Insights - Only when disconnected to save space, or always? Let's show always but at the bottom */}
-          {!isConnected && !isConnecting && !isDisconnecting && <UsageInsights className="mt-2" />}
-        </motion.div>
+              {/* Server Card - Show only when disconnected */}
+              {!isConnected && (
+                <InfoCard onClick={() => setScreen("servers")}>
+                  {currentServer ? (
+                    <FlagIcon code={currentServer.countryCode || "un"} size={28} />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-white/3 flex items-center justify-center shrink-0">
+                      <Globe className="w-[18px] h-[18px] text-subtle" />
+                    </div>
+                  )}
+                  <div className="flex flex-col min-w-0 flex-1 relative z-10">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted leading-tight">
+                      Узел
+                    </span>
+                    <span className="text-lg font-semibold truncate text-white/75 group-hover:text-brand transition-colors">
+                      {currentServer ? currentServer.name : "Выбрать"}
+                    </span>
+                  </div>
+                </InfoCard>
+              )}
+            </div>
+
+            {/* Speed Gauges */}
+            {isConnected && (
+              <InfoCard className="justify-center !cursor-default py-3">
+                <div className="flex items-center justify-center gap-8 w-full relative z-10">
+                  <SpeedGraph
+                    value={downMBs}
+                    maxValue={maxSpeed}
+                    unit={downSpeed.unit}
+                    label="Приём"
+                    color="brand"
+                    isActive={traffic.down > 0}
+                  />
+                  <SpeedGraph
+                    value={upMBs}
+                    maxValue={maxSpeed}
+                    unit={upSpeed.unit}
+                    label="Отдача"
+                    color="emerald"
+                    isActive={traffic.up > 0}
+                  />
+                </div>
+              </InfoCard>
+            )}
+
+            {/* Internet Fix */}
+            <div className="w-full mt-1 flex justify-center">
+              <InternetFixButton />
+            </div>
+
+            {/* Usage Insights - Only when disconnected to save space, or always? Let's show always but at the bottom */}
+            {!isConnected && !isConnecting && !isDisconnecting && <UsageInsights className="mt-2" />}
+          </motion.div>
         </div>
       </div>
     </main>

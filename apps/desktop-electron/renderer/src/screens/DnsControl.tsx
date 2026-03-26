@@ -2,10 +2,10 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Globe2, ShieldCheck, Sparkles, Wifi } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { parseDnsServers } from "../../../shared/system-dns";
 import { getAPI } from "../lib/api";
 import { cn } from "../lib/cn";
 import { useAppStore } from "../store/useAppStore";
-import { parseDnsServers } from "../../../shared/system-dns";
 
 const DNS_PRESETS = [
   {

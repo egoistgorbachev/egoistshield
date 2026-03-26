@@ -5,6 +5,52 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [3.3.0] — 2026-03-25
+
+### 🚀 Make-Before-Break Handoff & Safer Runtime Cutover
+
+Релиз доводит desktop-клиент до следующего слоя бесшовности: при reconnect и smart switch новая сессия теперь не просто открывает порт, а проходит дополнительную verification перед переключением системного proxy. Если новый runtime срывается в handoff window, клиент старается сохранить предыдущее рабочее соединение.
+
+#### ✨ Добавлено
+- **Stronger prepared-session verification**: новая runtime-сессия подтверждается серией локальных probe, а не только `waitForPort`.
+- **Make-before-break handoff window**: старая сессия удерживается дольше в controlled grace period, пока новая проходит handoff verification.
+- **Rollback to previous session**: при сбое нового runtime в первые секунды после cutover клиент восстанавливает предыдущее активное соединение.
+
+#### ✅ Исправлено
+- Повторные reconnect/smart switch меньше приводят к жёсткому обрыву, если новая сессия стартовала нестабильно.
+- Default mode использует тот же более безопасный handoff-path, что и smart mode.
+- Отдельный `System DNS Center` и системный DNS flow не изменены и не вовлечены в новую handoff-логику.
+
+#### 🧪 Верификация
+- `biome check`
+- `tsc --noEmit`
+- `vitest`
+- локальная Windows `dist` сборка installer-артефакта `3.3.0`
+
+## [3.2.0] — 2026-03-25
+
+### 🚀 Smart Connect v3.1 Tuning & Stability-First Release
+
+Релиз закрепляет новый этап сетевой оптимизации desktop-клиента: smart mode стал осторожнее к churn, лучше различает совместимость runtime и сильнее приоритизирует устойчивую сессию без потери реакции на реально более быстрые узлы.
+
+#### ✨ Добавлено
+- **Adaptive Smart Connect tuning**: protocol-aware профили для `VLESS/VMess/Trojan`, `Shadowsocks/HTTP/SOCKS`, `Hysteria2/TUIC`, `WireGuard`.
+- **Quality cache с decay**: planner учитывает `stabilityScore`, `probeConfidence`, историю quality/ping и деградации узла.
+- **Exploration sampling**: smart mode периодически проверяет кандидатов вне основного shortlist и не застревает на локальном optimum.
+- **Runtime suitability memory**: успешный fallback закрепляет временное предпочтение runtime для узла, а проблемная связка `node + runtime` получает penalty/cooldown.
+
+#### ✅ Исправлено
+- Auto-switch больше не реагирует на единичный шумный spike и требует подтверждённого выигрыша перед cutover.
+- После удачных probe или стабильной активной сессии cooldown ослабляется мягко, без мгновенного возврата к агрессивному churn.
+- Early smart health checks перестроены в контур `3s -> 10s -> 30s` для более быстрой реакции после подключения.
+- Smart monitoring теперь бюджетно опрашивает active node и shortlist кандидатов, а не шумит по всему пулу постоянно.
+
+#### 🧪 Верификация
+- `biome check`
+- `tsc --noEmit`
+- `vitest`
+- локальная Windows `dist` сборка installer-артефакта `3.2.0`
+
 ## [3.1.0] — 2026-03-25
 
 ### 🚀 Network Engine, DNS Center & Release Refinement

@@ -1,6 +1,5 @@
 const DNS_SEPARATOR_PATTERN = /[\s,;]+/;
-const IPV4_PATTERN =
-  /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const IPV4_PATTERN = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 
 export interface ParsedDnsServers {
   servers: string[];
@@ -10,7 +9,7 @@ export interface ParsedDnsServers {
 
 function stripWrappingQuotes(value: string): string {
   if (
-    (value.startsWith("\"") && value.endsWith("\"")) ||
+    (value.startsWith('"') && value.endsWith('"')) ||
     (value.startsWith("'") && value.endsWith("'")) ||
     (value.startsWith("`") && value.endsWith("`"))
   ) {

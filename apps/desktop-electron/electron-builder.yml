@@ -1,5 +1,6 @@
 appId: com.egoistshield.app
 productName: EgoistShield
+executableName: EgoistShield
 copyright: Copyright © 2026 EgoistShield Team
 
 directories:

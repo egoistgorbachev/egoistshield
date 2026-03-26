@@ -14,7 +14,7 @@
   </a>
   <img src="https://img.shields.io/badge/Windows-10%2F11-0ea5e9?style=for-the-badge&logo=windows" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=for-the-badge&logo=typescript" alt="TypeScript strict" />
-  <img src="https://img.shields.io/badge/Desktop-v3.1.0-ff6b3d?style=for-the-badge" alt="Desktop 3.1.0" />
+  <img src="https://img.shields.io/badge/Desktop-v3.3.0-ff6b3d?style=for-the-badge" alt="Desktop 3.3.0" />
 </p>
 
 <p align="center">
@@ -38,13 +38,13 @@
 
 Проект ориентирован на пользователей, которым нужен **локально управляемый Windows-клиент** с современным UI и воспроизводимым релизным контуром.
 
-## Что нового в 3.1.0
+## Что нового в 3.3.0
 
-- **Smart Connect на health-score модели**: выбор сервера больше не опирается только на ping, а учитывает историю успешности и качество соединения.
-- **Runtime lifecycle и diagnostics**: явные состояния `probing`, `connecting`, `warmup`, `active`, `degraded`, `failed`.
-- **System DNS Center**: отдельный экран для установки и сброса системного DNS Windows.
-- **Структурированные логи соединения**: удобнее разбирать причины ошибок и деградации.
-- **Обновлённый Windows installer pipeline**: стабильная сборка и выпуск инсталлятора `3.1.0`.
+- **Make-before-break handoff**: при smart/default reconnect новая сессия теперь проходит дополнительную verification перед cutover.
+- **Rollback на предыдущую сессию**: если новый runtime срывается в первые секунды handoff, клиент восстанавливает предыдущее соединение вместо жёсткого провала.
+- **Stronger prepared-session checks**: переключение больше не опирается только на `waitForPort`; добавлена серия локальных probe на стабильность новой proxy-сессии.
+- **Default mode и DNS flow сохранены**: улучшения внесены в runtime handoff, без изменения отдельного `System DNS Center` и без ломки обычного подключения.
+- **Smart Connect v3.1 tuning остаётся базой**: adaptive scoring, quality cache и budgeted sampling продолжают работать поверх более безопасного cutover.
 
 Подробности по изменениям: [CHANGELOG.md](CHANGELOG.md).
 
@@ -54,7 +54,7 @@
 | --- | --- |
 | Подключение | все популярные, актуальные протоколы|
 | Runtime | Xray + Sing-box, runtime diagnostics, soft fallback |
-| Smart Connect | health-score выбор узлов, fallback-цепочка, быстрый warm-switch |
+| Smart Connect | adaptive health-score, protocol-aware ranking, fallback-цепочка, budgeted warm-switch |
 | Импорт | подписки, URI, буфер обмена, файлы конфигурации |
 | Система | Kill Switch, автозапуск, авто-подключение, ручная проверка обновлений |
 | DNS | отдельный экран системного DNS, reset к DHCP, валидация ввода |
