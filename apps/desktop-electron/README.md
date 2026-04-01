@@ -2,19 +2,27 @@
 
 Desktop-клиент `EgoistShield` для Windows 10/11.
 
-Текущая ветка документации соответствует релизному состоянию **3.6.0**.
+Текущая ветка документации соответствует опубликованному GitHub Release **3.6.0** от **2026-04-01**.
 
 ## Что есть в desktop-версии
 
 - **Мультипротокольный импорт и подключение**: VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria2, TUIC, WireGuard.
 - **Dual-runtime**: Xray + Sing-box.
-- **Smart Connect v3.3 handoff**: adaptive health-score выбор узлов, protocol-aware ranking, make-before-break cutover, rollback на предыдущую сессию при срыве нового runtime.
+- **Smart Connect + safer handoff**: adaptive health-score выбор узлов, protocol-aware ranking, make-before-break cutover и rollback на предыдущую сессию при срыве нового runtime.
+- **Zapret Control / Flowseal**: отдельный экран для standalone/service-режима, профилей, автоподбора, диагностики, maintenance-инструментов и очистки Discord-кеша.
 - **System DNS Center**: установка и сброс системного DNS Windows с валидацией ввода.
 - **Kill Switch**: управление firewall-правилами Windows для защиты при обрыве соединения.
-- **Автозапуск и авто-подключение**.
+- **Автозапуск и авто-подключение** с синхронизацией Windows login item при старте приложения.
 - **Updater**: ручная проверка новой версии и установка релиза через GitHub Releases.
-- **Диагностика**: structured logs, runtime lifecycle, runtime diagnostics, route probe, connection logs.
+- **Диагностика**: structured logs, runtime lifecycle, honest route probe, runtime diagnostics, connection logs.
 - **UI**: dashboard, server list, 3D-globe, usage insights, command palette, polished dark design system.
+
+## Что вошло в 3.6.0
+
+- **Zapret Control** собрал в одном месте службу, standalone-режим, профили, Flowseal maintenance и диагностику вместо разрозненных настроек.
+- **Honest route probe** заменил псевдо-`dns leak test`: UI теперь честно показывает direct/VPN egress-маршруты.
+- **Release polish** синхронизирует автозапуск с Windows startup login item и чище переживает install/update/uninstall цикл.
+- **Settings cleanup** оставляет в общих настройках только точку входа в `DNS Center` и `Zapret Control`, без дублирующего управления.
 
 ## Стек
 
@@ -64,10 +72,18 @@ npm run dist
 npm run dist
 ```
 
-Инсталлятор появится в:
+Артефакты релиза появятся в:
 
 ```text
 apps/desktop-electron/out/dist/
+```
+
+Ожидаемый набор для GitHub Release:
+
+```text
+EgoistShield-<version>-Setup.exe
+EgoistShield-<version>-Setup.exe.blockmap
+latest.yml
 ```
 
 ## Лицензия

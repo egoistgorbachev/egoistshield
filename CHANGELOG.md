@@ -5,22 +5,31 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
-## [3.6.0] — 2026-03-29
+## [3.6.0] — 2026-04-01
 
-### 🚀 Release Polish, Honest Route Probe & Settings Cleanup
+### 🚀 Zapret Control, Honest Route Probe & Release Polish
 
-Релиз доводит desktop-клиент до более честного и собранного состояния перед следующим большим этапом: диагностический probe больше не маскируется под полноценный DNS leak test, фоновая анимация безопаснее переживает visibility/resize-переходы, а настройки очищены от лишнего и дублирующегося UI.
+Релиз фиксирует финальное desktop-состояние, с которым опубликован GitHub Release 1 апреля 2026 года: отдельный `Zapret Control` собирает в одном месте службу, профили и Flowseal-инструменты, route probe честно показывает direct/VPN egress вместо псевдо-DNS leak test, а installer/startup контур аккуратно синхронизирует автозапуск и дочищает следы предыдущих установок.
+
+#### ✨ Добавлено
+- **Zapret Control**: отдельный экран для standalone/service-режима, профилей, автоподбора, Flowseal maintenance, диагностики и очистки Discord-кеша.
+- **Flowseal maintenance surface**: проверка `Core updates`, запуск updater/service menu, `Flowseal tests` и тюнинг `Game Filter` / `IPSet` вынесены в UI.
+- **Dedicated Zapret entry point**: в общих настройках оставлена одна входная точка в `Zapret Center`, без второго центра управления той же системой.
 
 #### ✅ Исправлено
 - **Honest route probe**: прямой egress и egress через локальный VPN proxy теперь возвращаются отдельным типизированным результатом вместо псевдо-`dns leak test`.
+- **Startup autostart sync**: настройки `autoStart` и `startMinimized` теперь синхронизируются с Windows login item не только при переключении в UI, но и на старте приложения.
+- **Installer / uninstall cleanup**: install/update/uninstall контур останавливает `xray`, `sing-box`, `winws`, удаляет службу `EgoistShieldZapret`, дочищает `WinDivert`, firewall rules, updater cache и пользовательские хвосты в `AppData`.
 - **DepthBackground scheduling**: убран риск обращения к `requestAnimationFrame` до инициализации draw-loop, а пауза/возврат при hidden viewport и reduced motion стали безопаснее.
 - **Settings cleanup**: удалён устаревший тумблер аппаратного ускорения и закреплён единый вход в `Zapret Center` без второго центра управления в общих настройках.
 
 #### 🧪 Верификация
-- `npm exec vitest run tests/route-probe.spec.ts tests/use-app-store.spec.ts tests/preload-subscriptions.spec.ts`
+- `npm exec vitest run tests/login-item-settings.spec.ts tests/route-probe.spec.ts tests/nsis-installer.spec.ts tests/preload-subscriptions.spec.ts tests/use-app-store.spec.ts tests/zapret-manager.spec.ts`
 - `npm test`
 - `npm run build:vite`
 - `npm run stress`
+- `npm run dist`
+- локальный Windows smoke: install -> launch -> uninstall -> reinstall `3.6.0`
 
 ## [3.3.0] — 2026-03-25
 

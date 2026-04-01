@@ -14,7 +14,7 @@
   </a>
   <img src="https://img.shields.io/badge/Windows-10%2F11-0ea5e9?style=for-the-badge&logo=windows" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=for-the-badge&logo=typescript" alt="TypeScript strict" />
-  <img src="https://img.shields.io/badge/Desktop-v3.3.0-ff6b3d?style=for-the-badge" alt="Desktop 3.3.0" />
+  <img src="https://img.shields.io/badge/Desktop-v3.6.0-ff6b3d?style=for-the-badge" alt="Desktop 3.6.0" />
 </p>
 
 <p align="center">
@@ -38,13 +38,12 @@
 
 Проект ориентирован на пользователей, которым нужен **локально управляемый Windows-клиент** с современным UI и воспроизводимым релизным контуром.
 
-## Что нового в 3.3.0
+## Что нового в 3.6.0
 
-- **Make-before-break handoff**: при smart/default reconnect новая сессия теперь проходит дополнительную verification перед cutover.
-- **Rollback на предыдущую сессию**: если новый runtime срывается в первые секунды handoff, клиент восстанавливает предыдущее соединение вместо жёсткого провала.
-- **Stronger prepared-session checks**: переключение больше не опирается только на `waitForPort`; добавлена серия локальных probe на стабильность новой proxy-сессии.
-- **Default mode и DNS flow сохранены**: улучшения внесены в runtime handoff, без изменения отдельного `System DNS Center` и без ломки обычного подключения.
-- **Smart Connect v3.1 tuning остаётся базой**: adaptive scoring, quality cache и budgeted sampling продолжают работать поверх более безопасного cutover.
+- **Zapret Control**: появился отдельный экран для standalone/service-режима, профилей, автоподбора, Flowseal maintenance, диагностики и очистки Discord-кеша.
+- **Honest route probe**: диагностический тест больше не маскируется под `dns leak test`, а честно показывает direct/VPN egress и помогает ловить обход VPN.
+- **Release polish для Windows**: автозапуск синхронизируется со startup login item при старте приложения, а installer/uninstaller дочищает `WinDivert`, `EgoistShieldZapret`, firewall rules, updater cache и хвосты в `AppData`.
+- **Settings cleanup**: `DNS Center` и `Zapret Control` закреплены как отдельные экраны, без дублирующих управляющих тумблеров в общих настройках.
 
 Подробности по изменениям: [CHANGELOG.md](CHANGELOG.md).
 
@@ -53,20 +52,22 @@
 | Область | Возможности |
 | --- | --- |
 | Подключение | все популярные, актуальные протоколы|
-| Runtime | Xray + Sing-box, runtime diagnostics, soft fallback |
+| Runtime | Xray + Sing-box, runtime diagnostics, safer handoff, soft fallback |
+| Zapret / Flowseal | отдельный Zapret Control, service/standalone, профили, диагностика, maintenance-инструменты |
 | Smart Connect | adaptive health-score, protocol-aware ranking, fallback-цепочка, budgeted warm-switch |
 | Импорт | подписки, URI, буфер обмена, файлы конфигурации |
-| Система | Kill Switch, автозапуск, авто-подключение, ручная проверка обновлений |
+| Система | Kill Switch, автозапуск с синхронизацией login item, авто-подключение, ручная проверка обновлений |
 | DNS | отдельный экран системного DNS, reset к DHCP, валидация ввода |
-| Наблюдаемость | журналы соединения, статус runtime, базовые сетевые проверки |
-| Интерфейс | 3D-глобус, список узлов, графики, dashboard, тёмная дизайн-система |
+| Наблюдаемость | журналы соединения, статус runtime, honest route probe, базовые сетевые проверки |
+| Интерфейс | 3D-глобус, список узлов, графики, dashboard, Zapret Control, тёмная дизайн-система |
 
 ## Интерфейс
 
 - **Dashboard** с крупной кнопкой состояния, карточками узла и сетевыми метриками.
 - **Server Center** с 3D-глобусом, списком узлов, фильтрацией и подписками.
 - **DNS Center** для глобальной Windows DNS-конфигурации.
-- **Settings** для Kill Switch, автозапуска, авто-подключения, обновлений и диагностических функций.
+- **Zapret Control** для службы, профилей, Flowseal-инструментов, диагностики и cache-cleanup.
+- **Settings** для системных переключателей приложения, обновлений и входных точек в DNS/Zapret.
 
 ## Быстрый старт
 
@@ -75,6 +76,7 @@
 3. Добавьте узлы через `Ctrl+V`, импорт файла или subscription URL.
 4. Выберите сервер вручную или используйте `Smart Connect`.
 5. При необходимости настройте системный DNS на отдельном экране `DNS Center`.
+6. Если нужен локальный Flowseal/Zapret-контур, откройте отдельный экран `Zapret Control`.
 
 ## Системные требования
 
@@ -98,7 +100,7 @@ npm run dist
 
 ## Правовой контур и добросовестное использование
 
-Публичное описание проекта и его позиционирование приведены в консервативной форме с учётом действующих требований российского законодательства на конец марта 2026 года.
+Публичное описание проекта и его позиционирование приведены в консервативной форме с учётом действующих требований российского законодательства на начало апреля 2026 года.
 
 - Проект описывается как **клиент защищённых сетевых подключений и управления узлами**, а не как средство для доступа к ресурсам, доступ к которым ограничен законом.
 - Приложение предполагает использование с собственной инфраструктурой пользователя или с узлами и подписками, на использование которых у пользователя есть законные основания.
