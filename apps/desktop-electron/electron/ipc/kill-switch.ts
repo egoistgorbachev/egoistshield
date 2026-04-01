@@ -4,6 +4,7 @@
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { resolveWindowsExecutable } from "./windows-system-binaries";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,7 +22,7 @@ export class KillSwitch {
 
     try {
       // 1. Блокировать весь исходящий трафик
-      await execFileAsync("netsh", [
+      await execFileAsync(resolveWindowsExecutable("netsh"), [
         "advfirewall",
         "firewall",
         "add",
@@ -36,7 +37,7 @@ export class KillSwitch {
       ]);
 
       // 2. Разрешить localhost (для прокси)
-      await execFileAsync("netsh", [
+      await execFileAsync(resolveWindowsExecutable("netsh"), [
         "advfirewall",
         "firewall",
         "add",
@@ -49,7 +50,7 @@ export class KillSwitch {
       ]);
 
       // 3. Разрешить runtime-процессу (xray/sing-box) выходить наружу
-      await execFileAsync("netsh", [
+      await execFileAsync(resolveWindowsExecutable("netsh"), [
         "advfirewall",
         "firewall",
         "add",
@@ -64,7 +65,7 @@ export class KillSwitch {
       // 4. Разрешить DNS (UDP 53) ТОЛЬКО к доверенным серверам
       // ⚠️ Без ограничения remoteaddress = DNS leak мимо VPN
       const trustedDns = "1.1.1.1,8.8.8.8,8.8.4.4,1.0.0.1";
-      await execFileAsync("netsh", [
+      await execFileAsync(resolveWindowsExecutable("netsh"), [
         "advfirewall",
         "firewall",
         "add",
@@ -79,7 +80,7 @@ export class KillSwitch {
       ]);
 
       // 5. Разрешить DHCP
-      await execFileAsync("netsh", [
+      await execFileAsync(resolveWindowsExecutable("netsh"), [
         "advfirewall",
         "firewall",
         "add",
@@ -118,7 +119,13 @@ export class KillSwitch {
 
     for (const name of ruleNames) {
       try {
-        await execFileAsync("netsh", ["advfirewall", "firewall", "delete", "rule", `name=${name}`]);
+        await execFileAsync(resolveWindowsExecutable("netsh"), [
+          "advfirewall",
+          "firewall",
+          "delete",
+          "rule",
+          `name=${name}`
+        ]);
       } catch {
         // Правило могло не существовать — это нормально
       }

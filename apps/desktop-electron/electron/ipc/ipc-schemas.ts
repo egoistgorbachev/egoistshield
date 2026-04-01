@@ -22,6 +22,15 @@ export const NodeProtocolSchema = z.enum([
 export const RuleModeSchema = z.enum(["vpn", "direct", "block"]);
 export const RouteModeSchema = z.enum(["global", "selected"]);
 export const DnsModeSchema = z.enum(["auto", "secure", "system", "custom"]);
+export const ZapretGameFilterModeSchema = z.enum(["disabled", "all", "tcp", "udp"]);
+export const ZapretIpsetModeSchema = z.enum(["loaded", "none", "any"]);
+export const ZapretDiscordCacheTargetSchema = z.enum([
+  "all",
+  "discord",
+  "discord-ptb",
+  "discord-canary",
+  "vesktop"
+]);
 
 export const SubscriptionUserAgentSchema = z.enum([
   "auto",
@@ -89,7 +98,9 @@ export const AppSettingsSchema = z.object({
   systemDnsServers: z.string().default(""),
   subscriptionUserAgent: SubscriptionUserAgentSchema,
   runtimePath: z.string(),
-  routeMode: RouteModeSchema
+  routeMode: RouteModeSchema,
+  zapretProfile: z.string().min(1).default("General"),
+  zapretSuspendDuringVpn: z.boolean().default(true)
 });
 
 export const UsageRecordSchema = z.object({
@@ -164,3 +175,6 @@ export const RenameNodeInputSchema = z.object({
   id: z.string().min(1, "ID узла не может быть пустым"),
   newName: z.string().min(1, "Имя не может быть пустым").max(100, "Имя не может превышать 100 символов")
 });
+
+export const ZapretProfileInputSchema = z.string().min(1, "Профиль Zapret не может быть пустым");
+export const ZapretUpdateChecksInputSchema = z.boolean();

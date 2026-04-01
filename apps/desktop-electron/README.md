@@ -2,7 +2,7 @@
 
 Desktop-клиент `EgoistShield` для Windows 10/11.
 
-Текущая ветка документации соответствует релизному состоянию **3.3.0**.
+Текущая ветка документации соответствует релизному состоянию **3.6.0**.
 
 ## Что есть в desktop-версии
 
@@ -13,7 +13,7 @@ Desktop-клиент `EgoistShield` для Windows 10/11.
 - **Kill Switch**: управление firewall-правилами Windows для защиты при обрыве соединения.
 - **Автозапуск и авто-подключение**.
 - **Updater**: ручная проверка новой версии и установка релиза через GitHub Releases.
-- **Диагностика**: structured logs, runtime lifecycle, runtime diagnostics, DNS leak test, connection logs.
+- **Диагностика**: structured logs, runtime lifecycle, runtime diagnostics, route probe, connection logs.
 - **UI**: dashboard, server list, 3D-globe, usage insights, command palette, polished dark design system.
 
 ## Стек

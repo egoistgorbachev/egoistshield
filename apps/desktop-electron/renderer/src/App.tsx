@@ -12,12 +12,15 @@ import { pageTransition } from "./lib/motion";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
 import { useAppStore } from "./store/useAppStore";
 
+const ACTIVE_PROXY_PING_INTERVAL_MS = 2_500;
+
 // Code splitting — экраны грузятся отложенно
 const Dashboard = React.lazy(() => import("./screens/Dashboard").then((m) => ({ default: m.Dashboard })));
 const DnsControl = React.lazy(() => import("./screens/DnsControl").then((m) => ({ default: m.DnsControl })));
 const Settings = React.lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 const ServerList = React.lazy(() => import("./screens/ServerList").then((m) => ({ default: m.ServerList })));
 const Onboarding = React.lazy(() => import("./screens/Onboarding").then((m) => ({ default: m.Onboarding })));
+const Zapret = React.lazy(() => import("./screens/Zapret").then((m) => ({ default: m.Zapret })));
 
 // Fallback для Suspense — минимальный лоадер
 function ScreenLoader() {
@@ -68,34 +71,49 @@ export function App() {
     }
 
     const api = getAPI();
+    const disposers: Array<() => void> = [];
+    let autoConnectTimer: ReturnType<typeof setTimeout> | null = null;
+
     if (api?.updater) {
-      api.updater.onUpdateAvailable((data) => {
+      disposers.push(api.updater.onUpdateAvailable((data) => {
         setUpdateAvailable(true);
         setUpdateVersion(data.version);
-      });
-      api.updater.onDownloadProgress((data) => {
+      }));
+      disposers.push(api.updater.onDownloadProgress((data) => {
         setDownloadProgress(data.percent);
-      });
-      api.updater.onUpdateDownloaded((data) => {
+      }));
+      disposers.push(api.updater.onUpdateDownloaded((data) => {
         setUpdateReady(true);
         setDownloadProgress(100);
         setUpdateVersion(data.version);
-      });
+      }));
     }
 
     // Auto-connect: main process отправляет serverId при autoConnect = true
     if (api?.autoConnect?.onAutoConnect) {
-      api.autoConnect.onAutoConnect((serverId: string) => {
+      disposers.push(api.autoConnect.onAutoConnect((serverId: string) => {
         const store = useAppStore.getState();
         if (!store.isConnected && !store.isConnecting && serverId) {
           useAppStore.setState({ selectedServerId: serverId });
           // Небольшая задержка, чтобы store обновился
-          setTimeout(() => {
+          if (autoConnectTimer) {
+            clearTimeout(autoConnectTimer);
+          }
+          autoConnectTimer = setTimeout(() => {
             useAppStore.getState().toggleConnection();
           }, 100);
         }
-      });
+      }));
     }
+
+    return () => {
+      if (autoConnectTimer) {
+        clearTimeout(autoConnectTimer);
+      }
+      for (const dispose of disposers) {
+        dispose();
+      }
+    };
   }, [isFirstRun, isStoreHydrated, installRuntime, syncWithBackend]);
 
   // ── Global Ping Polling ───────────────────────────────────
@@ -106,24 +124,52 @@ export function App() {
 
   useEffect(() => {
     let pingInterval: ReturnType<typeof setInterval> | undefined;
+    let pingInFlight = false;
+    let disposed = false;
+    let doPing = async () => {};
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void doPing();
+      }
+    };
+
     if (isConnected) {
-      const doPing = async () => {
+      doPing = async () => {
+        if (disposed || pingInFlight || document.hidden) {
+          return;
+        }
+
         const api = getAPI();
         if (api?.system?.pingActiveProxy) {
+          pingInFlight = true;
           try {
             const p = await api.system.pingActiveProxy();
-            if (p > 0) setActivePing(p);
+            if (!disposed && p > 0) {
+              setActivePing(p);
+            }
           } catch (error: unknown) {
             console.warn("[App] Active proxy ping failed", error);
+          } finally {
+            pingInFlight = false;
           }
         }
       };
-      doPing();
-      pingInterval = setInterval(doPing, 500);
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      void doPing();
+      pingInterval = setInterval(() => {
+        void doPing();
+      }, ACTIVE_PROXY_PING_INTERVAL_MS);
     } else {
       setActivePing(null);
     }
-    return () => clearInterval(pingInterval);
+
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearInterval(pingInterval);
+    };
   }, [isConnected, setActivePing]);
 
   // Global Ctrl+V: auto-import VPN links from clipboard
@@ -235,6 +281,16 @@ export function App() {
                     className="absolute inset-0 bg-surface-app/95 backdrop-blur-md"
                   >
                     <DnsControl />
+                  </motion.div>
+                )}
+
+                {currentScreen === "zapret" && (
+                  <motion.div
+                    key="zapret"
+                    {...pageTransition}
+                    className="absolute inset-0 bg-surface-app/95 backdrop-blur-md"
+                  >
+                    <Zapret />
                   </motion.div>
                 )}
 

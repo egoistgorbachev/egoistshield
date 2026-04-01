@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Globe2, Home, Server, Settings as SettingsIcon, Shield } from "lucide-react";
+import { Globe2, Home, Server, Settings as SettingsIcon, Shield, Zap } from "lucide-react";
 import { useCallback, useState } from "react";
 import { cn } from "../lib/cn";
 import { type Screen, useAppStore } from "../store/useAppStore";
@@ -14,6 +14,7 @@ const navItems: { id: Screen; icon: typeof Home; label: string }[] = [
   { id: "dashboard", icon: Home, label: "Главная" },
   { id: "servers" as Screen, icon: Server, label: "Серверы" },
   { id: "dns", icon: Globe2, label: "DNS" },
+  { id: "zapret", icon: Zap, label: "Zapret" },
   { id: "settings", icon: SettingsIcon, label: "Настройки" }
 ];
 

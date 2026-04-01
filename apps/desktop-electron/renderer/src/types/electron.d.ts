@@ -6,11 +6,21 @@ import type {
   DiagnosticResult,
   ImportResult,
   PersistedState,
+  RouteProbeResult,
   RuntimeInstallResult,
   RuntimeLogSummary,
   RuntimeStatus,
   RuntimeUpdateSummary,
-  StressResult
+  StressResult,
+  ZapretAutoSelectResult,
+  ZapretCommandResult,
+  ZapretDiscordCacheTarget,
+  ZapretDiagnosticsReport,
+  ZapretGameFilterMode,
+  ZapretIpsetMode,
+  ZapretProfile,
+  ZapretStatus,
+  ZapretUpdateInfo
 } from "../../../electron/ipc/contracts";
 import type { UsageRecord } from "../../shared/types";
 
@@ -37,7 +47,7 @@ export interface EgoistAPI {
     status(): Promise<RuntimeStatus>;
     diagnose(): Promise<DiagnosticResult>;
     stressTest(iterations: number): Promise<StressResult>;
-    onFallback(callback: (data: { nextNodeId: string; error: string }) => void): void;
+    onFallback(callback: (data: { nextNodeId: string; error: string }) => void): () => void;
   };
   runtime: {
     installXray(): Promise<RuntimeInstallResult>;
@@ -61,7 +71,8 @@ export interface EgoistAPI {
     setDnsServers(dnsServers: string): Promise<{ ok: boolean; message: string; servers: string[] }>;
     resetDnsServers(): Promise<{ ok: boolean; message: string; servers: string[] }>;
     getMyIp(): Promise<{ ip: string | null; countryCode: string | null; error: string | null }>;
-    dnsLeakTest(): Promise<{ leaked: boolean; dnsServers: string[]; vpnIp: string | null; error: string | null }>;
+    routeProbe(): Promise<RouteProbeResult>;
+    dnsLeakTest(): Promise<RouteProbeResult>;
   };
   window: {
     minimize(): Promise<boolean>;
@@ -70,21 +81,20 @@ export interface EgoistAPI {
     close(): Promise<boolean>;
   };
   traffic: {
-    onUpdate(callback: (data: { rx: number; tx: number }) => void): void;
-    offUpdate(): void;
+    onUpdate(callback: (data: { rx: number; tx: number }) => void): () => void;
   };
   updater: {
-    onUpdateAvailable(callback: (data: { version: string }) => void): void;
-    onDownloadProgress(callback: (data: { percent: number; transferred: number; total: number }) => void): void;
-    onUpdateDownloaded(callback: (data: { version: string }) => void): void;
-    onUpdateNotAvailable(callback: () => void): void;
-    onUpdateError(callback: (data: { message: string }) => void): void;
+    onUpdateAvailable(callback: (data: { version: string }) => void): () => void;
+    onDownloadProgress(callback: (data: { percent: number; transferred: number; total: number }) => void): () => void;
+    onUpdateDownloaded(callback: (data: { version: string }) => void): () => void;
+    onUpdateNotAvailable(callback: () => void): () => void;
+    onUpdateError(callback: (data: { message: string }) => void): () => void;
     install(): Promise<void>;
     check(): Promise<{ ok: boolean; version?: string; error?: string }>;
     setAuto(enabled: boolean): Promise<boolean>;
   };
   autoConnect: {
-    onAutoConnect(callback: (serverId: string) => void): void;
+    onAutoConnect(callback: (serverId: string) => void): () => void;
   };
   logs: {
     getRecent(maxLines?: number): Promise<Array<{ timestamp: string; level: string; message: string }>>;
@@ -95,6 +105,30 @@ export interface EgoistAPI {
   usage: {
     saveRecord(record: UsageRecord): Promise<boolean>;
     getHistory(): Promise<UsageRecord[]>;
+  };
+  zapret: {
+    status(): Promise<ZapretStatus>;
+    listProfiles(): Promise<ZapretProfile[]>;
+    installService(profileName?: string): Promise<ZapretStatus>;
+    setServiceProfile(profileName: string): Promise<ZapretStatus>;
+    startService(): Promise<ZapretStatus>;
+    stopService(): Promise<ZapretStatus>;
+    removeService(): Promise<ZapretStatus>;
+    startStandalone(profileName?: string): Promise<ZapretStatus>;
+    restartStandalone(profileName?: string): Promise<ZapretStatus>;
+    stopStandalone(): Promise<ZapretStatus>;
+    setGameFilterMode(mode: ZapretGameFilterMode): Promise<ZapretStatus>;
+    setIpsetMode(mode: ZapretIpsetMode): Promise<ZapretStatus>;
+    updateIpsetList(): Promise<ZapretStatus>;
+    setUpdateChecksEnabled(enabled: boolean): Promise<ZapretStatus>;
+    checkUpdates(): Promise<ZapretUpdateInfo>;
+    runCoreUpdater(): Promise<ZapretCommandResult>;
+    resetNetworkState(): Promise<ZapretStatus>;
+    diagnostics(): Promise<ZapretDiagnosticsReport>;
+    autoSelect(): Promise<ZapretAutoSelectResult>;
+    openServiceMenu(): Promise<ZapretCommandResult>;
+    runFlowsealTests(): Promise<ZapretCommandResult>;
+    cleanDiscordCache(target: ZapretDiscordCacheTarget): Promise<ZapretCommandResult>;
   };
 }
 

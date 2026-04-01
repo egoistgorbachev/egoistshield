@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { UsageRecord } from "../shared/types";
 import type {
+  RouteProbeResult,
+  ZapretAutoSelectResult,
+  ZapretCommandResult,
+  ZapretDiscordCacheTarget,
+  ZapretDiagnosticsReport,
+  ZapretGameFilterMode,
+  ZapretIpsetMode,
+  ZapretUpdateInfo,
   DiagnosticResult,
   ImportResult,
   PersistedState,
@@ -8,8 +16,28 @@ import type {
   RuntimeLogSummary,
   RuntimeStatus,
   RuntimeUpdateSummary,
-  StressResult
+  StressResult,
+  ZapretProfile,
+  ZapretStatus
 } from "./ipc/contracts";
+
+type ListenerDisposer = () => void;
+
+function subscribeToChannel<T>(channel: string, callback: (data: T) => void): ListenerDisposer {
+  const listener = (_event: unknown, data: T) => callback(data);
+  ipcRenderer.on(channel, listener);
+  return () => {
+    ipcRenderer.off(channel, listener);
+  };
+}
+
+function subscribeToSignal(channel: string, callback: () => void): ListenerDisposer {
+  const listener = () => callback();
+  ipcRenderer.on(channel, listener);
+  return () => {
+    ipcRenderer.off(channel, listener);
+  };
+}
 
 const api = {
   state: {
@@ -34,9 +62,8 @@ const api = {
     status: (): Promise<RuntimeStatus> => ipcRenderer.invoke("vpn:status"),
     diagnose: (): Promise<DiagnosticResult> => ipcRenderer.invoke("vpn:diagnose"),
     stressTest: (iterations: number): Promise<StressResult> => ipcRenderer.invoke("vpn:stress-test", iterations),
-    onFallback: (callback: (data: { nextNodeId: string; error: string }) => void) => {
-      ipcRenderer.on("fallback-triggered", (_event, data) => callback(data));
-    }
+    onFallback: (callback: (data: { nextNodeId: string; error: string }) => void) =>
+      subscribeToChannel("fallback-triggered", callback)
   },
   runtime: {
     installXray: (): Promise<RuntimeInstallResult> => ipcRenderer.invoke("runtime:install-xray"),
@@ -67,7 +94,8 @@ const api = {
       ipcRenderer.invoke("system:reset-dns-servers"),
     getMyIp: (): Promise<{ ip: string | null; countryCode: string | null; error: string | null }> =>
       ipcRenderer.invoke("vpn:get-my-ip"),
-    dnsLeakTest: (): Promise<{ leaked: boolean; dnsServers: string[]; vpnIp: string | null; error: string | null }> =>
+    routeProbe: (): Promise<RouteProbeResult> => ipcRenderer.invoke("vpn:route-probe"),
+    dnsLeakTest: (): Promise<RouteProbeResult> =>
       ipcRenderer.invoke("vpn:dns-leak-test")
   },
   window: {
@@ -77,37 +105,24 @@ const api = {
     close: (): Promise<boolean> => ipcRenderer.invoke("window:close")
   },
   traffic: {
-    onUpdate: (callback: (data: { rx: number; tx: number }) => void) => {
-      ipcRenderer.on("traffic-update", (_event, data) => callback(data));
-    },
-    offUpdate: () => {
-      ipcRenderer.removeAllListeners("traffic-update");
-    }
+    onUpdate: (callback: (data: { rx: number; tx: number }) => void) => subscribeToChannel("traffic-update", callback)
   },
   updater: {
-    onUpdateAvailable: (callback: (data: { version: string }) => void) => {
-      ipcRenderer.on("update-available", (_event, data) => callback(data));
-    },
-    onDownloadProgress: (callback: (data: { percent: number; transferred: number; total: number }) => void) => {
-      ipcRenderer.on("update-progress", (_event, data) => callback(data));
-    },
-    onUpdateDownloaded: (callback: (data: { version: string }) => void) => {
-      ipcRenderer.on("update-downloaded", (_event, data) => callback(data));
-    },
-    onUpdateNotAvailable: (callback: () => void) => {
-      ipcRenderer.on("update-not-available", () => callback());
-    },
-    onUpdateError: (callback: (data: { message: string }) => void) => {
-      ipcRenderer.on("update-error", (_event, data) => callback(data));
-    },
+    onUpdateAvailable: (callback: (data: { version: string }) => void) =>
+      subscribeToChannel("update-available", callback),
+    onDownloadProgress: (callback: (data: { percent: number; transferred: number; total: number }) => void) =>
+      subscribeToChannel("update-progress", callback),
+    onUpdateDownloaded: (callback: (data: { version: string }) => void) =>
+      subscribeToChannel("update-downloaded", callback),
+    onUpdateNotAvailable: (callback: () => void) => subscribeToSignal("update-not-available", callback),
+    onUpdateError: (callback: (data: { message: string }) => void) =>
+      subscribeToChannel("update-error", callback),
     install: (): Promise<void> => ipcRenderer.invoke("updater:install"),
     check: (): Promise<{ ok: boolean; version?: string; error?: string }> => ipcRenderer.invoke("updater:check"),
     setAuto: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke("updater:set-auto", enabled)
   },
   autoConnect: {
-    onAutoConnect: (callback: (serverId: string) => void) => {
-      ipcRenderer.on("auto-connect", (_event, serverId) => callback(serverId));
-    }
+    onAutoConnect: (callback: (serverId: string) => void) => subscribeToChannel("auto-connect", callback)
   },
   logs: {
     getRecent: (maxLines?: number): Promise<Array<{ timestamp: string; level: string; message: string }>> =>
@@ -120,6 +135,36 @@ const api = {
   usage: {
     saveRecord: (record: UsageRecord): Promise<boolean> => ipcRenderer.invoke("usage:save-record", record),
     getHistory: (): Promise<UsageRecord[]> => ipcRenderer.invoke("usage:get-history")
+  },
+  zapret: {
+    status: (): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:status"),
+    listProfiles: (): Promise<ZapretProfile[]> => ipcRenderer.invoke("zapret:list-profiles"),
+    installService: (profileName?: string): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:install-service", profileName),
+    setServiceProfile: (profileName: string): Promise<ZapretStatus> =>
+      ipcRenderer.invoke("zapret:set-service-profile", profileName),
+    startService: (): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:start-service"),
+    stopService: (): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:stop-service"),
+    removeService: (): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:remove-service"),
+    startStandalone: (profileName?: string): Promise<ZapretStatus> =>
+      ipcRenderer.invoke("zapret:start-standalone", profileName),
+    restartStandalone: (profileName?: string): Promise<ZapretStatus> =>
+      ipcRenderer.invoke("zapret:restart-standalone", profileName),
+    stopStandalone: (): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:stop-standalone"),
+    setGameFilterMode: (mode: ZapretGameFilterMode): Promise<ZapretStatus> =>
+      ipcRenderer.invoke("zapret:set-game-filter-mode", mode),
+    setIpsetMode: (mode: ZapretIpsetMode): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:set-ipset-mode", mode),
+    updateIpsetList: (): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:update-ipset-list"),
+    setUpdateChecksEnabled: (enabled: boolean): Promise<ZapretStatus> =>
+      ipcRenderer.invoke("zapret:set-update-checks-enabled", enabled),
+    checkUpdates: (): Promise<ZapretUpdateInfo> => ipcRenderer.invoke("zapret:check-updates"),
+    runCoreUpdater: (): Promise<ZapretCommandResult> => ipcRenderer.invoke("zapret:run-core-updater"),
+    resetNetworkState: (): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:reset-network-state"),
+    diagnostics: (): Promise<ZapretDiagnosticsReport> => ipcRenderer.invoke("zapret:diagnostics"),
+    autoSelect: (): Promise<ZapretAutoSelectResult> => ipcRenderer.invoke("zapret:auto-select"),
+    openServiceMenu: (): Promise<ZapretCommandResult> => ipcRenderer.invoke("zapret:open-service-menu"),
+    runFlowsealTests: (): Promise<ZapretCommandResult> => ipcRenderer.invoke("zapret:run-flowseal-tests"),
+    cleanDiscordCache: (target: ZapretDiscordCacheTarget): Promise<ZapretCommandResult> =>
+      ipcRenderer.invoke("zapret:clean-discord-cache", target)
   }
 };
 

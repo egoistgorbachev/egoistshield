@@ -4,7 +4,7 @@
 import type { StateCreator } from "zustand";
 import { getAPI } from "../../lib/api";
 
-export type Screen = "dashboard" | "servers" | "dns" | "settings";
+export type Screen = "dashboard" | "servers" | "dns" | "zapret" | "settings";
 
 export interface SettingsSlice {
   currentScreen: Screen;
@@ -15,8 +15,9 @@ export interface SettingsSlice {
   autoConnect: boolean;
   notifications: boolean;
   autoStart: boolean;
-  hwAccel: boolean;
   systemDnsServers: string;
+  zapretProfile: string;
+  zapretSuspendDuringVpn: boolean;
   favoriteServerIds: string[];
   setScreen: (screen: Screen) => void;
   checkFirstRun: () => Promise<void>;
@@ -33,7 +34,9 @@ function isBackendSyncedKey(key: string): boolean {
     key === "autoConnect" ||
     key === "notifications" ||
     key === "fakeDns" ||
-    key === "systemDnsServers"
+    key === "systemDnsServers" ||
+    key === "zapretProfile" ||
+    key === "zapretSuspendDuringVpn"
   );
 }
 
@@ -46,8 +49,9 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
   autoConnect: false,
   notifications: true,
   autoStart: false,
-  hwAccel: true,
   systemDnsServers: "",
+  zapretProfile: "General",
+  zapretSuspendDuringVpn: true,
   favoriteServerIds: [],
 
   setScreen: (screen) => set({ currentScreen: screen }),
@@ -99,7 +103,9 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
           autoConnect: currentState.autoConnect,
           notifications: currentState.notifications,
           dnsMode: currentState.fakeDns ? "secure" : "auto",
-          systemDnsServers: currentState.systemDnsServers
+          systemDnsServers: currentState.systemDnsServers,
+          zapretProfile: currentState.zapretProfile,
+          zapretSuspendDuringVpn: currentState.zapretSuspendDuringVpn
         }
       });
     });

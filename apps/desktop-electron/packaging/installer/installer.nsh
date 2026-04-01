@@ -29,6 +29,8 @@ BrandingText "EgoistShield v2.0 — ваш цифровой щит"
   nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM EgoistShield.exe /T /F'
   nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM xray.exe /T /F'
   nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM sing-box.exe /T /F'
+  nsExec::ExecToLog '"$SYSDIR\sc.exe" stop EgoistShieldZapret'
+  nsExec::ExecToLog '"$SYSDIR\sc.exe" delete EgoistShieldZapret'
 
   ; Даём 1 секунду на завершение процессов.
   Sleep 1000
@@ -96,6 +98,9 @@ BrandingText "EgoistShield v2.0 — ваш цифровой щит"
 !macroend
 
 !macro customUnInstall
+  nsExec::ExecToLog '"$SYSDIR\sc.exe" stop EgoistShieldZapret'
+  nsExec::ExecToLog '"$SYSDIR\sc.exe" delete EgoistShieldZapret'
+
   ; Удаляем автозапуск.
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "EgoistShield"
 

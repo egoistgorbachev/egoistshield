@@ -11,21 +11,25 @@ import { registerImportHandlers } from "./handlers-import";
 import { registerLogHandlers } from "./handlers-logs";
 import { registerSystemHandlers } from "./handlers-system";
 import { registerVpnHandlers } from "./handlers-vpn";
+import { registerZapretHandlers } from "./handlers-zapret";
 import type { IpcContext } from "./ipc-context";
 import type { StateStore } from "./state-store";
 import type { VpnRuntimeManager } from "./vpn-manager";
+import type { ZapretManager } from "./zapret-manager";
 
 export async function registerIpcHandlers(
   window: BrowserWindow,
   stateStore: StateStore,
-  runtimeManager: VpnRuntimeManager
+  runtimeManager: VpnRuntimeManager,
+  zapretManager: ZapretManager
 ): Promise<void> {
   await stateStore.load();
 
-  const ctx: IpcContext = { window, stateStore, runtimeManager };
+  const ctx: IpcContext = { window, stateStore, runtimeManager, zapretManager };
 
   registerSystemHandlers(ctx);
   registerImportHandlers(ctx);
   registerVpnHandlers(ctx);
+  registerZapretHandlers(ctx);
   registerLogHandlers();
 }

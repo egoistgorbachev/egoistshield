@@ -12,7 +12,7 @@ import { Notification, app, clipboard, dialog, ipcMain } from "electron";
 import log from "electron-log";
 import { updateTrayMenu } from "../main";
 import type { PersistedState, RuntimeUpdateSummary } from "./contracts";
-import { fullCleanup } from "./dns-cleanup";
+import { repairNetworkStack } from "./dns-cleanup";
 import type { IpcContext } from "./ipc-context";
 import {
   AppIconInputSchema,
@@ -23,12 +23,14 @@ import {
   UsageRecordSchema
 } from "./ipc-schemas";
 import { KillSwitch } from "./kill-switch";
+import { syncWindowsLoginItemSettings } from "./login-item-settings";
 import logger, { formatRuntimeLogEvent } from "./logger";
 import { resetSystemDnsServers, setSystemDnsServers } from "./system-dns";
+import { resolveWindowsExecutable } from "./windows-system-binaries";
 
 const execFileAsync = promisify(execFile);
 
-export function registerSystemHandlers({ window, stateStore, runtimeManager }: IpcContext): void {
+export function registerSystemHandlers({ window, stateStore, runtimeManager, zapretManager }: IpcContext): void {
   // ── State management ──
   ipcMain.handle("state:get", async () => {
     return stateStore.get();
@@ -45,16 +47,10 @@ export function registerSystemHandlers({ window, stateStore, runtimeManager }: I
         systemDnsServers: state.settings.systemDnsServers ?? ""
       }
     });
-    if (process.platform === "win32") {
-      try {
-        app.setLoginItemSettings({
-          openAtLogin: persisted.settings.autoStart,
-          path: process.execPath,
-          args: persisted.settings.startMinimized ? ["--minimized"] : []
-        });
-      } catch (error: unknown) {
-        logger.warn("[system] Failed to update login item settings:", error);
-      }
+    try {
+      syncWindowsLoginItemSettings({ app, settings: persisted.settings });
+    } catch (error: unknown) {
+      logger.warn("[system] Failed to update login item settings:", error);
     }
     return persisted;
   });
@@ -143,9 +139,13 @@ export function registerSystemHandlers({ window, stateStore, runtimeManager }: I
     if (process.platform === "win32") {
       try {
         const script = "Get-Process | Where-Object { $_.Path } | Select-Object Name, Path | ConvertTo-Json -Compress";
-        const { stdout } = await execFileAsync("powershell.exe", ["-NoProfile", "-Command", script], {
-          maxBuffer: 1024 * 1024 * 10
-        });
+        const { stdout } = await execFileAsync(
+          resolveWindowsExecutable("powershell.exe"),
+          ["-NoProfile", "-Command", script],
+          {
+            maxBuffer: 1024 * 1024 * 10
+          }
+        );
         let procs = JSON.parse(stdout);
         if (!Array.isArray(procs)) procs = [procs];
 
@@ -213,8 +213,8 @@ export function registerSystemHandlers({ window, stateStore, runtimeManager }: I
       logger.warn("[system:internet-fix] Kill Switch disable failed:", error);
     });
 
-    // 2. Полная очистка: kill VPN processes + reset DNS/proxy
-    return fullCleanup();
+    // 2. Явный recovery-сценарий: очистка + Winsock reset.
+    return repairNetworkStack();
   });
 
   ipcMain.handle("system:set-dns-servers", async (_event, rawInput: unknown) => {
@@ -329,5 +329,17 @@ export function registerSystemHandlers({ window, stateStore, runtimeManager }: I
     }
 
     updateTrayMenu(false);
+
+    const persistedState = stateStore.get();
+    if (persistedState.settings.zapretSuspendDuringVpn) {
+      try {
+        await zapretManager.restoreAfterVpnIfNeeded(
+          persistedState.settings.zapretSuspendDuringVpn,
+          persistedState.settings.zapretProfile
+        );
+      } catch (error: unknown) {
+        logger.warn("[zapret] Failed to restore service after unexpected VPN exit:", error);
+      }
+    }
   });
 }

@@ -82,6 +82,8 @@ export interface AppSettings {
   subscriptionUserAgent: SubscriptionUserAgent;
   runtimePath: string;
   routeMode: RouteMode;
+  zapretProfile: string;
+  zapretSuspendDuringVpn: boolean;
 }
 
 export interface UsageRecord {
@@ -193,6 +195,13 @@ export interface DiagnosticResult {
   failureReason?: RuntimeFailureReason | null;
 }
 
+export interface RouteProbeResult {
+  bypassDetected: boolean;
+  directIp: string | null;
+  vpnIp: string | null;
+  error: string | null;
+}
+
 export interface StressResult {
   iterations: number;
   connectSuccess: number;
@@ -206,4 +215,76 @@ export interface ImportResult {
   added: number;
   subscriptionsAdded: number;
   issues: string[];
+}
+
+export interface ZapretProfile {
+  name: string;
+  fileName: string;
+}
+
+export type ZapretDiscordCacheTarget = "all" | "discord" | "discord-ptb" | "discord-canary" | "vesktop";
+export type ZapretGameFilterMode = "disabled" | "all" | "tcp" | "udp";
+export type ZapretIpsetMode = "loaded" | "none" | "any";
+export type ZapretHealthState = "ok" | "warn" | "error";
+
+export interface ZapretDriverStatus {
+  name: string;
+  installed: boolean;
+  running: boolean;
+}
+
+export interface ZapretUpdateInfo {
+  currentVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  message: string;
+}
+
+export interface ZapretDiagnosticsItem {
+  key: string;
+  title: string;
+  state: ZapretHealthState;
+  details: string;
+}
+
+export interface ZapretDiagnosticsReport {
+  generatedAt: string;
+  summary: string;
+  items: ZapretDiagnosticsItem[];
+}
+
+export interface ZapretAutoSelectResult {
+  bestProfile: string | null;
+  goodProfiles: string[];
+  badProfiles: string[];
+  testedProfiles: string[];
+}
+
+export interface ZapretCommandResult {
+  ok: boolean;
+  opened: boolean;
+  message: string;
+  output: string;
+}
+
+export interface ZapretStatus {
+  available: boolean;
+  provisioned: boolean;
+  workDir: string;
+  serviceName: string;
+  serviceInstalled: boolean;
+  serviceRunning: boolean;
+  serviceProfile: string | null;
+  standaloneRunning: boolean;
+  standalonePid: number | null;
+  standaloneProfile: string | null;
+  winwsRunning: boolean;
+  drivers: ZapretDriverStatus[];
+  gameFilterMode: ZapretGameFilterMode;
+  ipsetMode: ZapretIpsetMode;
+  updateChecksEnabled: boolean;
+  coreVersion: string | null;
+  currentProfile: string | null;
+  lastError: string | null;
 }

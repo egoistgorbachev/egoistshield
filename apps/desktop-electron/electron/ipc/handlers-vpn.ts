@@ -1,6 +1,6 @@
 /**
  * VPN IPC Handlers — vpn:connect, vpn:disconnect, vpn:status, vpn:diagnose,
- * vpn:stress-test, vpn:dns-leak-test, vpn:ping, vpn:ping-active-proxy,
+ * vpn:stress-test, vpn:route-probe, vpn:ping, vpn:ping-active-proxy,
  * vpn:get-my-ip, vpn:speedtest
  */
 import http from "node:http";
@@ -8,10 +8,24 @@ import { Socket } from "node:net";
 import tls from "node:tls";
 import { Notification, ipcMain } from "electron";
 import { updateTrayMenu } from "../main";
-import type { RuntimeStatus } from "./contracts";
+import type { RouteProbeResult, RuntimeStatus } from "./contracts";
 import type { IpcContext } from "./ipc-context";
 import { PingInputSchema, StressTestInputSchema } from "./ipc-schemas";
 import logger, { formatRuntimeLogEvent } from "./logger";
+import { buildRouteProbeResult, extractRouteProbeIp } from "./route-probe";
+
+const ACTIVE_PROXY_PING_CACHE_TTL_MS = 2_000;
+const ROUTE_PROBE_ENDPOINT = "https://ipwho.is/?fields=ip,success";
+
+let activeProxyPingInFlight: Promise<number> | null = null;
+let activeProxyPingLastValue = -1;
+let activeProxyPingLastMeasuredAt = 0;
+
+type ProbeResponse = {
+  ok: boolean;
+  status?: number;
+  json(): Promise<unknown>;
+};
 
 function logVpnStatusEvent(level: "info" | "warn" | "error" | "debug", message: string, status: RuntimeStatus): void {
   const payload = formatRuntimeLogEvent({
@@ -43,7 +57,22 @@ function logVpnStatusEvent(level: "info" | "warn" | "error" | "debug", message: 
   logger.info(payload);
 }
 
-export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext): void {
+async function fetchRouteProbeIp(label: "direct" | "proxy", request: () => Promise<ProbeResponse>): Promise<string | null> {
+  try {
+    const response = await request();
+    if (!response.ok) {
+      logger.debug(`[vpn:route-probe] ${label} probe returned HTTP ${response.status ?? "unknown"}`);
+      return null;
+    }
+
+    return extractRouteProbeIp(await response.json());
+  } catch (error: unknown) {
+    logger.debug(`[vpn:route-probe] ${label} probe failed:`, error);
+    return null;
+  }
+}
+
+export function registerVpnHandlers({ stateStore, runtimeManager, zapretManager }: IpcContext): void {
   ipcMain.handle("vpn:connect", async (_event, requestedNodeId?: string) => {
     const state = stateStore.get();
 
@@ -76,10 +105,41 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
 
     logger.info("[vpn:connect] Connecting to:", activeNode.name, "id:", activeNode.id);
 
+    try {
+      await zapretManager.prepareForVpn(state.settings.zapretSuspendDuringVpn);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Не удалось безопасно приостановить Zapret перед запуском VPN.";
+      logger.warn("[vpn:connect] Zapret suspend failed:", error);
+      return {
+        ...(await runtimeManager.status()),
+        lastError: message,
+        lifecycle: "failed" as const,
+        diagnostic: {
+          reason: "runtime_start_failed" as const,
+          details: message,
+          updatedAt: new Date().toISOString(),
+          fallbackAttempted: false,
+          fallbackTarget: null
+        }
+      };
+    }
+
     const result = await runtimeManager.connect(activeNode, state.domainRules, [], {
       ...state.settings,
       useTunMode: false
     });
+
+    if (!result.connected && state.settings.zapretSuspendDuringVpn) {
+      try {
+        await zapretManager.restoreAfterVpnIfNeeded(
+          state.settings.zapretSuspendDuringVpn,
+          state.settings.zapretProfile
+        );
+      } catch (error: unknown) {
+        logger.warn("[vpn:connect] Failed to restore Zapret after unsuccessful VPN connect:", error);
+      }
+    }
 
     if (result.connected && result.activeNodeId === activeNode.id && state.activeNodeId !== activeNode.id) {
       await stateStore.patch({ activeNodeId: activeNode.id });
@@ -122,6 +182,18 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
 
   ipcMain.handle("vpn:disconnect", async () => {
     const result = await runtimeManager.disconnect();
+    const state = stateStore.get();
+
+    if (state.settings.zapretSuspendDuringVpn) {
+      try {
+        await zapretManager.restoreAfterVpnIfNeeded(
+          state.settings.zapretSuspendDuringVpn,
+          state.settings.zapretProfile
+        );
+      } catch (error: unknown) {
+        logger.warn("[vpn:disconnect] Failed to restore Zapret service:", error);
+      }
+    }
 
     if (Notification.isSupported()) {
       const currentState = stateStore.get();
@@ -186,86 +258,37 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
     );
   });
 
-  // DNS Leak Test
-  ipcMain.handle("vpn:dns-leak-test", async () => {
+  // Route probe: сравниваем прямой egress и egress через локальный VPN proxy.
+  const handleRouteProbe = async (): Promise<RouteProbeResult> => {
     try {
       const status = await runtimeManager.status();
       if (!status.connected) {
-        return { leaked: false, dnsServers: [], vpnIp: null, error: "VPN не подключён" };
+        return { bypassDetected: false, directIp: null, vpnIp: null, error: "VPN не подключён" };
       }
 
-      const proxyPort = status.proxyPort || 10808;
+      const proxyPort = status.proxyPort ?? 10808;
       const { ProxyAgent, fetch: proxyFetch } = await import("undici");
       const dispatcher = new ProxyAgent(`http://127.0.0.1:${proxyPort}`);
 
-      // 1. Получаем VPN exit IP
-      let vpnIp: string | null = null;
-      try {
-        const ipRes = await proxyFetch("https://ipwho.is/?fields=ip", {
+      const directIp = await fetchRouteProbeIp("direct", () =>
+        fetch(ROUTE_PROBE_ENDPOINT, { signal: AbortSignal.timeout(5000) })
+      );
+      const vpnIp = await fetchRouteProbeIp("proxy", () =>
+        proxyFetch(ROUTE_PROBE_ENDPOINT, {
           dispatcher,
           signal: AbortSignal.timeout(8000)
-        });
-        const ipData = (await ipRes.json()) as { ip?: string };
-        vpnIp = ipData.ip || null;
-      } catch (error: unknown) {
-        logger.debug("[vpn:dns-leak-test] Proxy exit IP fetch failed, trying direct fallback:", error);
-        // fallback: try without proxy
-        try {
-          const ipRes2 = await fetch("https://ipwho.is/?fields=ip", { signal: AbortSignal.timeout(5000) });
-          const ipData2 = (await ipRes2.json()) as { ip?: string };
-          vpnIp = ipData2.ip || null;
-        } catch (fallbackError: unknown) {
-          logger.debug("[vpn:dns-leak-test] Direct exit IP fallback failed:", fallbackError);
-        }
-      }
+        }) as Promise<ProbeResponse>
+      );
 
-      // 2. Проверяем DNS серверы (прямой запрос без прокси)
-      const dnsServers: string[] = [];
-      try {
-        const dnsRes = await fetch("https://ipwho.is/?fields=ip,country_code", {
-          signal: AbortSignal.timeout(5000)
-        });
-        const dnsData = (await dnsRes.json()) as { ip?: string };
-        if (dnsData.ip) {
-          dnsServers.push(dnsData.ip);
-        }
-      } catch (error: unknown) {
-        logger.debug("[vpn:dns-leak-test] Direct DNS probe failed:", error);
-      }
-
-      // 3. Делаем DNS запрос через VPN прокси
-      const vpnDnsServers: string[] = [];
-      try {
-        const vpnDnsRes = await proxyFetch("https://ipwho.is/?fields=ip,country_code", {
-          dispatcher,
-          signal: AbortSignal.timeout(8000)
-        });
-        const vpnDnsData = (await vpnDnsRes.json()) as { ip?: string };
-        if (vpnDnsData.ip) {
-          vpnDnsServers.push(vpnDnsData.ip);
-        }
-      } catch (error: unknown) {
-        logger.debug("[vpn:dns-leak-test] Proxy DNS probe failed:", error);
-      }
-
-      // Утечка: DNS запрос без прокси и через прокси идут с одного IP
-      const leaked =
-        dnsServers.length > 0 &&
-        vpnDnsServers.length > 0 &&
-        dnsServers.some((dns) => vpnDnsServers.includes(dns)) &&
-        dnsServers.some((dns) => dns !== vpnIp);
-
-      return {
-        leaked,
-        dnsServers: [...new Set([...dnsServers])],
-        vpnIp,
-        error: null
-      };
+      return buildRouteProbeResult({ directIp, vpnIp });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Ошибка тестирования DNS";
-      return { leaked: false, dnsServers: [], vpnIp: null, error: msg };
+      const msg = e instanceof Error ? e.message : "Ошибка проверки сетевого маршрута";
+      return { bypassDetected: false, directIp: null, vpnIp: null, error: msg };
     }
-  });
+  };
+
+  ipcMain.handle("vpn:route-probe", handleRouteProbe);
+  ipcMain.handle("vpn:dns-leak-test", handleRouteProbe);
 
   // TCP Ping
   ipcMain.handle("vpn:ping", async (_event, rawHost: unknown, rawPort: unknown, rawTimeoutMs?: unknown) => {
@@ -299,57 +322,94 @@ export function registerVpnHandlers({ stateStore, runtimeManager }: IpcContext):
 
   // Ping active proxy (3 samples, median)
   ipcMain.handle("vpn:ping-active-proxy", async () => {
-    try {
-      const status = await runtimeManager.status();
-      if (!status.connected) return -1;
-
-      const state = await stateStore.get();
-      const activeNode = state.nodes.find((n) => n.id === state.activeNodeId);
-      if (!activeNode) return -1;
-
-      const host = activeNode.server;
-      const port = activeNode.port;
-      if (!host || !port || Number.isNaN(port)) return -1;
-
-      const doPing = (): Promise<number> =>
-        new Promise((resolve) => {
-          const socket = new Socket();
-          const start = performance.now();
-
-          const timeout = setTimeout(() => {
-            socket.destroy();
-            resolve(-1);
-          }, 3000);
-
-          socket.on("connect", () => {
-            clearTimeout(timeout);
-            resolve(Math.round(performance.now() - start));
-            socket.destroy();
-          });
-
-          socket.on("error", () => {
-            clearTimeout(timeout);
-            socket.destroy();
-            resolve(-1);
-          });
-
-          socket.connect(port, host);
-        });
-
-      // 3 замера, медиана
-      const samples: number[] = [];
-      for (let i = 0; i < 3; i++) {
-        const p = await doPing();
-        if (p > 0) samples.push(p);
-      }
-
-      if (samples.length === 0) return -1;
-      samples.sort((a, b) => a - b);
-      return samples[Math.floor(samples.length / 2)];
-    } catch (error: unknown) {
-      logger.debug("[vpn:ping-active-proxy] Ping failed:", error);
-      return -1;
+    const now = Date.now();
+    if (activeProxyPingInFlight) {
+      return activeProxyPingInFlight;
     }
+
+    if (now - activeProxyPingLastMeasuredAt < ACTIVE_PROXY_PING_CACHE_TTL_MS) {
+      return activeProxyPingLastValue;
+    }
+
+    activeProxyPingInFlight = (async () => {
+      try {
+        const status = await runtimeManager.status();
+        if (!status.connected) {
+          activeProxyPingLastValue = -1;
+          activeProxyPingLastMeasuredAt = Date.now();
+          return -1;
+        }
+
+        const state = await stateStore.get();
+        const activeNode = state.nodes.find((n) => n.id === state.activeNodeId);
+        if (!activeNode) {
+          activeProxyPingLastValue = -1;
+          activeProxyPingLastMeasuredAt = Date.now();
+          return -1;
+        }
+
+        const host = activeNode.server;
+        const port = activeNode.port;
+        if (!host || !port || Number.isNaN(port)) {
+          activeProxyPingLastValue = -1;
+          activeProxyPingLastMeasuredAt = Date.now();
+          return -1;
+        }
+
+        const doPing = (): Promise<number> =>
+          new Promise((resolve) => {
+            const socket = new Socket();
+            const start = performance.now();
+
+            const timeout = setTimeout(() => {
+              socket.destroy();
+              resolve(-1);
+            }, 3000);
+
+            socket.on("connect", () => {
+              clearTimeout(timeout);
+              resolve(Math.round(performance.now() - start));
+              socket.destroy();
+            });
+
+            socket.on("error", () => {
+              clearTimeout(timeout);
+              socket.destroy();
+              resolve(-1);
+            });
+
+            socket.connect(port, host);
+          });
+
+        // 3 замера, медиана
+        const samples: number[] = [];
+        for (let i = 0; i < 3; i++) {
+          const p = await doPing();
+          if (p > 0) samples.push(p);
+        }
+
+        if (samples.length === 0) {
+          activeProxyPingLastValue = -1;
+          activeProxyPingLastMeasuredAt = Date.now();
+          return -1;
+        }
+
+        samples.sort((a, b) => a - b);
+        const result = samples[Math.floor(samples.length / 2)];
+        activeProxyPingLastValue = result;
+        activeProxyPingLastMeasuredAt = Date.now();
+        return result;
+      } catch (error: unknown) {
+        logger.debug("[vpn:ping-active-proxy] Ping failed:", error);
+        activeProxyPingLastValue = -1;
+        activeProxyPingLastMeasuredAt = Date.now();
+        return -1;
+      } finally {
+        activeProxyPingInFlight = null;
+      }
+    })();
+
+    return activeProxyPingInFlight;
   });
 
   // Get real external IP + country through proxy

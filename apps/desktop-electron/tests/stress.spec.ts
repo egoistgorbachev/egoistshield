@@ -26,7 +26,9 @@ const settings: AppSettings = {
   dnsMode: "auto",
   subscriptionUserAgent: "auto",
   runtimePath: "",
-  routeMode: "global"
+  routeMode: "global",
+  zapretProfile: "General",
+  zapretSuspendDuringVpn: true
 };
 
 const domainRules: DomainRule[] = [];

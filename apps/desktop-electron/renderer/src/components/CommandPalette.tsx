@@ -110,6 +110,15 @@ export function CommandPalette() {
         group: "navigation",
         action: () => setScreen("dns"),
         keywords: "dns резолвер система интернет"
+      },
+      {
+        id: "nav-zapret",
+        label: "Zapret",
+        sublabel: "Ctrl+5",
+        icon: <Zap className="w-4 h-4" />,
+        group: "navigation",
+        action: () => setScreen("zapret"),
+        keywords: "zapret dpi winws flowseal обход"
       }
     ];
 

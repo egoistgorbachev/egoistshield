@@ -43,7 +43,6 @@ export function Settings() {
   const autoConnect = useAppStore((s) => s.autoConnect);
   const notifications = useAppStore((s) => s.notifications);
   const autoStart = useAppStore((s) => s.autoStart);
-  const hwAccel = useAppStore((s) => s.hwAccel);
   const systemDnsServers = useAppStore((s) => s.systemDnsServers);
   const setScreen = useAppStore((s) => s.setScreen);
   const updateSetting = useAppStore((s) => s.updateSetting);
@@ -51,9 +50,10 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [showResetModal, setShowResetModal] = useState(false);
   const [showLogsModal, setShowLogsModal] = useState(false);
-  const [dnsLeakTesting, setDnsLeakTesting] = useState(false);
-  const [dnsLeakResult, setDnsLeakResult] = useState<{
-    leaked: boolean;
+  const [routeProbeTesting, setRouteProbeTesting] = useState(false);
+  const [routeProbeResult, setRouteProbeResult] = useState<{
+    bypassDetected: boolean;
+    directIp: string | null;
     vpnIp: string | null;
     error: string | null;
   } | null>(null);
@@ -61,17 +61,20 @@ export function Settings() {
   const [updateCheckResult, setUpdateCheckResult] = useState<"idle" | "upToDate" | "available" | "error">("idle");
   const [updateErrorMsg, setUpdateErrorMsg] = useState("");
 
-  const runDnsLeakTest = async () => {
-    setDnsLeakTesting(true);
-    setDnsLeakResult(null);
+  const runRouteProbe = async () => {
+    setRouteProbeTesting(true);
+    setRouteProbeResult(null);
     const api = getAPI();
-    if (api?.system?.dnsLeakTest) {
+    if (api?.system?.routeProbe) {
+      const result = await api.system.routeProbe();
+      setRouteProbeResult(result);
+    } else if (api?.system?.dnsLeakTest) {
       const result = await api.system.dnsLeakTest();
-      setDnsLeakResult(result);
+      setRouteProbeResult(result);
     } else {
-      setDnsLeakResult({ leaked: false, vpnIp: null, error: "АPI недоступен" });
+      setRouteProbeResult({ bypassDetected: false, directIp: null, vpnIp: null, error: "API недоступен" });
     }
-    setDnsLeakTesting(false);
+    setRouteProbeTesting(false);
   };
 
   const handleReset = async () => {
@@ -99,7 +102,9 @@ export function Settings() {
           systemDnsServers: "",
           subscriptionUserAgent: "auto",
           runtimePath: "",
-          routeMode: "global"
+          routeMode: "global",
+          zapretProfile: "General",
+          zapretSuspendDuringVpn: true
         }
       });
     }
@@ -169,13 +174,6 @@ export function Settings() {
                   tooltip="Приложение автоматически запустится при загрузке системы. Удобно, если вы хотите всегда быть под защитой VPN без ручного запуска."
                   enabled={autoStart}
                   onChange={() => updateSetting("autoStart", !autoStart)}
-                />
-                <ToggleRow
-                  label="Аппаратное ускорение"
-                  description="GPU-рендеринг интерфейса."
-                  tooltip="Использует видеокарту для отрисовки интерфейса. Включите для плавных анимаций. Выключите, если приложение мерцает или потребляет много GPU."
-                  enabled={hwAccel}
-                  onChange={() => updateSetting("hwAccel", !hwAccel)}
                 />
                 <ToggleRow
                   label="Уведомления"
@@ -359,6 +357,27 @@ export function Settings() {
                   </div>
                 </div>
               </SettingsCard>
+
+              <SettingsCard
+                title="Zapret Center"
+                className="h-full"
+                icon={<ShieldCheck className="w-5 h-5 text-emerald-400" />}
+              >
+                <div className="px-1 py-2 flex flex-col gap-4">
+                  <div className="rounded-2xl border border-white/8 bg-void/55 px-4 py-4 text-sm text-white/82">
+                    Отдельный экран Zapret теперь полностью отвечает за службу, профили, автозапуск, диагностику,
+                    Flowseal-инструменты и очистку кешей. В настройках оставляем только входную точку, чтобы не было
+                    двух разных центров управления одной и той же системой.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setScreen("zapret")}
+                    className="w-full rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 transition-colors hover:bg-emerald-500/16"
+                  >
+                    Открыть Zapret Center
+                  </button>
+                </div>
+              </SettingsCard>
             </motion.div>
           )}
 
@@ -372,42 +391,42 @@ export function Settings() {
               className="max-w-6xl mx-auto w-full flex flex-col gap-6 pb-12"
             >
               <SettingsCard title="Диагностика" icon={<Shield className="w-5 h-5 text-accent" />}>
-                {/* DNS Leak Test */}
+                {/* Route Probe */}
                 <div className="flex items-center justify-between px-1 py-2">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold text-white/90">Проверка DNS</span>
-                    <span className="text-xs text-muted">Проверить утечку DNS запросов</span>
+                    <span className="text-sm font-semibold text-white/90">Проверка сетевого маршрута</span>
+                    <span className="text-xs text-muted">Быстрый probe прямого и VPN egress-маршрута</span>
                   </div>
                   <button
                     type="button"
-                    onClick={runDnsLeakTest}
-                    disabled={dnsLeakTesting}
+                    onClick={runRouteProbe}
+                    disabled={routeProbeTesting}
                     className={cn(
                       "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
-                      dnsLeakResult?.error
+                      routeProbeResult?.error
                         ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                        : dnsLeakResult && !dnsLeakResult.leaked
+                        : routeProbeResult && !routeProbeResult.bypassDetected
                           ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : dnsLeakResult?.leaked
+                          : routeProbeResult?.bypassDetected
                             ? "bg-red-500/10 text-red-400 border border-red-500/20"
                             : "bg-white/5 text-muted hover:text-white hover:bg-white/10 border border-white/10"
                     )}
                   >
-                    {dnsLeakTesting ? (
+                    {routeProbeTesting ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" /> Тестируем...
                       </>
-                    ) : dnsLeakResult?.error ? (
+                    ) : routeProbeResult?.error ? (
                       <>
-                        <AlertTriangle className="w-3.5 h-3.5" /> {dnsLeakResult.error}
+                        <AlertTriangle className="w-3.5 h-3.5" /> {routeProbeResult.error}
                       </>
-                    ) : dnsLeakResult && !dnsLeakResult.leaked ? (
+                    ) : routeProbeResult && !routeProbeResult.bypassDetected ? (
                       <>
-                        <ShieldCheck className="w-3.5 h-3.5" /> DNS защищён
+                        <ShieldCheck className="w-3.5 h-3.5" /> Маршрут через VPN
                       </>
-                    ) : dnsLeakResult?.leaked ? (
+                    ) : routeProbeResult?.bypassDetected ? (
                       <>
-                        <ShieldAlert className="w-3.5 h-3.5" /> Утечка DNS!
+                        <ShieldAlert className="w-3.5 h-3.5" /> Есть обход VPN
                       </>
                     ) : (
                       <>
@@ -415,6 +434,16 @@ export function Settings() {
                       </>
                     )}
                   </button>
+                </div>
+                {routeProbeResult && !routeProbeResult.error && (
+                  <div className="px-1 pt-1 text-xs leading-relaxed text-muted">
+                    Прямой egress: {routeProbeResult.directIp ?? "неизвестно"} · VPN egress:{" "}
+                    {routeProbeResult.vpnIp ?? "неизвестно"}
+                  </div>
+                )}
+                <div className="px-1 pt-1 text-xs leading-relaxed text-muted">
+                  Это быстрый egress-probe для поиска обхода VPN, а не лабораторный DNS leak test по реальным
+                  resolver-серверам.
                 </div>
 
                 {/* Connection Logs */}

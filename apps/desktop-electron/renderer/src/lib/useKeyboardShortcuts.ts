@@ -4,6 +4,8 @@
  * Ctrl+1 → Dashboard
  * Ctrl+2 → Серверы
  * Ctrl+3 → Настройки
+ * Ctrl+4 → DNS
+ * Ctrl+5 → Zapret
  * Ctrl+Shift+C → Toggle VPN connection
  * Ctrl+Shift+S → Smart Connect
  */
@@ -32,6 +34,14 @@ export function useKeyboardShortcuts() {
           case "Digit3":
             e.preventDefault();
             useAppStore.getState().setScreen("settings");
+            break;
+          case "Digit4":
+            e.preventDefault();
+            useAppStore.getState().setScreen("dns");
+            break;
+          case "Digit5":
+            e.preventDefault();
+            useAppStore.getState().setScreen("zapret");
             break;
         }
       }

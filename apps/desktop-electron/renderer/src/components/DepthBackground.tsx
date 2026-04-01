@@ -50,9 +50,11 @@ export function DepthBackground({ isConnected = false }: { isConnected?: boolean
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
 
-    let animId: number;
+    let animId: number | null = null;
     let w = 0;
     let h = 0;
+    let time = 0;
+    let frameSkip = 0;
 
     // ── Performance: skip draw when not visible ──
     let isInViewport = true;
@@ -60,7 +62,14 @@ export function DepthBackground({ isConnected = false }: { isConnected?: boolean
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry) isInViewport = entry.isIntersecting;
+        if (!entry) return;
+        isInViewport = entry.isIntersecting;
+        if (isInViewport) {
+          renderCurrentFrame();
+          scheduleNextFrame();
+        } else {
+          stopAnimation();
+        }
       },
       { threshold: 0.1 }
     );
@@ -68,6 +77,12 @@ export function DepthBackground({ isConnected = false }: { isConnected?: boolean
 
     const onVisibility = () => {
       isPageVisible = !document.hidden;
+      if (isPageVisible) {
+        renderCurrentFrame();
+        scheduleNextFrame();
+      } else {
+        stopAnimation();
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
 
@@ -76,48 +91,25 @@ export function DepthBackground({ isConnected = false }: { isConnected?: boolean
     let reducedMotion = motionQuery.matches;
     const onMotionChange = (e: MediaQueryListEvent) => {
       reducedMotion = e.matches;
+      renderCurrentFrame();
+      if (reducedMotion) {
+        stopAnimation();
+      } else {
+        scheduleNextFrame();
+      }
     };
     motionQuery.addEventListener("change", onMotionChange);
 
-    const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      w = canvas.clientWidth;
-      h = canvas.clientHeight;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      ctx.scale(dpr, dpr);
-      if (orbsRef.current.length === 0) initOrbs(w, h);
+    const shouldAnimate = () => isInViewport && isPageVisible && !reducedMotion;
+
+    const stopAnimation = () => {
+      if (animId !== null) {
+        cancelAnimationFrame(animId);
+        animId = null;
+      }
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current.x = e.clientX / w;
-      mouseRef.current.y = e.clientY / h;
-    };
-
-    orbsRef.current = [];
-    resize();
-    window.addEventListener("resize", resize);
-    window.addEventListener("mousemove", handleMouseMove);
-
-    let time = 0;
-    let frameSkip = 0;
-
-    const draw = () => {
-      time += 0.008;
-      frameSkip++;
-
-      // Performance: throttle to ~30fps when connected (SpeedGraph gets GPU priority)
-      if (isConnected && frameSkip % 2 !== 0) {
-        animId = requestAnimationFrame(draw);
-        return;
-      }
-
-      // Skip expensive draw when not visible
-      if (!isInViewport || !isPageVisible || reducedMotion) {
-        animId = requestAnimationFrame(draw);
-        return;
-      }
-
+    const renderFrame = () => {
       ctx.clearRect(0, 0, w, h);
 
       const mx = (mouseRef.current.x - 0.5) * 2;
@@ -178,14 +170,76 @@ export function DepthBackground({ isConnected = false }: { isConnected?: boolean
       vigGrad.addColorStop(1, "rgba(3, 10, 18, 0.45)");
       ctx.fillStyle = vigGrad;
       ctx.fillRect(0, 0, w, h);
+    };
+
+    const renderCurrentFrame = () => {
+      if (w === 0 || h === 0) {
+        return;
+      }
+      renderFrame();
+    };
+
+    const scheduleNextFrame = () => {
+      if (animId !== null || !shouldAnimate()) {
+        return;
+      }
 
       animId = requestAnimationFrame(draw);
     };
 
-    draw();
+    function draw() {
+      animId = null;
+      time += 0.008;
+      frameSkip++;
+
+      // Performance: throttle to ~30fps when connected (SpeedGraph gets GPU priority)
+      if (isConnected && frameSkip % 2 !== 0) {
+        scheduleNextFrame();
+        return;
+      }
+
+      if (!shouldAnimate()) {
+        return;
+      }
+
+      renderFrame();
+      scheduleNextFrame();
+    }
+
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      w = canvas.clientWidth;
+      h = canvas.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      if (orbsRef.current.length === 0) initOrbs(w, h);
+      renderCurrentFrame();
+      scheduleNextFrame();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (w === 0 || h === 0) {
+        return;
+      }
+      mouseRef.current.x = e.clientX / w;
+      mouseRef.current.y = e.clientY / h;
+      if (!shouldAnimate()) {
+        renderCurrentFrame();
+      }
+    };
+
+    orbsRef.current = [];
+    resize();
+    window.addEventListener("resize", resize);
+    window.addEventListener("mousemove", handleMouseMove);
+
+    renderCurrentFrame();
+    scheduleNextFrame();
 
     return () => {
-      cancelAnimationFrame(animId);
+      stopAnimation();
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("resize", resize);

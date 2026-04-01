@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { RuntimeInstallResult } from "./contracts";
+import { resolveWindowsExecutable } from "./windows-system-binaries";
 
 const execFileAsync = promisify(execFile);
 
@@ -248,7 +249,12 @@ export class RuntimeInstaller {
   private async extractZip(zipPath: string, destinationPath: string): Promise<void> {
     await fs.mkdir(destinationPath, { recursive: true });
     const command = `Expand-Archive -LiteralPath '${this.psEscape(zipPath)}' -DestinationPath '${this.psEscape(destinationPath)}' -Force`;
-    await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command]);
+    await execFileAsync(resolveWindowsExecutable("powershell.exe"), [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      command
+    ]);
   }
 
   private async findFirstFileByName(rootDir: string, filename: string): Promise<string | null> {

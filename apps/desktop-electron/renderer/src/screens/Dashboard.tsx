@@ -263,13 +263,14 @@ export function Dashboard() {
       setTraffic({ down: 0, up: 0 });
       return;
     }
+
     const handleTraffic = (data: { rx: number; tx: number }) => {
       setTraffic({ down: Math.round(data.rx / 1024), up: Math.round(data.tx / 1024) });
     };
     const api = getAPI();
-    if (api?.traffic?.onUpdate) api.traffic.onUpdate(handleTraffic);
+    const dispose = api?.traffic?.onUpdate ? api.traffic.onUpdate(handleTraffic) : undefined;
     return () => {
-      if (api?.traffic?.offUpdate) api.traffic.offUpdate();
+      dispose?.();
     };
   }, [isConnected]);
 

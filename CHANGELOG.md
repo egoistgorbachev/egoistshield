@@ -5,6 +5,23 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [3.6.0] — 2026-03-29
+
+### 🚀 Release Polish, Honest Route Probe & Settings Cleanup
+
+Релиз доводит desktop-клиент до более честного и собранного состояния перед следующим большим этапом: диагностический probe больше не маскируется под полноценный DNS leak test, фоновая анимация безопаснее переживает visibility/resize-переходы, а настройки очищены от лишнего и дублирующегося UI.
+
+#### ✅ Исправлено
+- **Honest route probe**: прямой egress и egress через локальный VPN proxy теперь возвращаются отдельным типизированным результатом вместо псевдо-`dns leak test`.
+- **DepthBackground scheduling**: убран риск обращения к `requestAnimationFrame` до инициализации draw-loop, а пауза/возврат при hidden viewport и reduced motion стали безопаснее.
+- **Settings cleanup**: удалён устаревший тумблер аппаратного ускорения и закреплён единый вход в `Zapret Center` без второго центра управления в общих настройках.
+
+#### 🧪 Верификация
+- `npm exec vitest run tests/route-probe.spec.ts tests/use-app-store.spec.ts tests/preload-subscriptions.spec.ts`
+- `npm test`
+- `npm run build:vite`
+- `npm run stress`
+
 ## [3.3.0] — 2026-03-25
 
 ### 🚀 Make-Before-Break Handoff & Safer Runtime Cutover

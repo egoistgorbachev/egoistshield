@@ -7,10 +7,17 @@
   ; Без этого обновление может провалиться (файлы заблокированы)
   nsExec::ExecToLog 'taskkill /F /IM xray.exe'
   nsExec::ExecToLog 'taskkill /F /IM sing-box.exe'
+  nsExec::ExecToLog 'taskkill /F /IM winws.exe /T'
   nsExec::ExecToLog 'taskkill /F /IM EgoistShield.exe'
+  nsExec::ExecToLog 'sc stop EgoistShieldZapret'
+  nsExec::ExecToLog 'sc delete EgoistShieldZapret'
+  nsExec::ExecToLog 'sc stop WinDivert'
+  nsExec::ExecToLog 'sc delete WinDivert'
+  nsExec::ExecToLog 'sc stop WinDivert14'
+  nsExec::ExecToLog 'sc delete WinDivert14'
 
   ; Короткая пауза чтобы процессы гарантированно завершились
-  Sleep 1000
+  Sleep 2000
 !macroend
 
 !macro customInstall
@@ -26,8 +33,15 @@
   ; Убить процессы перед удалением
   nsExec::ExecToLog 'taskkill /F /IM xray.exe'
   nsExec::ExecToLog 'taskkill /F /IM sing-box.exe'
+  nsExec::ExecToLog 'taskkill /F /IM winws.exe /T'
   nsExec::ExecToLog 'taskkill /F /IM EgoistShield.exe'
-  Sleep 1000
+  nsExec::ExecToLog 'sc stop EgoistShieldZapret'
+  nsExec::ExecToLog 'sc delete EgoistShieldZapret'
+  nsExec::ExecToLog 'sc stop WinDivert'
+  nsExec::ExecToLog 'sc delete WinDivert'
+  nsExec::ExecToLog 'sc stop WinDivert14'
+  nsExec::ExecToLog 'sc delete WinDivert14'
+  Sleep 2000
 !macroend
 
 !macro customUnInstall
@@ -35,7 +49,17 @@
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=EgoistShield-KS-Block-All'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=EgoistShield-KS-Allow-VPN'
 
+  ; Очищаем автозапуск, если пользователь включал его через настройки приложения.
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "EgoistShield"
+
+  ; Даём системе время отпустить winws/WinDivert файлы после stop/delete service.
+  Sleep 2000
+
   ; Очистка temp и AppData
   RMDir /r "$TEMP\EgoistShield"
+  Delete "$APPDATA\EgoistShield\zapret\core\bin\WinDivert64.sys"
+  Delete "$APPDATA\EgoistShield\zapret\core\bin\WinDivert.dll"
+  RMDir /r "$APPDATA\EgoistShield\zapret"
   RMDir /r "$APPDATA\EgoistShield"
+  RMDir /r "$LOCALAPPDATA\EgoistShield"
 !macroend

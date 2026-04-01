@@ -21,7 +21,9 @@ const DEFAULT_STATE: PersistedState = {
     systemDnsServers: "",
     subscriptionUserAgent: "auto",
     runtimePath: "",
-    routeMode: "global"
+    routeMode: "global",
+    zapretProfile: "General",
+    zapretSuspendDuringVpn: true
   },
   usageHistory: []
 };
@@ -33,7 +35,9 @@ function sanitizeState(state: PersistedState): PersistedState {
     settings: {
       ...state.settings,
       useTunMode: false,
-      systemDnsServers: state.settings.systemDnsServers ?? ""
+      systemDnsServers: state.settings.systemDnsServers ?? "",
+      zapretProfile: state.settings.zapretProfile?.trim() || "General",
+      zapretSuspendDuringVpn: state.settings.zapretSuspendDuringVpn ?? true
     }
   };
 }

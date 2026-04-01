@@ -13,9 +13,12 @@ import { BrowserWindow, Menu, Notification, Tray, app, ipcMain, nativeImage } fr
 import { buildAppPathConfig, detectRuntimeEnvironment } from "./app-paths";
 import { fullCleanup } from "./ipc/dns-cleanup";
 import { registerIpcHandlers } from "./ipc/handlers";
+import { syncWindowsLoginItemSettings } from "./ipc/login-item-settings";
 import logger, { configureLoggerPaths } from "./ipc/logger";
 import { StateStore } from "./ipc/state-store";
 import { VpnRuntimeManager } from "./ipc/vpn-manager";
+import { resolveWindowsExecutable } from "./ipc/windows-system-binaries";
+import { ZapretManager } from "./ipc/zapret-manager";
 
 export let globalStateStore: StateStore | null = null;
 
@@ -213,6 +216,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 let mainWindow: BrowserWindow | null = null;
 export let tray: Tray | null = null;
 export let globalRuntimeManager: VpnRuntimeManager | null = null;
+export let globalZapretManager: ZapretManager | null = null;
 let trafficInterval: NodeJS.Timeout | null = null;
 let isQuitting = false;
 
@@ -222,6 +226,17 @@ const XRAY_API_PORT = 10085;
 
 app.on("before-quit", () => {
   isQuitting = true;
+  const persistedState = globalStateStore?.get();
+  if (globalZapretManager && persistedState?.settings.zapretSuspendDuringVpn) {
+    void globalZapretManager
+      .restoreAfterVpnIfNeeded(
+        persistedState.settings.zapretSuspendDuringVpn,
+        persistedState.settings.zapretProfile
+      )
+      .catch((error: unknown) => {
+        logger.warn("[zapret] Failed to restore service during app shutdown:", error);
+      });
+  }
   // Cleanup DNS/proxy and kill VPN processes on exit
   fullCleanup().catch((e) => logger.warn("[exit] cleanup failed:", e));
   if (tray) {
@@ -234,10 +249,16 @@ app.on("before-quit", () => {
 // These fire when process is terminated externally (taskkill, SIGTERM)
 function syncCleanup() {
   try {
-    spawnSync("taskkill", ["/F", "/IM", "xray.exe"], { windowsHide: true, timeout: 3000 });
-    spawnSync("taskkill", ["/F", "/IM", "sing-box.exe"], { windowsHide: true, timeout: 3000 });
+    spawnSync(resolveWindowsExecutable("taskkill"), ["/F", "/IM", "xray.exe"], {
+      windowsHide: true,
+      timeout: 3000
+    });
+    spawnSync(resolveWindowsExecutable("taskkill"), ["/F", "/IM", "sing-box.exe"], {
+      windowsHide: true,
+      timeout: 3000
+    });
     spawnSync(
-      "reg",
+      resolveWindowsExecutable("reg"),
       [
         "add",
         "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
@@ -252,17 +273,16 @@ function syncCleanup() {
       { windowsHide: true, timeout: 3000 }
     );
     spawnSync(
-      "reg",
+      resolveWindowsExecutable("reg"),
       ["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", "/v", "ProxyServer", "/f"],
       { windowsHide: true, timeout: 3000 }
     );
     spawnSync(
-      "reg",
+      resolveWindowsExecutable("reg"),
       ["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", "/v", "AutoConfigURL", "/f"],
       { windowsHide: true, timeout: 3000 }
     );
-    spawnSync("ipconfig", ["/flushdns"], { windowsHide: true, timeout: 3000 });
-    spawnSync("netsh", ["winsock", "reset"], { windowsHide: true, timeout: 5000 });
+    spawnSync(resolveWindowsExecutable("ipconfig"), ["/flushdns"], { windowsHide: true, timeout: 3000 });
   } catch (error: unknown) {
     logger.warn("[cleanup] sync cleanup failed:", error);
   }
@@ -492,10 +512,18 @@ async function createMainWindow(): Promise<void> {
   if (!globalRuntimeManager) {
     globalRuntimeManager = new VpnRuntimeManager(process.resourcesPath, USER_DATA_DIR);
   }
-  await registerIpcHandlers(mainWindow, stateStore, globalRuntimeManager);
+  if (!globalZapretManager) {
+    globalZapretManager = new ZapretManager(process.resourcesPath, app.getAppPath(), USER_DATA_DIR);
+  }
+  await registerIpcHandlers(mainWindow, stateStore, globalRuntimeManager, globalZapretManager);
 
   // Auto-connect: если включён autoConnect и есть сохранённый сервер
   const loadedState = await stateStore.load();
+  try {
+    syncWindowsLoginItemSettings({ app, settings: loadedState.settings });
+  } catch (error: unknown) {
+    logger.warn("[system] Failed to sync login item settings on startup:", error);
+  }
   autoUpdateEnabled = loadedState.settings.autoUpdate;
   logger.info(`[updater] Persisted auto-update = ${autoUpdateEnabled}`);
   if (loadedState.settings.autoConnect && loadedState.activeNodeId) {

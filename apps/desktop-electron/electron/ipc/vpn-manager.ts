@@ -26,6 +26,7 @@ import type {
 import { KillSwitch } from "./kill-switch";
 import logger, { formatRuntimeLogEvent } from "./logger";
 import { RuntimeInstaller } from "./runtime-installer";
+import { resolveWindowsExecutable } from "./windows-system-binaries";
 
 const execFileAsync = promisify(execFile);
 type ResolvedRuntime = {
@@ -175,7 +176,10 @@ export class VpnRuntimeManager extends EventEmitter {
       return true;
     }
     try {
-      const _result = await execFileAsync("net.exe", ["session"], { timeout: 2000, windowsHide: true });
+      const _result = await execFileAsync(resolveWindowsExecutable("net.exe"), ["session"], {
+        timeout: 2000,
+        windowsHide: true
+      });
       this.cachedIsAdmin = true;
     } catch {
       this.cachedIsAdmin = false;
@@ -699,7 +703,10 @@ export class VpnRuntimeManager extends EventEmitter {
 
     if (!wasMockRuntime && activePid && activeProcess.exitCode === null) {
       try {
-        spawnSync("taskkill", ["/F", "/PID", String(activePid)], { windowsHide: true, timeout: 2000 });
+        spawnSync(resolveWindowsExecutable("taskkill"), ["/F", "/PID", String(activePid)], {
+          windowsHide: true,
+          timeout: 2000
+        });
       } catch {
         /* ignore */
       }

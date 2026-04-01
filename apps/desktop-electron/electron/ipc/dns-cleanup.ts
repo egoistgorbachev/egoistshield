@@ -5,11 +5,15 @@
  * 1. Disable system proxy (registry)
  * 2. Remove PAC script (AutoConfigURL)
  * 3. Flush DNS cache (ipconfig /flushdns)
- * 4. Reset Winsock catalog (netsh winsock reset)
+ *
+ * Winsock reset is intentionally excluded from regular disconnect/exit cleanup.
+ * It is reserved for explicit repair flows because it is a heavyweight
+ * system-wide operation.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import logger from "./logger";
+import { resolveWindowsExecutable } from "./windows-system-binaries";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,7 +26,7 @@ export async function cleanupDnsAndProxy(): Promise<{ ok: boolean; message: stri
   try {
     // 1. Disable proxy
     await execFileAsync(
-      "reg",
+      resolveWindowsExecutable("reg"),
       [
         "add",
         "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
@@ -45,7 +49,7 @@ export async function cleanupDnsAndProxy(): Promise<{ ok: boolean; message: stri
   try {
     // 2. Remove PAC script
     await execFileAsync(
-      "reg",
+      resolveWindowsExecutable("reg"),
       ["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", "/v", "AutoConfigURL", "/f"],
       { windowsHide: true, timeout: 5000 }
     );
@@ -58,7 +62,7 @@ export async function cleanupDnsAndProxy(): Promise<{ ok: boolean; message: stri
   try {
     // 3. Remove proxy server entry
     await execFileAsync(
-      "reg",
+      resolveWindowsExecutable("reg"),
       ["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", "/v", "ProxyServer", "/f"],
       { windowsHide: true, timeout: 5000 }
     );
@@ -69,7 +73,7 @@ export async function cleanupDnsAndProxy(): Promise<{ ok: boolean; message: stri
 
   try {
     // 4. Flush DNS cache
-    await execFileAsync("ipconfig", ["/flushdns"], {
+    await execFileAsync(resolveWindowsExecutable("ipconfig"), ["/flushdns"], {
       windowsHide: true,
       timeout: 5000
     });
@@ -92,7 +96,7 @@ export async function killVpnProcesses(): Promise<void> {
 
   for (const name of processNames) {
     try {
-      await execFileAsync("taskkill", ["/F", "/IM", name], {
+      await execFileAsync(resolveWindowsExecutable("taskkill"), ["/F", "/IM", name], {
         windowsHide: true,
         timeout: 5000
       });
@@ -109,4 +113,22 @@ export async function killVpnProcesses(): Promise<void> {
 export async function fullCleanup(): Promise<{ ok: boolean; message: string }> {
   await killVpnProcesses();
   return cleanupDnsAndProxy();
+}
+
+export async function repairNetworkStack(): Promise<{ ok: boolean; message: string }> {
+  const cleanupResult = await fullCleanup();
+  const messages = [cleanupResult.message];
+
+  try {
+    await execFileAsync(resolveWindowsExecutable("netsh"), ["winsock", "reset"], {
+      windowsHide: true,
+      timeout: 8_000
+    });
+    messages.push("✅ Winsock каталог сброшен");
+    return { ok: cleanupResult.ok, message: messages.join("\n") };
+  } catch (error: unknown) {
+    logger.warn("[cleanup] Failed to reset Winsock:", error);
+    messages.push("⚠️ Winsock: не удалось сбросить каталог");
+    return { ok: false, message: messages.join("\n") };
+  }
 }

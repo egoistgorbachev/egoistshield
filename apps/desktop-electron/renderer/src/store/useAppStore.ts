@@ -33,6 +33,15 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
+export function normalizeZapretProfile(value: unknown, fallback: string): string {
+  if (!isString(value)) {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || fallback;
+}
+
 function sanitizePersistedState(persistedState: unknown, currentState: AppState): AppState {
   if (!persistedState || typeof persistedState !== "object") {
     return currentState;
@@ -48,8 +57,11 @@ function sanitizePersistedState(persistedState: unknown, currentState: AppState)
     autoConnect: isBoolean(persisted.autoConnect) ? persisted.autoConnect : currentState.autoConnect,
     notifications: isBoolean(persisted.notifications) ? persisted.notifications : currentState.notifications,
     autoStart: isBoolean(persisted.autoStart) ? persisted.autoStart : currentState.autoStart,
-    hwAccel: isBoolean(persisted.hwAccel) ? persisted.hwAccel : currentState.hwAccel,
     systemDnsServers: isString(persisted.systemDnsServers) ? persisted.systemDnsServers : currentState.systemDnsServers,
+    zapretProfile: normalizeZapretProfile(persisted.zapretProfile, currentState.zapretProfile),
+    zapretSuspendDuringVpn: isBoolean(persisted.zapretSuspendDuringVpn)
+      ? persisted.zapretSuspendDuringVpn
+      : currentState.zapretSuspendDuringVpn,
     selectedServerId: isString(persisted.selectedServerId) ? persisted.selectedServerId : currentState.selectedServerId,
     servers: Array.isArray(persisted.servers) ? (persisted.servers as AppState["servers"]) : currentState.servers,
     favoriteServerIds: isStringArray(persisted.favoriteServerIds)
@@ -76,8 +88,9 @@ export const useAppStore = create<AppState>()(
         autoConnect: state.autoConnect,
         notifications: state.notifications,
         autoStart: state.autoStart,
-        hwAccel: state.hwAccel,
         systemDnsServers: state.systemDnsServers,
+        zapretProfile: state.zapretProfile,
+        zapretSuspendDuringVpn: state.zapretSuspendDuringVpn,
 
         selectedServerId: state.selectedServerId,
         servers: state.servers,

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { type ParsedDnsServers, parseDnsServers, splitDnsServersByFamily } from "../../shared/system-dns";
+import { resolveWindowsExecutable } from "./windows-system-binaries";
 
 const execFileAsync = promisify(execFile);
 const WINDOWS_SCRIPT_TIMEOUT_MS = 20_000;
@@ -148,17 +149,21 @@ if (-not $resetMode) {
 }
 
 async function flushDnsCache(): Promise<void> {
-  await execFileAsync("ipconfig", ["/flushdns"], {
+  await execFileAsync(resolveWindowsExecutable("ipconfig"), ["/flushdns"], {
     windowsHide: true,
     timeout: 5000
   });
 }
 
 async function runWindowsPowerShell(script: string): Promise<void> {
-  await execFileAsync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
-    windowsHide: true,
-    timeout: WINDOWS_SCRIPT_TIMEOUT_MS
-  });
+  await execFileAsync(
+    resolveWindowsExecutable("powershell.exe"),
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+    {
+      windowsHide: true,
+      timeout: WINDOWS_SCRIPT_TIMEOUT_MS
+    }
+  );
 }
 
 async function applyWindowsDnsScript(options: WindowsDnsScriptOptions): Promise<void> {

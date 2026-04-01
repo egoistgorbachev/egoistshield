@@ -123,7 +123,9 @@ const baseSettings: AppSettings = {
   dnsMode: "auto",
   subscriptionUserAgent: "auto",
   runtimePath: "",
-  routeMode: "selected"
+  routeMode: "selected",
+  zapretProfile: "General",
+  zapretSuspendDuringVpn: true
 };
 
 const vlessNode: VpnNode = {

@@ -3,6 +3,7 @@
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { resolveWindowsExecutable } from "./windows-system-binaries";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,7 +25,7 @@ export function notifySystemProxyChanged(): void {
   `.replace(/\r?\n/g, " ");
 
   execFile(
-    "powershell.exe",
+    resolveWindowsExecutable("powershell.exe"),
     ["-NoProfile", "-NonInteractive", "-Command", ps],
     {
       timeout: 3000,
@@ -46,9 +47,39 @@ export async function enableSystemProxy(port: number): Promise<void> {
   const bypass = "<local>;127.*;10.*;192.168.*;172.16.*;172.17.*;172.18.*;172.19.*;localhost";
 
   await Promise.all([
-    execFileAsync("reg.exe", ["add", REG_PATH, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"]),
-    execFileAsync("reg.exe", ["add", REG_PATH, "/v", "ProxyServer", "/t", "REG_SZ", "/d", proxyServer, "/f"]),
-    execFileAsync("reg.exe", ["add", REG_PATH, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", bypass, "/f"])
+    execFileAsync(resolveWindowsExecutable("reg.exe"), [
+      "add",
+      REG_PATH,
+      "/v",
+      "ProxyEnable",
+      "/t",
+      "REG_DWORD",
+      "/d",
+      "1",
+      "/f"
+    ]),
+    execFileAsync(resolveWindowsExecutable("reg.exe"), [
+      "add",
+      REG_PATH,
+      "/v",
+      "ProxyServer",
+      "/t",
+      "REG_SZ",
+      "/d",
+      proxyServer,
+      "/f"
+    ]),
+    execFileAsync(resolveWindowsExecutable("reg.exe"), [
+      "add",
+      REG_PATH,
+      "/v",
+      "ProxyOverride",
+      "/t",
+      "REG_SZ",
+      "/d",
+      bypass,
+      "/f"
+    ])
   ]);
   notifySystemProxyChanged();
 }
@@ -58,9 +89,23 @@ export async function disableSystemProxy(): Promise<void> {
   if (process.platform !== "win32") return;
 
   await Promise.all([
-    execFileAsync("reg.exe", ["add", REG_PATH, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f"]),
-    execFileAsync("reg.exe", ["delete", REG_PATH, "/v", "ProxyServer", "/f"]).catch(() => {}),
-    execFileAsync("reg.exe", ["delete", REG_PATH, "/v", "ProxyOverride", "/f"]).catch(() => {})
+    execFileAsync(resolveWindowsExecutable("reg.exe"), [
+      "add",
+      REG_PATH,
+      "/v",
+      "ProxyEnable",
+      "/t",
+      "REG_DWORD",
+      "/d",
+      "0",
+      "/f"
+    ]),
+    execFileAsync(resolveWindowsExecutable("reg.exe"), ["delete", REG_PATH, "/v", "ProxyServer", "/f"]).catch(
+      () => {}
+    ),
+    execFileAsync(resolveWindowsExecutable("reg.exe"), ["delete", REG_PATH, "/v", "ProxyOverride", "/f"]).catch(
+      () => {}
+    )
   ]);
   notifySystemProxyChanged();
 }

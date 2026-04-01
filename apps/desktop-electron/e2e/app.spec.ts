@@ -37,7 +37,9 @@ const CLEAN_STATE: PersistedState = {
     systemDnsServers: "",
     subscriptionUserAgent: "auto",
     runtimePath: "",
-    routeMode: "global"
+    routeMode: "global",
+    zapretProfile: "General",
+    zapretSuspendDuringVpn: true
   },
   usageHistory: []
 };
@@ -183,6 +185,23 @@ test.describe("EgoistShield E2E", () => {
     if (await settingsTab.isVisible()) {
       await settingsTab.click();
       await expect(page.locator("text=Настройки").first()).toBeVisible();
+    }
+  });
+
+  test("навигация — tab Zapret", async () => {
+    const zapretTab = page.getByRole("button", { name: "Zapret" }).first();
+    if (await zapretTab.isVisible()) {
+      await zapretTab.click();
+      await expect(page.locator("text=Zapret Control").first()).toBeVisible();
+      await expect(page.getByText("Error invoking remote method 'zapret:status'")).toHaveCount(0);
+      await expect
+        .poll(async () => await page.locator("select").first().evaluate((element) => element.querySelectorAll("option").length), {
+          timeout: 15_000
+        })
+        .toBeGreaterThan(0);
+      await expect
+        .poll(async () => await page.locator("select").first().inputValue(), { timeout: 15_000 })
+        .toMatch(/\S+/);
     }
   });
 
