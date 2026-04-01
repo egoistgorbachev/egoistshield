@@ -6,23 +6,23 @@ Desktop-клиент `EgoistShield` для Windows 10/11.
 
 ## Что есть в desktop-версии
 
-- **Мультипротокольный импорт и подключение**: VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria2, TUIC, WireGuard.
-- **Dual-runtime**: Xray + Sing-box.
-- **Smart Connect + safer handoff**: adaptive health-score выбор узлов, protocol-aware ranking, make-before-break cutover и rollback на предыдущую сессию при срыве нового runtime.
-- **Zapret Control / Flowseal**: отдельный экран для standalone/service-режима, профилей, автоподбора, диагностики, maintenance-инструментов и очистки Discord-кеша.
+- **Импорт и подключение поддерживаемых конфигураций узлов**.
+- **Встроенные сетевые компоненты** для исполнения конфигураций и маршрутов приложения.
+- **Smart Connect + safer handoff**: adaptive health-score выбор узлов, ranking, make-before-break cutover и rollback на предыдущую сессию при срыве нового runtime.
+- **Отдельный экран сервисного управления**: профили, автоподбор, диагностика, maintenance-инструменты и очистка Discord-кеша.
 - **System DNS Center**: установка и сброс системного DNS Windows с валидацией ввода.
 - **Kill Switch**: управление firewall-правилами Windows для защиты при обрыве соединения.
-- **Автозапуск и авто-подключение** с синхронизацией Windows login item при старте приложения.
+- **Автозапуск и автоматическое восстановление рабочего состояния** с синхронизацией Windows login item при старте приложения.
 - **Updater**: ручная проверка новой версии и установка релиза через GitHub Releases.
-- **Диагностика**: structured logs, runtime lifecycle, honest route probe, runtime diagnostics, connection logs.
+- **Диагностика**: structured logs, runtime lifecycle, route probe маршрута, runtime diagnostics, connection logs.
 - **UI**: dashboard, server list, 3D-globe, usage insights, command palette, polished dark design system.
 
 ## Что вошло в 3.6.0
 
-- **Zapret Control** собрал в одном месте службу, standalone-режим, профили, Flowseal maintenance и диагностику вместо разрозненных настроек.
-- **Honest route probe** заменил псевдо-`dns leak test`: UI теперь честно показывает direct/VPN egress-маршруты.
+- **Отдельный сервисный экран** собрал в одном месте служебные режимы, профили, maintenance и диагностику вместо разрозненных настроек.
+- **Честный route probe** убрал расплывчатые сетевые формулировки и теперь показывает разницу между прямым и управляемым маршрутом.
 - **Release polish** синхронизирует автозапуск с Windows startup login item и чище переживает install/update/uninstall цикл.
-- **Settings cleanup** оставляет в общих настройках только точку входа в `DNS Center` и `Zapret Control`, без дублирующего управления.
+- **Settings cleanup** оставляет в общих настройках только точку входа в `DNS Center` и сервисные инструменты, без дублирующего управления.
 
 ## Стек
 
@@ -62,9 +62,9 @@ npm run dist
 ## Что важно знать
 
 - `System DNS Center` работает с системными DNS Windows и ожидает корректные IP-адреса DNS-серверов.
-- Форматы `sdns://` и некоторые hostname-based secure DNS-схемы нельзя применять напрямую как системный DNS Windows без локального DNS-прокси.
+- Форматы `sdns://` и некоторые hostname-based secure DNS-схемы нельзя применять напрямую как системный DNS Windows без дополнительного локального DNS-сервиса.
 - `Kill Switch`, системный DNS и часть сетевых операций требуют соответствующих прав в Windows.
-- Публичное описание продукта намеренно не использует формулировки, которые можно трактовать как обещание обхода законно установленных ограничений.
+- Публичное описание продукта намеренно не использует формулировки, которые можно трактовать как обещание доступа к ресурсам с особыми ограничениями доступа.
 
 ## Сборка релиза
 

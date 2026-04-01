@@ -2,7 +2,7 @@
   "name": "egoistshield-desktop-electron",
   "productName": "EgoistShield",
   "version": "3.6.0",
-  "description": "EgoistShield next-gen universal VPN client for Windows",
+  "description": "EgoistShield Windows desktop client for node management and system DNS",
   "main": ".vite/build/main.js",
   "private": true,
   "author": {

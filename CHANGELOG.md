@@ -7,21 +7,21 @@
 
 ## [3.6.0] — 2026-04-01
 
-### 🚀 Zapret Control, Honest Route Probe & Release Polish
+### 🚀 Service Tools, Route Probe & Release Polish
 
-Релиз фиксирует финальное desktop-состояние, с которым опубликован GitHub Release 1 апреля 2026 года: отдельный `Zapret Control` собирает в одном месте службу, профили и Flowseal-инструменты, route probe честно показывает direct/VPN egress вместо псевдо-DNS leak test, а installer/startup контур аккуратно синхронизирует автозапуск и дочищает следы предыдущих установок.
+Релиз фиксирует финальное desktop-состояние, с которым опубликован GitHub Release 1 апреля 2026 года: отдельный экран сервисного управления собирает в одном месте служебные режимы, профили и maintenance-инструменты, route probe честно показывает разницу между прямым и управляемым сетевым маршрутом, а installer/startup контур аккуратно синхронизирует автозапуск и дочищает следы предыдущих установок.
 
 #### ✨ Добавлено
-- **Zapret Control**: отдельный экран для standalone/service-режима, профилей, автоподбора, Flowseal maintenance, диагностики и очистки Discord-кеша.
-- **Flowseal maintenance surface**: проверка `Core updates`, запуск updater/service menu, `Flowseal tests` и тюнинг `Game Filter` / `IPSet` вынесены в UI.
-- **Dedicated Zapret entry point**: в общих настройках оставлена одна входная точка в `Zapret Center`, без второго центра управления той же системой.
+- **Отдельный сервисный экран**: standalone/service-режим, профили, автоподбор, maintenance, диагностика и очистка Discord-кеша собраны в одном месте.
+- **Maintenance surface**: проверка `Core updates`, запуск updater/service menu, `Flowseal tests` и тюнинг `Game Filter` / `IPSet` вынесены в UI.
+- **Single service entry point**: в общих настройках оставлена одна входная точка в сервисный экран, без второго центра управления той же системой.
 
 #### ✅ Исправлено
-- **Honest route probe**: прямой egress и egress через локальный VPN proxy теперь возвращаются отдельным типизированным результатом вместо псевдо-`dns leak test`.
+- **Honest route probe**: прямой egress и egress через локальный управляемый маршрут теперь возвращаются отдельным типизированным результатом вместо расплывчатой сетевой проверки.
 - **Startup autostart sync**: настройки `autoStart` и `startMinimized` теперь синхронизируются с Windows login item не только при переключении в UI, но и на старте приложения.
-- **Installer / uninstall cleanup**: install/update/uninstall контур останавливает `xray`, `sing-box`, `winws`, удаляет службу `EgoistShieldZapret`, дочищает `WinDivert`, firewall rules, updater cache и пользовательские хвосты в `AppData`.
+- **Installer / uninstall cleanup**: install/update/uninstall контур останавливает фоновые сетевые процессы приложения, удаляет служебные хвосты, дочищает `WinDivert`, firewall rules, updater cache и пользовательские каталоги в `AppData`.
 - **DepthBackground scheduling**: убран риск обращения к `requestAnimationFrame` до инициализации draw-loop, а пауза/возврат при hidden viewport и reduced motion стали безопаснее.
-- **Settings cleanup**: удалён устаревший тумблер аппаратного ускорения и закреплён единый вход в `Zapret Center` без второго центра управления в общих настройках.
+- **Settings cleanup**: удалён устаревший тумблер аппаратного ускорения и закреплён единый вход в сервисный экран без второго центра управления в общих настройках.
 
 #### 🧪 Верификация
 - `npm exec vitest run tests/login-item-settings.spec.ts tests/route-probe.spec.ts tests/nsis-installer.spec.ts tests/preload-subscriptions.spec.ts tests/use-app-store.spec.ts tests/zapret-manager.spec.ts`
@@ -35,7 +35,7 @@
 
 ### 🚀 Make-Before-Break Handoff & Safer Runtime Cutover
 
-Релиз доводит desktop-клиент до следующего слоя бесшовности: при reconnect и smart switch новая сессия теперь не просто открывает порт, а проходит дополнительную verification перед переключением системного proxy. Если новый runtime срывается в handoff window, клиент старается сохранить предыдущее рабочее соединение.
+Релиз доводит desktop-клиент до следующего слоя бесшовности: при reconnect и smart switch новая сессия теперь не просто открывает порт, а проходит дополнительную verification перед переключением системного сетевого маршрута. Если новый runtime срывается в handoff window, клиент старается сохранить предыдущее рабочее соединение.
 
 #### ✨ Добавлено
 - **Stronger prepared-session verification**: новая runtime-сессия подтверждается серией локальных probe, а не только `waitForPort`.
@@ -60,7 +60,7 @@
 Релиз закрепляет новый этап сетевой оптимизации desktop-клиента: smart mode стал осторожнее к churn, лучше различает совместимость runtime и сильнее приоритизирует устойчивую сессию без потери реакции на реально более быстрые узлы.
 
 #### ✨ Добавлено
-- **Adaptive Smart Connect tuning**: protocol-aware профили для `VLESS/VMess/Trojan`, `Shadowsocks/HTTP/SOCKS`, `Hysteria2/TUIC`, `WireGuard`.
+- **Adaptive Smart Connect tuning**: protocol-aware профили для поддерживаемых форматов конфигураций и транспортов.
 - **Quality cache с decay**: planner учитывает `stabilityScore`, `probeConfidence`, историю quality/ping и деградации узла.
 - **Exploration sampling**: smart mode периодически проверяет кандидатов вне основного shortlist и не застревает на локальном optimum.
 - **Runtime suitability memory**: успешный fallback закрепляет временное предпочтение runtime для узла, а проблемная связка `node + runtime` получает penalty/cooldown.
@@ -112,7 +112,7 @@
 - Починены `Ctrl+K`, `Ctrl+V`, window controls и E2E first-run flow.
 - Убраны `any`/non-null assertions из критичных экранов и store-контуров (`Dashboard`, `ServerList`, `Settings`, `Onboarding`, `Globe3D`, `WorldMap`, `servers-slice`).
 - Исправлены dev/test `userData`, `logs` и session paths для изоляции прогонов.
-- Split Tunnel и runtime-dependent toggles теперь честно отражают ограничения `TUN + sing-box`.
+- Раздельная маршрутизация и runtime-dependent toggles теперь честно отражают ограничения выбранного сетевого режима и встроенного runtime.
 
 #### 🎨 UI/UX
 - Улучшены motion и стабильность визуальных компонентов `Globe3D`, `SpeedGraph`, onboarding и usage widgets.
@@ -127,10 +127,10 @@
 
 ### 💎 Эпоха v2.0: Трансформация UI/UX & Производительности
 
-Глобальное обновление интерфейса, превращающее EgoistShield в VPN премиального уровня. Улучшена производительность, переписаны стили, добавлен глубокий мониторинг (Smart UX) и внедрены строгие стандарты доступности (WCAG 2.2 AA).
+Глобальное обновление интерфейса, превращающее EgoistShield в более зрелый desktop-клиент сетевых подключений. Улучшена производительность, переписаны стили, добавлен глубокий мониторинг (Smart UX) и внедрены строгие стандарты доступности (WCAG 2.2 AA).
 
 #### 🚀 Ультимативная производительность
-- **Интеллектуальный throttling 3D фона:** 30fps в активном состоянии VPN, авто-пауза при сворачивании и экономия CPU/GPU до 40%.
+- **Интеллектуальный throttling 3D фона:** 30fps в активном состоянии соединения, авто-пауза при сворачивании и экономия CPU/GPU до 40%.
 - **Аппаратные CSS-анимации:** Полный отказ от CPU-анимаций (Framer Motion) для пульсаций и колец фокуса в пользу Composite CSS (GPU-only, `pulse-ring`, `glow-pulse`). Тотальная плавность и 0% CPU overhead UI в фоновом режиме.
 
 #### 🎨 Новая Дизайн-Система
@@ -151,8 +151,8 @@
 - Добавлен `lang="ru"` в корень.
 
 #### 🔧 Core Fixes
-- Устранение проблемы **Zombie Xray / Bind Port**: Процессы ядра теперь гарантированно уничтожаются при завершении и реконнекте, никаких "Port already in use".
-- Оптимизация конфигов Xray с добавлением **XTLS Flow / Vision** для максимальной скорости VLESS соединений.
+- Устранение проблемы **Zombie runtime / Bind Port**: фоновые процессы теперь гарантированно уничтожаются при завершении и реконнекте, никаких "Port already in use".
+- Оптимизация сетевых конфигов с добавлением более быстрого профиля транспорта для тяжёлых сценариев соединения.
 
 ## [1.8.4] — 2026-03-13
 
@@ -169,7 +169,7 @@
 - README полностью переработан — HTML-таблица возможностей, раздел «Интерфейс», FAQ, лицензия
 - Юридический аудит — убраны названия anti-DPI протоколов из README
 - `publish.private` → `false` (репо публичное)
-- GitHub Topics: vpn, windows, vpn-client, privacy
+- GitHub Topics и публичное описание репозитория дополнительно очищены до нейтрального позиционирования.
 
 ## [1.8.3] — 2026-03-13
 
@@ -321,7 +321,7 @@
 
 - 5 пустых `catch {}` в main.ts → информативные `console.warn`
 - Дублирование `before-quit` обработчиков → объединено в один
-- Хардкод портов (9090, 10085) → константы `SINGBOX_TRAFFIC_URL`, `XRAY_API_PORT`
+- Хардкод портов (9090, 10085) → именованные константы в main-process слое
 - Удалён несуществующий тип Screen `'logs'`
 - Удалена неиспользуемая зависимость `electron-vite`
 
@@ -331,14 +331,14 @@
 
 ## [1.0.1] — 2026-02-27
 
-Первый публичный релиз EgoistShield — десктопный VPN-клиент для Windows.
+Первый публичный релиз EgoistShield — десктопный Windows-клиент для защищённых сетевых подключений.
 
 ### Возможности
 
-- Мульти-core VPN runtime: Xray-core v26.2.6 + sing-box v1.12.22
-- Поддержка 9 протоколов: VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria2, TUIC, WireGuard
-- Импорт конфигов: URI, Base64, JSON, YAML (Clash/Mihomo), файлы, подписки с автообновлением
-- Split Tunneling по процессам Windows
+- Многокомпонентный сетевой runtime для исполнения поддерживаемых конфигураций
+- Поддержка основных форматов конфигураций и транспортов
+- Импорт конфигов: URI, Base64, JSON, YAML, файлы, подписки с автообновлением
+- Раздельная маршрутизация по процессам Windows
 - Kill Switch через Windows Firewall
 - Smart Routing — автовыбор сервера по пингу
 - Auto-Fallback — автопереключение при обрыве
