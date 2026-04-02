@@ -2,7 +2,7 @@
 
 Desktop-клиент `EgoistShield` для Windows 10/11.
 
-Текущая ветка документации соответствует опубликованному GitHub Release **3.6.0** от **2026-04-01**.
+Текущая ветка документации соответствует подготовке product-release **4.0.1** от **2026-04-02**.
 
 ## Что есть в desktop-версии
 
@@ -13,16 +13,19 @@ Desktop-клиент `EgoistShield` для Windows 10/11.
 - **System DNS Center**: установка и сброс системного DNS Windows с валидацией ввода.
 - **Kill Switch**: управление firewall-правилами Windows для защиты при обрыве соединения.
 - **Автозапуск и автоматическое восстановление рабочего состояния** с синхронизацией Windows login item при старте приложения.
-- **Updater**: ручная проверка новой версии и установка релиза через GitHub Releases.
+- **Updater**: реальная проверка релизного канала и ручной переход на GitHub Releases для скачивания installer.
+- **Дополнительный фоновый компонент**: отдельный headless-экран для локальной конфигурации, служебных логов и встроенного обновления совместимого фонового модуля.
 - **Диагностика**: structured logs, runtime lifecycle, route probe маршрута, runtime diagnostics, connection logs.
 - **UI**: dashboard, server list, 3D-globe, usage insights, command palette, polished dark design system.
 
-## Что вошло в 3.6.0
+## Что вошло в 4.0.1
 
-- **Отдельный сервисный экран** собрал в одном месте служебные режимы, профили, maintenance и диагностику вместо разрозненных настроек.
-- **Честный route probe** убрал расплывчатые сетевые формулировки и теперь показывает разницу между прямым и управляемым маршрутом.
-- **Release polish** синхронизирует автозапуск с Windows startup login item и чище переживает install/update/uninstall цикл.
-- **Settings cleanup** оставляет в общих настройках только точку входа в `DNS Center` и сервисные инструменты, без дублирующего управления.
+- **Manual desktop updates**: desktop updater показывает статус релиза и открывает страницу релиза для ручного скачивания установщика.
+- **Checksum-verified runtime updates**: `Xray` и `sing-box` обновляются только при совпадении опубликованного `SHA-256`.
+- **Honest release-channel UX**: Settings теперь различает актуальную версию, доступное обновление и локальную сборку, которая опережает публичный канал.
+- **Preserve-data uninstall**: uninstall/reinstall больше не должен молча уничтожать настройки, подписки и логи пользователя.
+- **Release verification**: `npm run dist` теперь прогоняет post-build проверку release-артефактов и их согласованности с `latest.yml`.
+- **Adaptive Globe3D**: карта серверов использует кэш текстуры, более дешёвый профиль рендера для dense/low-end сценариев и меньше постоянных country labels.
 
 ## Стек
 
@@ -56,6 +59,7 @@ npm run test
 npm run stress
 npm run test:e2e
 npm run build:vite
+npm run release:verify
 npm run dist
 ```
 
@@ -85,6 +89,16 @@ EgoistShield-<version>-Setup.exe
 EgoistShield-<version>-Setup.exe.blockmap
 latest.yml
 ```
+
+Локальная проверка релиза:
+
+```bash
+npm run release:verify
+```
+
+`release:verify` проверяет наличие installer, `.blockmap`, `latest.yml`, совпадение версии, размеры файлов и обязательные поля release metadata.
+
+Подробный сценарий проверки и публикации 4.0.1: [docs/release-signing.md](./docs/release-signing.md)
 
 ## Лицензия
 

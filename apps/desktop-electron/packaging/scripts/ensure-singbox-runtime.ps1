@@ -9,10 +9,13 @@ $runtimeDir = Join-Path $projectRoot "runtime\sing-box"
 $runtimeExe = Join-Path $runtimeDir "sing-box.exe"
 $versionFile = Join-Path $runtimeDir "VERSION.txt"
 $tempDir = Join-Path $projectRoot "packaging\build\runtime-download-singbox"
+$packageJsonPath = Join-Path $projectRoot "package.json"
+$releaseVersion = if (Test-Path $packageJsonPath) { ((Get-Content $packageJsonPath -Raw) | ConvertFrom-Json).version } else { $null }
+$buildUserAgent = "EgoistShield-Build/" + $(if ($releaseVersion) { $releaseVersion } else { "dev" })
 
 function Get-LatestRelease {
   return Invoke-RestMethod -Uri "https://api.github.com/repos/SagerNet/sing-box/releases/latest" -Headers @{
-    "User-Agent" = "EgoistShield-Build/2.0"
+    "User-Agent" = $buildUserAgent
     "Accept" = "application/vnd.github+json"
   }
 }

@@ -1,11 +1,17 @@
-import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
-import type { RuntimeInstallResult } from "./contracts";
-import { resolveWindowsExecutable } from "./windows-system-binaries";
-
-const execFileAsync = promisify(execFile);
+import type { RuntimeInstallResult, RuntimeUpdateInfo } from "./contracts";
+import {
+  buildGitHubAssetDownloadUrl,
+  compareLooseVersions,
+  downloadFileWithProgress,
+  extractZipArchive,
+  normalizeVersionTag,
+  pickGitHubAsset,
+  readVersionFile,
+  resolveLatestGitHubRelease,
+  verifyGitHubReleaseAssetChecksum
+} from "./github-release";
 
 type RuntimeKind = RuntimeInstallResult["runtimeKind"];
 
@@ -15,25 +21,12 @@ interface RuntimeInstallPlan {
   runtimeDirName: string;
   exeName: string;
   releaseApiUrl: string;
+  releasePageUrl: string;
   assetMatchers: RegExp[];
   assetExcludes?: RegExp[];
+  fallbackAssetName?: (tagName: string) => string | null;
   extraFiles?: string[];
 }
-
-interface GitHubAsset {
-  name: string;
-  browser_download_url: string;
-}
-
-interface GitHubRelease {
-  tag_name?: string;
-  assets?: GitHubAsset[];
-}
-
-const RELEASE_HEADERS = {
-  "User-Agent": "EgoistShield/2.0",
-  Accept: "application/vnd.github+json"
-} as const;
 
 const XRAY_PLAN: RuntimeInstallPlan = {
   runtimeKind: "xray",
@@ -41,7 +34,9 @@ const XRAY_PLAN: RuntimeInstallPlan = {
   runtimeDirName: "xray",
   exeName: "xray.exe",
   releaseApiUrl: "https://api.github.com/repos/XTLS/Xray-core/releases/latest",
+  releasePageUrl: "https://github.com/XTLS/Xray-core/releases/latest",
   assetMatchers: [/windows-64.*\.zip$/i, /windows.*amd64.*\.zip$/i],
+  fallbackAssetName: () => "Xray-windows-64.zip",
   extraFiles: ["geoip.dat", "geosite.dat"]
 };
 
@@ -51,8 +46,13 @@ const SING_BOX_PLAN: RuntimeInstallPlan = {
   runtimeDirName: "sing-box",
   exeName: "sing-box.exe",
   releaseApiUrl: "https://api.github.com/repos/SagerNet/sing-box/releases/latest",
+  releasePageUrl: "https://github.com/SagerNet/sing-box/releases/latest",
   assetMatchers: [/windows-amd64\.zip$/i, /windows-amd64.*\.zip$/i],
-  assetExcludes: [/legacy-windows-7/i]
+  assetExcludes: [/legacy-windows-7/i],
+  fallbackAssetName: (tagName: string) => {
+    const normalized = normalizeVersionTag(tagName);
+    return normalized ? `sing-box-${normalized}-windows-amd64.zip` : null;
+  }
 };
 
 export class RuntimeInstaller {
@@ -80,6 +80,10 @@ export class RuntimeInstaller {
     };
   }
 
+  public async checkUpdates(): Promise<RuntimeUpdateInfo[]> {
+    return Promise.all([this.checkRuntimePlan(XRAY_PLAN), this.checkRuntimePlan(SING_BOX_PLAN)]);
+  }
+
   private async installRuntime(plan: RuntimeInstallPlan): Promise<RuntimeInstallResult> {
     const targetDir = path.join(this.userDataDir, "runtime", plan.runtimeDirName);
     const runtimePath = path.join(targetDir, plan.exeName);
@@ -87,7 +91,7 @@ export class RuntimeInstaller {
     await fs.mkdir(targetDir, { recursive: true });
 
     const hadRuntimeBefore = await this.pathExists(runtimePath);
-    const installedVersion = await this.readVersion(versionPath);
+    const installedVersion = await readVersionFile(versionPath);
     const tempRoot = path.join(
       this.userDataDir,
       "runtime",
@@ -96,10 +100,17 @@ export class RuntimeInstaller {
     );
 
     try {
-      const release = await this.fetchLatestRelease(plan.releaseApiUrl);
-      const releaseTag = release.tag_name?.trim() || "latest";
-      const asset = this.pickAsset(release, plan);
-      if (!asset) {
+      const resolvedRelease = await resolveLatestGitHubRelease(plan.releaseApiUrl);
+      const releaseTag = resolvedRelease.tag_name?.trim() || "latest";
+      const asset = resolvedRelease.release
+        ? pickGitHubAsset(resolvedRelease.release, plan.assetMatchers, plan.assetExcludes ?? [])
+        : null;
+      const fallbackAssetName = plan.fallbackAssetName?.(releaseTag) ?? null;
+      const assetDownloadUrl =
+        asset?.browser_download_url ??
+        (fallbackAssetName ? buildGitHubAssetDownloadUrl(plan.releaseApiUrl, releaseTag, fallbackAssetName) : null);
+
+      if (!assetDownloadUrl) {
         throw new Error(`Не найден архив ${plan.displayName} для Windows x64.`);
       }
 
@@ -114,12 +125,22 @@ export class RuntimeInstaller {
         };
       }
 
-      const zipPath = path.join(tempRoot, asset.name || `${plan.runtimeDirName}.zip`);
+      const zipPath = path.join(tempRoot, asset?.name || fallbackAssetName || `${plan.runtimeDirName}.zip`);
       const extractDir = path.join(tempRoot, "extract");
       await fs.mkdir(tempRoot, { recursive: true });
 
-      await this.downloadToFile(asset.browser_download_url, zipPath);
-      await this.extractZip(zipPath, extractDir);
+      await downloadFileWithProgress(assetDownloadUrl, zipPath);
+      const verification = await verifyGitHubReleaseAssetChecksum({
+        filePath: zipPath,
+        assetName: path.basename(zipPath),
+        releaseApiUrl: plan.releaseApiUrl,
+        tagName: releaseTag,
+        release: resolvedRelease.release
+      });
+      if (!verification.verified) {
+        throw new Error(verification.verificationMessage);
+      }
+      await extractZipArchive(zipPath, extractDir);
 
       const extractedExe = await this.findFirstFileByName(extractDir, plan.exeName);
       if (!extractedExe) {
@@ -142,7 +163,10 @@ export class RuntimeInstaller {
         runtimePath,
         runtimeKind: plan.runtimeKind,
         version: releaseTag,
-        updated: true
+        updated: true,
+        verified: verification.verified,
+        verificationMessage: verification.verificationMessage,
+        integritySource: verification.integritySource
       };
     } catch (error) {
       const reason = this.errorToMessage(error);
@@ -177,6 +201,47 @@ export class RuntimeInstaller {
     }
   }
 
+  private async checkRuntimePlan(plan: RuntimeInstallPlan): Promise<RuntimeUpdateInfo> {
+    const currentVersion = await this.readInstalledVersion(plan);
+
+    try {
+      const resolvedRelease = await resolveLatestGitHubRelease(plan.releaseApiUrl);
+      const latestVersion = resolvedRelease.tag_name?.trim() || null;
+      const updateAvailable =
+        latestVersion === null
+          ? false
+          : currentVersion === null
+            ? true
+            : compareLooseVersions(latestVersion, currentVersion) > 0;
+
+      return {
+        runtimeKind: plan.runtimeKind,
+        displayName: plan.displayName,
+        currentVersion,
+        latestVersion,
+        updateAvailable,
+        releaseUrl: resolvedRelease.html_url ?? plan.releasePageUrl,
+        integritySource: "sha256",
+        verificationMessage: "Runtime-архив будет принят только при совпадении опубликованного SHA-256 checksum.",
+        message: latestVersion
+          ? updateAvailable
+            ? `Доступно обновление ${plan.displayName}: ${latestVersion}`
+            : `${plan.displayName} уже актуален (${currentVersion ?? latestVersion}).`
+          : `Не удалось определить последнюю версию ${plan.displayName}.`
+      };
+    } catch (error) {
+      return {
+        runtimeKind: plan.runtimeKind,
+        displayName: plan.displayName,
+        currentVersion,
+        latestVersion: null,
+        updateAvailable: false,
+        releaseUrl: plan.releasePageUrl,
+        message: `Не удалось проверить ${plan.displayName}: ${this.errorToMessage(error)}`
+      };
+    }
+  }
+
   private async tryUseBundledRuntime(
     plan: RuntimeInstallPlan,
     targetDir: string,
@@ -198,8 +263,7 @@ export class RuntimeInstaller {
       }
     }
 
-    const bundledVersionPath = path.join(bundledDir, "VERSION.txt");
-    const bundledVersion = await this.readVersion(bundledVersionPath);
+    const bundledVersion = await readVersionFile(path.join(bundledDir, "VERSION.txt"));
     await fs.writeFile(versionPath, `${bundledVersion ?? "bundled"}\n`, "utf8");
 
     return {
@@ -212,57 +276,15 @@ export class RuntimeInstaller {
     };
   }
 
-  private async fetchLatestRelease(url: string): Promise<GitHubRelease> {
-    const response = await fetch(url, { headers: RELEASE_HEADERS });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const body = (await response.json()) as GitHubRelease;
-    return body;
-  }
-
-  private pickAsset(release: GitHubRelease, plan: RuntimeInstallPlan): GitHubAsset | null {
-    const assets = Array.isArray(release.assets) ? release.assets : [];
-    for (const matcher of plan.assetMatchers) {
-      const asset = assets.find((item) => {
-        if (!matcher.test(item.name)) {
-          return false;
-        }
-        return !(plan.assetExcludes ?? []).some((exclude) => exclude.test(item.name));
-      });
-      if (asset) {
-        return asset;
-      }
-    }
-    return null;
-  }
-
-  private async downloadToFile(url: string, destination: string): Promise<void> {
-    const response = await fetch(url, { headers: RELEASE_HEADERS });
-    if (!response.ok) {
-      throw new Error(`Ошибка загрузки (${response.status})`);
-    }
-    const data = Buffer.from(await response.arrayBuffer());
-    await fs.writeFile(destination, data);
-  }
-
-  private async extractZip(zipPath: string, destinationPath: string): Promise<void> {
-    await fs.mkdir(destinationPath, { recursive: true });
-    const command = `Expand-Archive -LiteralPath '${this.psEscape(zipPath)}' -DestinationPath '${this.psEscape(destinationPath)}' -Force`;
-    await execFileAsync(resolveWindowsExecutable("powershell.exe"), [
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      command
-    ]);
-  }
-
   private async findFirstFileByName(rootDir: string, filename: string): Promise<string | null> {
     const stack = [rootDir];
     const lowerName = filename.toLowerCase();
     while (stack.length > 0) {
       const dir = stack.pop();
-      if (!dir) break;
+      if (!dir) {
+        break;
+      }
+
       let entries: Awaited<ReturnType<typeof fs.readdir>>;
       try {
         entries = await fs.readdir(dir, { withFileTypes: true });
@@ -281,6 +303,23 @@ export class RuntimeInstaller {
         }
       }
     }
+
+    return null;
+  }
+
+  private async readInstalledVersion(plan: RuntimeInstallPlan): Promise<string | null> {
+    const versionPaths = [
+      path.join(this.userDataDir, "runtime", plan.runtimeDirName, "VERSION.txt"),
+      path.join(this.appRoot, "runtime", plan.runtimeDirName, "VERSION.txt")
+    ];
+
+    for (const versionPath of versionPaths) {
+      const version = await readVersionFile(versionPath);
+      if (version) {
+        return version;
+      }
+    }
+
     return null;
   }
 
@@ -291,20 +330,6 @@ export class RuntimeInstaller {
     } catch {
       return false;
     }
-  }
-
-  private async readVersion(versionPath: string): Promise<string | null> {
-    try {
-      const raw = await fs.readFile(versionPath, "utf8");
-      const value = raw.trim();
-      return value || null;
-    } catch {
-      return null;
-    }
-  }
-
-  private psEscape(value: string): string {
-    return value.replace(/'/g, "''");
   }
 
   private errorToMessage(error: unknown): string {

@@ -4,6 +4,7 @@
  */
 import type { BrowserWindow } from "electron";
 import type { StateStore } from "./state-store";
+import type { TelegramProxyManager } from "./telegram-proxy-manager";
 import type { VpnRuntimeManager } from "./vpn-manager";
 import type { ZapretManager } from "./zapret-manager";
 
@@ -12,4 +13,5 @@ export interface IpcContext {
   stateStore: StateStore;
   runtimeManager: VpnRuntimeManager;
   zapretManager: ZapretManager;
+  telegramProxyManager: TelegramProxyManager;
 }

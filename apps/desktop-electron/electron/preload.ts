@@ -1,7 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { UsageRecord } from "../shared/types";
 import type {
+  AppUpdateStatus,
   RouteProbeResult,
+  IntegritySource,
+  RuntimeUpdateInfo,
+  TelegramProxyCommandResult,
+  TelegramProxyConfig,
+  TelegramProxyStatus,
+  TelegramProxyUpdateInfo,
   ZapretAutoSelectResult,
   ZapretCommandResult,
   ZapretDiscordCacheTarget,
@@ -67,7 +74,8 @@ const api = {
   },
   runtime: {
     installXray: (): Promise<RuntimeInstallResult> => ipcRenderer.invoke("runtime:install-xray"),
-    installAll: (): Promise<RuntimeUpdateSummary> => ipcRenderer.invoke("runtime:install-all")
+    installAll: (): Promise<RuntimeUpdateSummary> => ipcRenderer.invoke("runtime:install-all"),
+    checkUpdates: (): Promise<RuntimeUpdateInfo[]> => ipcRenderer.invoke("runtime:check-updates")
   },
   app: {
     isAdmin: (): Promise<boolean> => ipcRenderer.invoke("app:is-admin"),
@@ -108,17 +116,32 @@ const api = {
     onUpdate: (callback: (data: { rx: number; tx: number }) => void) => subscribeToChannel("traffic-update", callback)
   },
   updater: {
-    onUpdateAvailable: (callback: (data: { version: string }) => void) =>
+    onUpdateAvailable: (callback: (data: { version: string; downloadUrl?: string; releaseUrl?: string }) => void) =>
       subscribeToChannel("update-available", callback),
     onDownloadProgress: (callback: (data: { percent: number; transferred: number; total: number }) => void) =>
       subscribeToChannel("update-progress", callback),
-    onUpdateDownloaded: (callback: (data: { version: string }) => void) =>
+    onUpdateDownloaded: (callback: (data: {
+      version: string;
+      verified?: boolean;
+      verificationMessage?: string;
+      integritySource?: IntegritySource;
+    }) => void) =>
       subscribeToChannel("update-downloaded", callback),
     onUpdateNotAvailable: (callback: () => void) => subscribeToSignal("update-not-available", callback),
     onUpdateError: (callback: (data: { message: string }) => void) =>
       subscribeToChannel("update-error", callback),
-    install: (): Promise<void> => ipcRenderer.invoke("updater:install"),
-    check: (): Promise<{ ok: boolean; version?: string; error?: string }> => ipcRenderer.invoke("updater:check"),
+    install: (): Promise<boolean> => ipcRenderer.invoke("updater:install"),
+    openReleasePage: (): Promise<boolean> => ipcRenderer.invoke("updater:open-release-page"),
+    check: (): Promise<{
+      ok: boolean;
+      version?: string;
+      status?: AppUpdateStatus;
+      currentVersion?: string;
+      latestVersion?: string;
+      releaseUrl?: string;
+      downloadUrl?: string;
+      error?: string;
+    }> => ipcRenderer.invoke("updater:check"),
     setAuto: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke("updater:set-auto", enabled)
   },
   autoConnect: {
@@ -157,6 +180,7 @@ const api = {
     setUpdateChecksEnabled: (enabled: boolean): Promise<ZapretStatus> =>
       ipcRenderer.invoke("zapret:set-update-checks-enabled", enabled),
     checkUpdates: (): Promise<ZapretUpdateInfo> => ipcRenderer.invoke("zapret:check-updates"),
+    installCoreUpdate: (): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:install-core-update"),
     runCoreUpdater: (): Promise<ZapretCommandResult> => ipcRenderer.invoke("zapret:run-core-updater"),
     resetNetworkState: (): Promise<ZapretStatus> => ipcRenderer.invoke("zapret:reset-network-state"),
     diagnostics: (): Promise<ZapretDiagnosticsReport> => ipcRenderer.invoke("zapret:diagnostics"),
@@ -165,6 +189,18 @@ const api = {
     runFlowsealTests: (): Promise<ZapretCommandResult> => ipcRenderer.invoke("zapret:run-flowseal-tests"),
     cleanDiscordCache: (target: ZapretDiscordCacheTarget): Promise<ZapretCommandResult> =>
       ipcRenderer.invoke("zapret:clean-discord-cache", target)
+  },
+  telegramProxy: {
+    status: (): Promise<TelegramProxyStatus> => ipcRenderer.invoke("telegram-proxy:status"),
+    saveConfig: (config: TelegramProxyConfig): Promise<TelegramProxyStatus> =>
+      ipcRenderer.invoke("telegram-proxy:save-config", config),
+    start: (): Promise<TelegramProxyStatus> => ipcRenderer.invoke("telegram-proxy:start"),
+    stop: (): Promise<TelegramProxyStatus> => ipcRenderer.invoke("telegram-proxy:stop"),
+    restart: (): Promise<TelegramProxyStatus> => ipcRenderer.invoke("telegram-proxy:restart"),
+    checkUpdates: (): Promise<TelegramProxyUpdateInfo> => ipcRenderer.invoke("telegram-proxy:check-updates"),
+    installUpdate: (): Promise<TelegramProxyStatus> => ipcRenderer.invoke("telegram-proxy:install-update"),
+    openLink: (): Promise<TelegramProxyCommandResult> => ipcRenderer.invoke("telegram-proxy:open-link"),
+    openLogs: (): Promise<TelegramProxyCommandResult> => ipcRenderer.invoke("telegram-proxy:open-logs")
   }
 };
 

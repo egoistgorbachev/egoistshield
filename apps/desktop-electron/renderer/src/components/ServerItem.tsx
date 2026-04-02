@@ -48,6 +48,10 @@ export const ServerItem = memo(function ServerItem({
       onClick={onClick}
       whileHover={{ scale: 1.01, y: -1 }}
       whileTap={{ scale: 0.99 }}
+      style={{
+        contentVisibility: "auto",
+        containIntrinsicSize: "112px"
+      }}
       className={cn(
         "group relative p-4 rounded-2xl flex items-center justify-between cursor-pointer transition-all duration-300",
         active

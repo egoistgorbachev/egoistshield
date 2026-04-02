@@ -15,8 +15,10 @@ import type {
   ZapretStatus,
   ZapretUpdateInfo
 } from "../../shared/types";
+import packageJson from "../../package.json";
 import logger from "./logger";
 import { resolveWindowsExecutable } from "./windows-system-binaries";
+import { compareLooseVersions, downloadFileWithProgress, extractZipArchive, normalizeVersionTag } from "./github-release";
 
 const execFileAsync = promisify(execFile);
 
@@ -38,6 +40,99 @@ const FLOWSEAL_VERSION_URL =
 const FLOWSEAL_RELEASES_URL = "https://github.com/Flowseal/zapret-discord-youtube/releases/latest";
 const FLOWSEAL_IPSET_URL =
   "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/refs/heads/main/.service/ipset-service.txt";
+const APP_RELEASE_VERSION = packageJson.version;
+const FLOWSEAL_SCRIPT_USER_AGENT = `EgoistShield/${APP_RELEASE_VERSION}`;
+const FLOWSEAL_SERVICE_LOCAL_VERSION_LINES = [
+  'set "LOCAL_VERSION=unknown"',
+  'if exist "%~dp0..\\VERSION.txt" for /f "usebackq delims=" %%A in ("%~dp0..\\VERSION.txt") do set "LOCAL_VERSION=%%~A"'
+] as const;
+const FLOWSEAL_SERVICE_VERSION_FETCH_LINE =
+  `for /f "delims=" %%A in ('powershell -NoProfile -Command "$ProgressPreference = ''SilentlyContinue''; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { if (Get-Command curl.exe -ErrorAction SilentlyContinue) { (& curl.exe -fsSL --connect-timeout 5 -H ''User-Agent: ${FLOWSEAL_SCRIPT_USER_AGENT}'' -H ''Cache-Control: no-cache'' ''%GITHUB_VERSION_URL%'').Trim() } else { (Invoke-WebRequest -Uri ''%GITHUB_VERSION_URL%'' -Headers @{''User-Agent''=''''${FLOWSEAL_SCRIPT_USER_AGENT}'''';''Cache-Control''=''''no-cache''''} -UseBasicParsing -TimeoutSec 5).Content.Trim() } } catch { '''' }" 2^>nul') do set "GITHUB_VERSION=%%A"`;
+const FLOWSEAL_UPDATE_SCRIPT_TEMPLATE = `@echo off
+setlocal EnableDelayedExpansion
+chcp 65001 >nul
+
+set "VERSION_URL=https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/.service/version.txt"
+set "REPO=https://github.com/Flowseal/zapret-discord-youtube"
+set "ZIP_URL=%REPO%/archive/refs/tags/"
+set "ZIP_PREFIX=zapret-discord-youtube-"
+set "ZIP_SUFFIX=.zip"
+
+cd /d "%~dp0"
+cd ..\
+
+set "LOCAL_VERSION=unknown"
+if exist "..\\VERSION.txt" for /f "usebackq delims=" %%A in ("..\\VERSION.txt") do set "LOCAL_VERSION=%%~A"
+
+echo [Обновление] Останавливаем активные сервисы и драйверы...
+sc stop EgoistShieldZapret >nul 2>nul
+taskkill /F /T /IM winws.exe >nul 2>nul
+sc stop WinDivert >nul 2>nul
+sc delete WinDivert >nul 2>nul
+sc stop WinDivert14 >nul 2>nul
+sc delete WinDivert14 >nul 2>nul
+
+echo [Обновление] Проверяем версию...
+for /f "delims=" %%A in ('powershell -NoProfile -Command "$ProgressPreference = ''SilentlyContinue''; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { if (Get-Command curl.exe -ErrorAction SilentlyContinue) { (& curl.exe -fsSL --connect-timeout 5 -H ''User-Agent: ${FLOWSEAL_SCRIPT_USER_AGENT}'' -H ''Cache-Control: no-cache'' ''%VERSION_URL%'').Trim() } else { (Invoke-WebRequest -Uri ''%VERSION_URL%'' -Headers @{''User-Agent''=''''${FLOWSEAL_SCRIPT_USER_AGENT}'''';''Cache-Control''=''''no-cache''''} -UseBasicParsing -TimeoutSec 5).Content.Trim() } } catch { '''' }" 2^>nul') do set "REMOTE_VERSION=%%A"
+
+if not defined REMOTE_VERSION (
+    echo [Ошибка] Не удалось получить последнюю версию.
+    goto end
+)
+
+echo Локальная версия: %LOCAL_VERSION%
+echo Удалённая версия: %REMOTE_VERSION%
+
+if /I "%REMOTE_VERSION%"=="%LOCAL_VERSION%" (
+    echo Вы уже используете последнюю версию.
+    goto end
+)
+
+echo [Обновление] Скачиваем архив %REMOTE_VERSION%...
+set "ZIP_PATH=%TEMP%\\%ZIP_PREFIX%%REMOTE_VERSION%%ZIP_SUFFIX%"
+powershell -NoProfile -Command "$ProgressPreference = ''SilentlyContinue''; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%ZIP_URL%%REMOTE_VERSION%%ZIP_SUFFIX%' -Headers @{'User-Agent'='${FLOWSEAL_SCRIPT_USER_AGENT}'} -OutFile '%ZIP_PATH%'"
+
+if not exist "%ZIP_PATH%" (
+    echo [Ошибка] Не удалось скачать архив.
+    goto end
+)
+
+echo [Обновление] Распаковываем...
+set "UNPACK_DIR=%TEMP%\\zapret_unpack"
+rd /s /q "%UNPACK_DIR%" 2>nul
+powershell -NoProfile -Command "Expand-Archive -LiteralPath '%ZIP_PATH%' -DestinationPath '%UNPACK_DIR%' -Force"
+
+for /d %%D in ("%UNPACK_DIR%\\*") do (
+    set "ARCHIVE_ROOT=%%~fD"
+    goto got_root
+)
+:got_root
+
+if not defined ARCHIVE_ROOT (
+    echo [Ошибка] Не удалось определить содержимое архива.
+    goto end
+)
+
+echo [Обновление] Копируем файлы в core\\...
+for /r "%ARCHIVE_ROOT%\\core" %%F in (*) do (
+    echo %%F | findstr /i "\\core\\fast\\" >nul
+    if errorlevel 1 (
+        set "DEST=core\\%%~pF"
+        set "DEST=!DEST:%ARCHIVE_ROOT%\\core\\=!"
+        xcopy "%%F" "!DEST!" /Y /I >nul
+        echo Обновлён: !DEST!%%~nxF
+    )
+)
+
+echo.
+powershell -NoProfile -Command "Write-Host '✅ Обновление завершено до версии %REMOTE_VERSION%' -ForegroundColor Green"
+
+:end
+echo.
+echo Нажмите любую клавишу для выхода...
+pause >nul
+exit /b
+`;
 const STANDALONE_STATE_FILE = ".egoistshield-standalone.json";
 const AUTO_SELECT_ENDPOINTS = [
   "https://discord.com/api/v9/experiments",
@@ -201,6 +296,30 @@ function compareMixedValues(left: string | number, right: string | number): numb
   return String(left).localeCompare(String(right), "ru-RU", { sensitivity: "base", numeric: true });
 }
 
+function normalizeFlowsealVersion(value: string | null | undefined): string | null {
+  return normalizeVersionTag(value);
+}
+
+function areSameFlowsealVersion(left: string | null, right: string | null): boolean {
+  return compareFlowsealVersions(left, right) === 0;
+}
+
+function compareFlowsealVersions(left: string | null, right: string | null): number {
+  const normalizedLeft = normalizeFlowsealVersion(left);
+  const normalizedRight = normalizeFlowsealVersion(right);
+
+  if (normalizedLeft === normalizedRight) {
+    return 0;
+  }
+  if (!normalizedLeft) {
+    return -1;
+  }
+  if (!normalizedRight) {
+    return 1;
+  }
+  return compareLooseVersions(normalizedLeft, normalizedRight);
+}
+
 export function compareZapretProfileNames(left: string, right: string): number {
   const leftKey = buildProfileSortKey(left);
   const rightKey = buildProfileSortKey(right);
@@ -256,7 +375,12 @@ export function parseZapretWinwsArgs(profileContent: string): string {
   return match[1].trim();
 }
 
-export function applyZapretPlaceholders(rawArgs: string, replacements: Record<string, string>): string {
+interface ZapretPlaceholderValues extends GameFilterValues {
+  BIN: string;
+  LISTS: string;
+}
+
+export function applyZapretPlaceholders(rawArgs: string, replacements: ZapretPlaceholderValues): string {
   return rawArgs
     .replace(/%BIN%/gi, replacements.BIN)
     .replace(/%LISTS%/gi, replacements.LISTS)
@@ -335,6 +459,45 @@ function buildCommandResult(message: string, options: Partial<ZapretCommandResul
   };
 }
 
+function buildDeprecatedConsoleMessage(target: "updater" | "service-menu"): ZapretCommandResult {
+  const isUpdater = target === "updater";
+  const message = isUpdater
+    ? "Классический консольный обновлятор Flowseal Core больше не используется. Откройте встроенный блок Flowseal Core в центре Zapret."
+    : "Сервисное консольное меню Flowseal больше не используется. Все действия со службой доступны прямо в центре Zapret.";
+
+  return buildCommandResult(message, {
+    output: [
+      `Deprecated console workflow suppressed by EgoistShield ${APP_RELEASE_VERSION}.`,
+      isUpdater ? "Use the integrated Flowseal Core panel in Zapret." : "Use the integrated service controls in Zapret."
+    ].join("\n")
+  });
+}
+
+function buildFlowsealArchiveUrl(version: string): string {
+  return `https://codeload.github.com/Flowseal/zapret-discord-youtube/zip/refs/tags/${version}`;
+}
+
+function quotePowerShellLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function toPowerShellArgumentList(args: string[]): string {
+  return args.map((arg) => quotePowerShellLiteral(arg)).join(", ");
+}
+
+export function isFlowsealRootPayloadEntry(name: string, isDirectory: boolean): boolean {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized || normalized.startsWith(".")) {
+    return false;
+  }
+
+  if (isDirectory) {
+    return normalized === "bin" || normalized === "lists" || normalized === "utils";
+  }
+
+  return normalized === "service.bat" || normalized.endsWith(".bat");
+}
+
 function buildScCreateServiceArgs(serviceName: string, executablePath: string, commandArgs: string): string[] {
   return [
     "create",
@@ -404,7 +567,7 @@ export class ZapretManager {
     const service = await this.queryService(SERVICE_NAME);
     const provisioned = await this.pathExists(path.join(this.workDir, "core", "service.bat"));
     const serviceProfile = service.installed ? await this.readServiceProfile() : null;
-    const coreVersion = provisioned ? await this.readCoreVersion() : null;
+    const coreVersion = provisioned ? await this.readCoreVersion() : sourceRuntime?.version ?? null;
     const standaloneState = await this.readStandaloneState();
     const integratedProcesses = await this.listIntegratedWinwsProcesses();
     const standaloneRunning = !service.running && integratedProcesses.length > 0;
@@ -683,7 +846,12 @@ export class ZapretManager {
   public async updateIpsetList(): Promise<ZapretStatus> {
     await this.ensureProvisioned();
     const listFile = path.join(this.workDir, "core", "lists", "ipset-all.txt");
-    const payload = await this.fetchText(FLOWSEAL_IPSET_URL, 12_000);
+    let payload: string;
+    try {
+      payload = await this.fetchText(FLOWSEAL_IPSET_URL, 12_000);
+    } catch (error) {
+      throw this.wrapFlowsealNetworkError(error, "обновление списка IP для Zapret");
+    }
     await fs.writeFile(listFile, payload.endsWith("\n") ? payload : `${payload}\n`, "utf8");
     return this.status();
   }
@@ -705,8 +873,15 @@ export class ZapretManager {
   public async checkForUpdates(): Promise<ZapretUpdateInfo> {
     await this.ensureProvisioned();
     const currentVersion = await this.readCoreVersion();
-    const latestVersion = (await this.fetchText(FLOWSEAL_VERSION_URL, 8_000)).trim() || null;
-    const updateAvailable = Boolean(currentVersion && latestVersion && currentVersion !== latestVersion);
+    let latestVersion: string | null = null;
+
+    try {
+      latestVersion = (await this.fetchText(FLOWSEAL_VERSION_URL, 8_000)).trim() || null;
+    } catch (error) {
+      throw this.wrapFlowsealNetworkError(error, "проверку обновлений Flowseal Core");
+    }
+
+    const updateAvailable = Boolean(latestVersion && !areSameFlowsealVersion(currentVersion, latestVersion));
 
     return {
       currentVersion,
@@ -719,24 +894,101 @@ export class ZapretManager {
     };
   }
 
-  public async runCoreUpdater(): Promise<ZapretCommandResult> {
+  public async installCoreUpdate(): Promise<ZapretStatus> {
     await this.ensureProvisioned();
-    const scriptPath = path.join(this.workDir, "core", "fast", "update_service.bat");
-    await this.ensurePathExists(scriptPath, "update_service.bat не найден.");
-    await this.launchConsoleCommand(resolveWindowsExecutable("cmd.exe"), ["/d", "/k", scriptPath], {
-      cwd: path.dirname(scriptPath)
-    });
-    return buildCommandResult("Открыта отдельная консоль обновления Flowseal Core.", { opened: true });
+
+    let latestVersion = "";
+    try {
+      latestVersion = (await this.fetchText(FLOWSEAL_VERSION_URL, 8_000)).trim();
+    } catch (error) {
+      throw this.wrapFlowsealNetworkError(error, "получение новой версии Flowseal Core");
+    }
+
+    if (!latestVersion) {
+      throw new Error("Не удалось определить последнюю версию Flowseal Core.");
+    }
+
+    const currentVersion = await this.readCoreVersion();
+    if (currentVersion && areSameFlowsealVersion(currentVersion, latestVersion)) {
+      this.lastError = null;
+      return this.status();
+    }
+
+    const currentStatus = await this.status();
+    const restoreMode = currentStatus.serviceRunning
+      ? "service"
+      : currentStatus.standaloneRunning
+        ? "standalone"
+        : "none";
+    const restoreProfile = currentStatus.currentProfile ?? DEFAULT_PROFILE_NAME;
+    const tempRoot = path.join(
+      this.userDataDir,
+      "zapret",
+      "_update",
+      `${latestVersion}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    );
+    const zipPath = path.join(tempRoot, `${latestVersion}.zip`);
+    const extractDir = path.join(tempRoot, "extract");
+
+    try {
+      if (restoreMode === "service") {
+        await this.stopServiceInternal(false);
+      } else if (restoreMode === "standalone") {
+        await this.stopStandaloneInternal(false);
+      }
+      await this.prepareCoreFilesForUpdate();
+
+      await fs.mkdir(tempRoot, { recursive: true });
+      await downloadFileWithProgress(buildFlowsealArchiveUrl(latestVersion), zipPath);
+      await extractZipArchive(zipPath, extractDir);
+
+      const archiveRoot = await this.findFirstDirectory(extractDir);
+      if (!archiveRoot) {
+        throw new Error("Не удалось распаковать архив Flowseal Core.");
+      }
+
+      const sourceCoreDir = path.join(archiveRoot, "core");
+      if (await this.pathExists(path.join(sourceCoreDir, "service.bat"))) {
+        await this.copyRuntimeTree(sourceCoreDir, path.join(this.workDir, "core"));
+      } else if (await this.pathExists(path.join(archiveRoot, "service.bat"))) {
+        await this.copyFlowsealRootPayload(archiveRoot, path.join(this.workDir, "core"));
+      } else {
+        throw new Error("В архиве Flowseal не найден service.bat или каталог core.");
+      }
+      await this.applyFlowsealScriptFixes(path.join(this.workDir, "core"));
+      await this.writeInstalledCoreVersion(latestVersion);
+
+      const installedVersion = await this.readCoreVersion();
+      if (!areSameFlowsealVersion(installedVersion, latestVersion)) {
+        throw new Error(
+          `Flowseal Core обновился не полностью: ожидалась версия ${latestVersion}, но после установки обнаружена ${installedVersion ?? "unknown"}.`
+        );
+      }
+
+      if (restoreMode === "service") {
+        await this.startService();
+      } else if (restoreMode === "standalone") {
+        await this.startStandalone(restoreProfile);
+      }
+
+      this.lastError = null;
+      return this.status();
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      throw error;
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  public async runCoreUpdater(): Promise<ZapretCommandResult> {
+    logger.warn("[zapret] Deprecated runCoreUpdater() call suppressed; use integrated Flowseal Core UI");
+    return buildDeprecatedConsoleMessage("updater");
   }
 
   public async openServiceMenu(): Promise<ZapretCommandResult> {
-    await this.ensureProvisioned();
-    const scriptPath = path.join(this.workDir, "core", "service.bat");
-    await this.ensurePathExists(scriptPath, "service.bat не найден.");
-    await this.launchConsoleCommand(resolveWindowsExecutable("cmd.exe"), ["/d", "/k", scriptPath], {
-      cwd: path.dirname(scriptPath)
-    });
-    return buildCommandResult("Открыто отдельное консольное меню Flowseal Service Manager.", { opened: true });
+    logger.warn("[zapret] Deprecated openServiceMenu() call suppressed; use integrated Zapret service controls");
+    return buildDeprecatedConsoleMessage("service-menu");
   }
 
   public async runFlowsealTests(): Promise<ZapretCommandResult> {
@@ -1077,6 +1329,8 @@ export class ZapretManager {
     if (clearVpnSuspension && this.suspendedByVpnMode === "service") {
       this.clearVpnSuspension();
     }
+
+    await this.cleanupDriverServicesIfSafe();
   }
 
   private async stopStandaloneInternal(clearVpnSuspension: boolean): Promise<void> {
@@ -1186,7 +1440,10 @@ export class ZapretManager {
 
     const versionFile = path.join(this.workDir, "VERSION.txt");
     const installedVersion = await this.readVersion(versionFile);
-    const shouldRefresh = installedVersion !== runtime.version || !(await this.pathExists(path.join(this.workDir, "core")));
+    const coreServicePath = path.join(this.workDir, "core", "service.bat");
+    const hasProvisionedCore = await this.pathExists(coreServicePath);
+    const bundledIsNewer = compareFlowsealVersions(runtime.version, installedVersion) > 0;
+    const shouldRefresh = !hasProvisionedCore || !installedVersion || bundledIsNewer;
 
     await fs.mkdir(this.workDir, { recursive: true });
 
@@ -1195,6 +1452,7 @@ export class ZapretManager {
     }
 
     await this.ensureUserLists();
+    await this.applyFlowsealScriptFixes(path.join(this.workDir, "core"));
   }
 
   private async copyRuntimeTree(sourceDir: string, destinationDir: string): Promise<void> {
@@ -1222,8 +1480,33 @@ export class ZapretManager {
           continue;
         }
 
-        await fs.copyFile(sourcePath, destinationPath);
+        await this.copyFileWithRetry(sourcePath, destinationPath);
       }
+    }
+  }
+
+  private async copyFlowsealRootPayload(sourceDir: string, destinationDir: string): Promise<void> {
+    await fs.mkdir(destinationDir, { recursive: true });
+    const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!isFlowsealRootPayloadEntry(entry.name, entry.isDirectory())) {
+        continue;
+      }
+
+      const sourcePath = path.join(sourceDir, entry.name);
+      const destinationPath = path.join(destinationDir, entry.name);
+
+      if (entry.isDirectory()) {
+        await this.copyRuntimeTree(sourcePath, destinationPath);
+        continue;
+      }
+
+      if (this.shouldPreserveDestinationFile(destinationPath) && (await this.pathExists(destinationPath))) {
+        continue;
+      }
+
+      await this.copyFileWithRetry(sourcePath, destinationPath);
     }
   }
 
@@ -1232,8 +1515,92 @@ export class ZapretManager {
     return (
       normalized.endsWith("-user.txt") ||
       normalized.endsWith(".backup") ||
-      normalized.endsWith("\\core\\utils\\game_filter.enabled")
+      normalized.endsWith("\\core\\utils\\game_filter.enabled") ||
+      normalized.endsWith("\\core\\utils\\check_updates.enabled")
     );
+  }
+
+  private async prepareCoreFilesForUpdate(): Promise<void> {
+    await this.cleanupDriverServicesIfSafe();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  }
+
+  private async copyFileWithRetry(sourcePath: string, destinationPath: string, maxAttempts = 6): Promise<void> {
+    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await fs.copyFile(sourcePath, destinationPath);
+        return;
+      } catch (error) {
+        if (!this.isRetriableCopyError(error) || attempt === maxAttempts) {
+          throw error;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, attempt * 350));
+      }
+    }
+  }
+
+  private isRetriableCopyError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const nodeError = error as NodeJS.ErrnoException;
+    return nodeError.code === "EBUSY" || nodeError.code === "EPERM" || nodeError.code === "EACCES";
+  }
+
+  private async applyFlowsealScriptFixes(coreDir: string): Promise<void> {
+    await this.patchFlowsealServiceScript(path.join(coreDir, "service.bat"));
+    await this.patchFlowsealUpdateScript(path.join(coreDir, "fast", "update_service.bat"));
+  }
+
+  private async patchFlowsealServiceScript(scriptPath: string): Promise<void> {
+    if (!(await this.pathExists(scriptPath))) {
+      return;
+    }
+
+    const original = await fs.readFile(scriptPath, "utf8");
+    const lines = original.split(/\r?\n/);
+    let changed = false;
+
+    const localVersionIndex = lines.findIndex((line) => line.startsWith('set "LOCAL_VERSION='));
+    if (localVersionIndex >= 0) {
+      const currentBlock = lines.slice(localVersionIndex, localVersionIndex + FLOWSEAL_SERVICE_LOCAL_VERSION_LINES.length);
+      if (
+        currentBlock.length !== FLOWSEAL_SERVICE_LOCAL_VERSION_LINES.length ||
+        currentBlock.some((line, index) => line !== FLOWSEAL_SERVICE_LOCAL_VERSION_LINES[index])
+      ) {
+        lines.splice(localVersionIndex, 1, ...FLOWSEAL_SERVICE_LOCAL_VERSION_LINES);
+        changed = true;
+      }
+    }
+
+    const versionFetchIndex = lines.findIndex(
+      (line) => line.includes("set \"GITHUB_VERSION=%%A\"") && line.includes("Invoke-WebRequest")
+    );
+    if (versionFetchIndex >= 0 && lines[versionFetchIndex] !== FLOWSEAL_SERVICE_VERSION_FETCH_LINE) {
+      lines[versionFetchIndex] = FLOWSEAL_SERVICE_VERSION_FETCH_LINE;
+      changed = true;
+    }
+
+    if (changed) {
+      await fs.writeFile(scriptPath, `${lines.join("\r\n").replace(/\r\n+$/u, "")}\r\n`, "utf8");
+    }
+  }
+
+  private async patchFlowsealUpdateScript(scriptPath: string): Promise<void> {
+    if (!(await this.pathExists(scriptPath))) {
+      return;
+    }
+
+    const current = await fs.readFile(scriptPath, "utf8");
+    if (current === FLOWSEAL_UPDATE_SCRIPT_TEMPLATE) {
+      return;
+    }
+
+    await fs.writeFile(scriptPath, FLOWSEAL_UPDATE_SCRIPT_TEMPLATE, "utf8");
   }
 
   private async ensureUserLists(): Promise<void> {
@@ -1544,14 +1911,26 @@ export class ZapretManager {
   }
 
   private async readCoreVersion(): Promise<string | null> {
-    const servicePath = path.join(this.workDir, "core", "service.bat");
-    try {
-      const content = await fs.readFile(servicePath, "utf8");
-      const match = content.match(/LOCAL_VERSION\s*=\s*([^\r\n]+)/i);
-      return match?.[1]?.trim() ?? null;
-    } catch {
-      return null;
+    const installedVersion = await this.readVersion(path.join(this.workDir, "VERSION.txt"));
+    if (installedVersion) {
+      return installedVersion;
     }
+
+    const sourceRuntime = await this.getSourceRuntimeInfo();
+    if (sourceRuntime?.version) {
+      return sourceRuntime.version;
+    }
+
+    const servicePath = path.join(this.workDir, "core", "service.bat");
+    const content = await fs.readFile(servicePath, "utf8").catch(() => "");
+    const match = content.match(/LOCAL_VERSION\s*=\s*"?([^"\r\n]+)"?/i);
+    const parsedVersion = match?.[1]?.trim() ?? null;
+    return parsedVersion && parsedVersion.toLowerCase() !== "unknown" ? parsedVersion : null;
+  }
+
+  private async writeInstalledCoreVersion(version: string): Promise<void> {
+    await fs.mkdir(this.workDir, { recursive: true });
+    await fs.writeFile(path.join(this.workDir, "VERSION.txt"), `${version.trim()}\n`, "utf8");
   }
 
   private async readStandaloneState(): Promise<StandaloneState | null> {
@@ -1702,6 +2081,8 @@ export class ZapretManager {
       const response = await fetch(url, {
         cache: "no-store",
         headers: {
+          "user-agent": FLOWSEAL_SCRIPT_USER_AGENT,
+          accept: "text/plain, text/html;q=0.9, */*;q=0.8",
           "cache-control": "no-cache",
           pragma: "no-cache"
         },
@@ -1716,18 +2097,44 @@ export class ZapretManager {
     }
   }
 
+  private wrapFlowsealNetworkError(error: unknown, operation: string): Error {
+    if (error instanceof Error) {
+      if (error.name === "AbortError") {
+        return new Error(`Не удалось выполнить ${operation}: сервер Flowseal не ответил вовремя.`);
+      }
+
+      if (error.message.includes("HTTP 403")) {
+        return new Error(
+          `Не удалось выполнить ${operation}: сервер Flowseal временно отклонил запрос (HTTP 403). Продолжаем работать на локальном Core и попробуем снова позже.`
+        );
+      }
+
+      return error;
+    }
+
+    return new Error(`Не удалось выполнить ${operation}: ${String(error)}`);
+  }
+
   private async launchConsoleCommand(
     executable: string,
     args: string[],
     options: { cwd: string }
   ): Promise<void> {
-    const child = spawn(executable, args, {
-      cwd: options.cwd,
-      detached: true,
-      stdio: "ignore",
-      windowsHide: false
-    });
-    child.unref();
+    const powerShellPath = resolveWindowsExecutable("powershell.exe");
+    const command = [
+      `$filePath = ${quotePowerShellLiteral(executable)}`,
+      `$workingDirectory = ${quotePowerShellLiteral(options.cwd)}`,
+      `Start-Process -FilePath $filePath -WorkingDirectory $workingDirectory -ArgumentList @(${toPowerShellArgumentList(args)}) -WindowStyle Normal`
+    ].join("; ");
+
+    await execFileAsync(
+      powerShellPath,
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+      {
+        windowsHide: true,
+        timeout: 10_000
+      }
+    );
   }
 
   private async killImageNames(imageNames: string[]): Promise<string[]> {
@@ -1773,6 +2180,12 @@ export class ZapretManager {
     }
 
     return removed;
+  }
+
+  private async findFirstDirectory(rootDir: string): Promise<string | null> {
+    const entries = await fs.readdir(rootDir, { withFileTypes: true }).catch(() => []);
+    const directory = entries.find((entry) => entry.isDirectory());
+    return directory ? path.join(rootDir, directory.name) : null;
   }
 
   private async ensurePathExists(targetPath: string, errorMessage: string): Promise<void> {

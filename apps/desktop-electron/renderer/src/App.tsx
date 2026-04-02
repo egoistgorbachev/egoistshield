@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Download, Info, RefreshCw } from "lucide-react";
+import { Download } from "lucide-react";
 import React, { useEffect, Suspense, useState } from "react";
 import { CommandPalette } from "./components/CommandPalette";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -21,6 +21,9 @@ const Settings = React.lazy(() => import("./screens/Settings").then((m) => ({ de
 const ServerList = React.lazy(() => import("./screens/ServerList").then((m) => ({ default: m.ServerList })));
 const Onboarding = React.lazy(() => import("./screens/Onboarding").then((m) => ({ default: m.Onboarding })));
 const Zapret = React.lazy(() => import("./screens/Zapret").then((m) => ({ default: m.Zapret })));
+const TelegramProxy = React.lazy(() =>
+  import("./screens/TelegramProxy").then((m) => ({ default: m.TelegramProxy }))
+);
 
 // Fallback для Suspense — минимальный лоадер
 function ScreenLoader() {
@@ -42,8 +45,7 @@ export function App() {
 
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateVersion, setUpdateVersion] = useState("");
-  const [downloadProgress, setDownloadProgress] = useState(-1); // -1 = not downloading
-  const [updateReady, setUpdateReady] = useState(false);
+  const [updateReleaseUrl, setUpdateReleaseUrl] = useState("");
   const [showSplash, setShowSplash] = useState(true);
   const [isStoreHydrated, setIsStoreHydrated] = useState(() => useAppStore.persist.hasHydrated());
 
@@ -78,14 +80,15 @@ export function App() {
       disposers.push(api.updater.onUpdateAvailable((data) => {
         setUpdateAvailable(true);
         setUpdateVersion(data.version);
+        setUpdateReleaseUrl(data.releaseUrl ?? data.downloadUrl ?? "");
       }));
-      disposers.push(api.updater.onDownloadProgress((data) => {
-        setDownloadProgress(data.percent);
+      disposers.push(api.updater.onUpdateNotAvailable(() => {
+        setUpdateAvailable(false);
+        setUpdateVersion("");
+        setUpdateReleaseUrl("");
       }));
-      disposers.push(api.updater.onUpdateDownloaded((data) => {
-        setUpdateReady(true);
-        setDownloadProgress(100);
-        setUpdateVersion(data.version);
+      disposers.push(api.updater.onUpdateError(() => {
+        setUpdateAvailable(false);
       }));
     }
 
@@ -226,8 +229,27 @@ export function App() {
     );
   }
 
+  const activeScreen = (() => {
+    switch (currentScreen) {
+      case "servers":
+        return <ServerList />;
+      case "dns":
+        return <DnsControl />;
+      case "zapret":
+        return <Zapret />;
+      case "telegram-proxy":
+        return <TelegramProxy />;
+      case "settings":
+        return <Settings />;
+      case "dashboard":
+      default:
+        return <Dashboard />;
+    }
+  })();
+
   return (
-    <div className="relative w-full h-screen bg-void flex flex-row overflow-hidden text-white font-sans selection:bg-brand/20">
+    <div className="relative flex h-screen w-full flex-row overflow-hidden bg-void text-white font-sans selection:bg-brand/20">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,76,41,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.06),transparent_22%)]" />
       {/* Skip to content — visible only on focus via Tab */}
       <a
         href="#main-content"
@@ -253,56 +275,15 @@ export function App() {
         <div id="main-content" className="flex-1 relative overflow-hidden">
           <ErrorBoundary>
             <Suspense fallback={<ScreenLoader />}>
-              <AnimatePresence mode="wait">
-                {currentScreen === "dashboard" && (
-                  <motion.div
-                    key="dashboard"
-                    {...pageTransition}
-                    className="absolute inset-0 bg-surface-app/95 backdrop-blur-md"
-                  >
-                    <Dashboard />
-                  </motion.div>
-                )}
-
-                {currentScreen === "servers" && (
-                  <motion.div
-                    key="servers"
-                    {...pageTransition}
-                    className="absolute inset-0 bg-surface-app/95 backdrop-blur-md"
-                  >
-                    <ServerList />
-                  </motion.div>
-                )}
-
-                {currentScreen === "dns" && (
-                  <motion.div
-                    key="dns"
-                    {...pageTransition}
-                    className="absolute inset-0 bg-surface-app/95 backdrop-blur-md"
-                  >
-                    <DnsControl />
-                  </motion.div>
-                )}
-
-                {currentScreen === "zapret" && (
-                  <motion.div
-                    key="zapret"
-                    {...pageTransition}
-                    className="absolute inset-0 bg-surface-app/95 backdrop-blur-md"
-                  >
-                    <Zapret />
-                  </motion.div>
-                )}
-
-                {currentScreen === "settings" && (
-                  <motion.div
-                    key="settings"
-                    {...pageTransition}
-                    className="absolute inset-0 bg-surface-app/95 backdrop-blur-md"
-                  >
-                    <Settings />
-                  </motion.div>
-                )}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={currentScreen}
+                  {...pageTransition}
+                  data-screen={currentScreen}
+                  className="absolute inset-0 bg-surface-app/95 backdrop-blur-md"
+                >
+                  {activeScreen}
+                </motion.div>
               </AnimatePresence>
             </Suspense>
           </ErrorBoundary>
@@ -319,48 +300,38 @@ export function App() {
               className="absolute bottom-6 left-1/2 -translate-x-1/2 z-toast pointer-events-auto"
             >
               <div className="flex items-center gap-3 px-5 py-3 rounded-2xl shadow-[0_10px_40px_rgba(59,130,246,0.3)] bg-blue-500/10 border border-blue-500/30 backdrop-blur-xl">
-                {updateReady ? (
-                  <Download className="w-5 h-5 text-emerald-400 shrink-0" />
-                ) : downloadProgress >= 0 ? (
-                  <RefreshCw className="w-5 h-5 text-blue-400 shrink-0 animate-spin" />
-                ) : (
-                  <Info className="w-5 h-5 text-blue-400 shrink-0" />
-                )}
+                <Download className="w-5 h-5 text-blue-300 shrink-0" />
                 <div className="flex flex-col min-w-[160px]">
                   <p className="font-bold text-sm tracking-wide text-blue-100 leading-tight">
-                    {updateReady
-                      ? `v${updateVersion} готова к установке`
-                      : downloadProgress >= 0
-                        ? `Скачивание v${updateVersion}...`
-                        : `Доступно обновление v${updateVersion}`}
+                    Доступна версия v{updateVersion}
                   </p>
-                  {/* Progress bar */}
-                  {downloadProgress >= 0 && !updateReady && (
-                    <div className="w-full h-1 rounded-full bg-white/10 mt-1.5 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-blue-400 transition-all duration-300"
-                        style={{ width: `${downloadProgress}%` }}
-                      />
-                    </div>
-                  )}
+                  <p className="mt-1 text-xs leading-relaxed text-blue-100/75">
+                    Скачайте обновление вручную со страницы релиза, чтобы проверить release notes и installer перед установкой.
+                  </p>
                 </div>
-                {updateReady ? (
+                <div className="ml-2 flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => getAPI()?.updater.install()}
-                    className="ml-2 px-3 py-1.5 text-xs font-bold tracking-wide rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors cursor-pointer"
+                    onClick={() => {
+                      const api = getAPI();
+                      if (api?.updater?.openReleasePage) {
+                        void api.updater.openReleasePage();
+                        return;
+                      }
+                      void api?.updater?.install?.();
+                    }}
+                    className="px-3 py-1.5 text-xs font-bold tracking-wide rounded-lg bg-blue-500/20 text-blue-100 border border-blue-400/30 hover:bg-blue-500/30 transition-colors cursor-pointer"
                   >
-                    Установить
+                    {updateReleaseUrl ? "Открыть релиз" : "Открыть страницу"}
                   </button>
-                ) : (
                   <button
                     type="button"
                     onClick={() => setUpdateAvailable(false)}
-                    className="ml-2 text-white/40 hover:text-white/70 text-xs cursor-pointer"
+                    className="text-white/40 hover:text-white/70 text-xs cursor-pointer"
                   >
                     ✕
                   </button>
-                )}
+                </div>
               </div>
             </motion.output>
           )}

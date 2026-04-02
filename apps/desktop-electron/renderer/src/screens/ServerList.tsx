@@ -15,9 +15,11 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useDeferredValue, useMemo, useState } from "react";
 import { AddServerModal } from "../components/AddServerModal";
 import { FlagIcon } from "../components/FlagIcon";
+import { PageHero } from "../components/PageHero";
+import { SegmentedTabs } from "../components/SegmentedTabs";
 import { ServerItem } from "../components/ServerItem";
 import { getAPI } from "../lib/api";
 import { cn } from "../lib/cn";
@@ -85,7 +87,7 @@ export function ServerList() {
           showToast(`Скорость: ${result.speed} Мбит/с`, "success");
         }
       } else {
-        showToast("Speedtest API недоступен", "error");
+        showToast("Тест скорости недоступен", "error");
       }
     } catch (error: unknown) {
       showToast(getErrorMessage(error, "Ошибка"), "error");
@@ -107,6 +109,8 @@ export function ServerList() {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [sortType, setSortType] = useState<"group" | "ping" | "alpha">("ping");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const normalizedSearchQuery = deferredSearchQuery.trim().toLowerCase();
 
   const toggleGroup = (countryCode: string) => {
     setExpandedGroups((prev) => ({ ...prev, [countryCode]: !prev[countryCode] }));
@@ -145,42 +149,39 @@ export function ServerList() {
 
   // Filtered servers by search
   const filteredPinned = useMemo(() => {
-    if (!searchQuery.trim()) return pinnedServers;
-    const q = searchQuery.toLowerCase();
+    if (!normalizedSearchQuery) return pinnedServers;
     return pinnedServers.filter(
       (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.countryCode?.toLowerCase().includes(q) ||
-        s.countryName?.toLowerCase().includes(q)
+        s.name.toLowerCase().includes(normalizedSearchQuery) ||
+        s.countryCode?.toLowerCase().includes(normalizedSearchQuery) ||
+        s.countryName?.toLowerCase().includes(normalizedSearchQuery)
     );
-  }, [pinnedServers, searchQuery]);
+  }, [normalizedSearchQuery, pinnedServers]);
 
   const filteredGroups = useMemo(() => {
-    if (!searchQuery.trim()) return groupedServers;
-    const q = searchQuery.toLowerCase();
+    if (!normalizedSearchQuery) return groupedServers;
     const result: Record<string, ServerConfig[]> = {};
     for (const [cc, group] of Object.entries(groupedServers)) {
       const filtered = group.filter(
         (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.countryCode?.toLowerCase().includes(q) ||
-          s.countryName?.toLowerCase().includes(q)
+          s.name.toLowerCase().includes(normalizedSearchQuery) ||
+          s.countryCode?.toLowerCase().includes(normalizedSearchQuery) ||
+          s.countryName?.toLowerCase().includes(normalizedSearchQuery)
       );
       if (filtered.length > 0) result[cc] = filtered;
     }
     return result;
-  }, [groupedServers, searchQuery]);
+  }, [groupedServers, normalizedSearchQuery]);
 
   // Flat sorted list for ping/alpha sorting
   const flatSortedServers = useMemo(() => {
     let list = [...regularServers];
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
+    if (normalizedSearchQuery) {
       list = list.filter(
         (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.countryCode?.toLowerCase().includes(q) ||
-          s.countryName?.toLowerCase().includes(q)
+          s.name.toLowerCase().includes(normalizedSearchQuery) ||
+          s.countryCode?.toLowerCase().includes(normalizedSearchQuery) ||
+          s.countryName?.toLowerCase().includes(normalizedSearchQuery)
       );
     }
     if (sortType === "ping") {
@@ -195,90 +196,96 @@ export function ServerList() {
       list.sort((a, b) => a.name.localeCompare(b.name));
     }
     return list;
-  }, [regularServers, searchQuery, sortType]);
+  }, [normalizedSearchQuery, regularServers, sortType]);
+  const heroExtraActions: React.ReactNode[] = [];
+
+  if (isConnected) {
+    heroExtraActions.push(
+      <HeroActionButton
+        key="speedtest"
+        title="Замерить скорость узла"
+        busy={speedtestRunning}
+        tone={speedtestRunning ? "warning" : "default"}
+        onClick={handleSpeedtest}
+      >
+        {speedtestRunning ? (
+          <>
+            <motion.div
+              animate={{ scale: [1, 1.18, 1], opacity: [1, 0.7, 1] }}
+              transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
+            >
+              <Activity className="h-4 w-4" />
+            </motion.div>
+            Замер...
+          </>
+        ) : (
+          <>
+            <Activity className="h-4 w-4" />
+            Тест скорости
+          </>
+        )}
+      </HeroActionButton>
+    );
+  }
+
+  if (activeTab === "subscriptions" && subscriptions.length > 0) {
+    heroExtraActions.push(
+      <HeroActionButton
+        key="refresh-subscriptions"
+        title="Обновить все подписки"
+        busy={refreshLoading}
+        onClick={async () => {
+          if (refreshLoading) {
+            return;
+          }
+          setRefreshLoading(true);
+          try {
+            await refreshAllSubscriptions();
+            showToast("Подписки обновлены", "success");
+          } catch (error: unknown) {
+            showToast(getErrorMessage(error, "Ошибка обновления"), "error");
+          } finally {
+            setRefreshLoading(false);
+          }
+        }}
+      >
+        <RefreshCw className={cn("h-4 w-4", refreshLoading && "animate-spin")} />
+        Обновить
+      </HeroActionButton>
+    );
+  }
 
   return (
-    <main
-      className={cn("relative z-10 flex-1 flex flex-col h-full overflow-hidden", activeTab === "map" ? "p-0" : "p-6")}
-    >
-      <div className={cn("mb-4 mt-4 flex items-center justify-between", activeTab === "map" && "px-6 pt-6")}>
-        <div>
-          <h1 className="text-2xl font-display font-bold text-white/90 flex items-center gap-3">
-            <Server className="text-brand/60 w-7 h-7" />
-            Серверы
-          </h1>
-        </div>
-        <div className="flex gap-2">
-          {/* Speedtest Button */}
-          {isConnected && (
-            <motion.button
-              type="button"
-              onClick={handleSpeedtest}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              disabled={speedtestRunning}
-              className={cn(
-                "p-3 text-white transition-all rounded-xl shadow-lg border flex items-center gap-2",
-                speedtestRunning
-                  ? "bg-amber-500/20 border-amber-500/30 text-amber-400 cursor-wait shadow-[0_0_15px_rgba(251,191,36,0.2)]"
-                  : "bg-white/5 hover:bg-brand/20 border-white/10 hover:border-brand/40 hover:text-brand"
-              )}
-              title="Замерить скорость узла"
-            >
-              {speedtestRunning ? (
-                <>
-                  <motion.div
-                    animate={{ scale: [1, 1.2, 1], opacity: [1, 0.6, 1] }}
-                    transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-                  >
-                    <Activity className="w-6 h-6" />
-                  </motion.div>
-                  <span className="text-xs font-bold">Замер...</span>
-                </>
-              ) : (
-                <Activity className="w-6 h-6" />
-              )}
-            </motion.button>
-          )}
-          {activeTab === "subscriptions" && subscriptions.length > 0 && (
-            <motion.button
-              type="button"
-              onClick={async () => {
-                if (refreshLoading) {
-                  return;
-                }
-                setRefreshLoading(true);
-                try {
-                  await refreshAllSubscriptions();
-                  showToast("Подписки обновлены", "success");
-                } catch (error: unknown) {
-                  showToast(getErrorMessage(error, "Ошибка обновления"), "error");
-                } finally {
-                  setRefreshLoading(false);
-                }
-              }}
-              whileHover={{ scale: refreshLoading ? 1 : 1.05 }}
-              whileTap={{ scale: refreshLoading ? 1 : 0.95 }}
-              className={cn(
-                "p-3 bg-white/5 hover:bg-brand/20 text-white transition-colors rounded-xl shadow-lg border border-white/10",
-                refreshLoading && "opacity-70 pointer-events-none"
-              )}
-              title="Обновить все подписки"
-            >
-              <RefreshCw className={cn("w-6 h-6", refreshLoading && "animate-spin")} />
-            </motion.button>
-          )}
-          <motion.button
-            type="button"
-            onClick={() => setIsAddModalOpen(true)}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="p-3 bg-white/5 hover:bg-brand/20 text-white hover:text-brand rounded-xl border border-white/10 hover:border-brand/40 transition-colors shadow-lg flex items-center justify-center"
-            title="Добавить конфигурацию"
-          >
-            <Plus className="w-6 h-6" />
-          </motion.button>
-        </div>
+    <main className="relative z-10 flex-1 flex flex-col h-full overflow-hidden">
+      <div className="mt-4 px-6 pb-4">
+        <PageHero
+          eyebrow="Библиотека маршрутов"
+          title="Серверы"
+          icon={<Server className="h-7 w-7 text-brand-light" />}
+          description="Узлы, карта, поиск, подписки и тест скорости в одном рабочем пространстве."
+          badges={[
+            { label: `${servers.length} узлов`, icon: <Server className="h-3.5 w-3.5" />, tone: "brand" },
+            {
+              label: `${favoriteServerIds.length} в избранном`,
+              icon: <Star className="h-3.5 w-3.5" />,
+              tone: favoriteServerIds.length > 0 ? "warning" : "neutral"
+            },
+            {
+              label: isConnected ? "VPN активен" : "VPN выключен",
+              icon: <Activity className="h-3.5 w-3.5" />,
+              tone: isConnected ? "success" : "neutral"
+            }
+          ]}
+          railAction={
+            <HeroActionButton title="Добавить конфигурацию" tone="brand" onClick={() => setIsAddModalOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Добавить
+            </HeroActionButton>
+          }
+          actions={
+            heroExtraActions.length > 0 ? <div className="flex flex-wrap gap-2">{heroExtraActions}</div> : null
+          }
+        />
       </div>
 
       {/* Speedtest Result Banner */}
@@ -316,58 +323,31 @@ export function ServerList() {
         )}
       </AnimatePresence>
 
-      <div
-        role="tablist"
-        aria-label="Режим просмотра серверов"
-        className={cn("flex p-1 rounded-2xl mb-4 glass-panel", activeTab === "map" && "mx-6")}
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "map"}
-          onClick={() => setActiveTab("map")}
-          className={cn(
-            "flex-1 py-2.5 text-sm max-[500px]:text-xs font-semibold rounded-xl transition-all duration-300",
-            activeTab === "map"
-              ? "bg-brand/10 text-brand shadow-md border border-brand/15"
-              : "text-subtle hover:text-white/60"
-          )}
-        >
-          🗺 Карта
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "nodes"}
-          onClick={() => setActiveTab("nodes")}
-          className={cn(
-            "flex-1 py-2.5 text-sm max-[500px]:text-xs font-semibold rounded-xl transition-all duration-300",
-            activeTab === "nodes"
-              ? "bg-brand/10 text-brand shadow-md border border-brand/15"
-              : "text-subtle hover:text-white/60"
-          )}
-        >
-          Узлы
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "subscriptions"}
-          onClick={() => setActiveTab("subscriptions")}
-          className={cn(
-            "flex-1 py-2.5 text-sm max-[500px]:text-xs font-semibold rounded-xl transition-all duration-300",
-            activeTab === "subscriptions"
-              ? "bg-brand/10 text-brand shadow-md border border-brand/15"
-              : "text-subtle hover:text-white/60"
-          )}
-        >
-          Подписки ({subscriptions.length})
-        </button>
+      <div className={cn("mb-4", activeTab === "map" ? "mx-6" : "px-6")}>
+        <SegmentedTabs
+          label="Режим просмотра серверов"
+          activeId={activeTab}
+          onChange={setActiveTab}
+          items={[
+            { id: "map", label: "Карта", icon: <Globe3DIcon /> },
+            { id: "nodes", label: "Узлы", icon: <Server className="h-4 w-4" /> },
+            {
+              id: "subscriptions",
+              label: "Подписки",
+              icon: <RefreshCw className="h-4 w-4" />,
+              badge: String(subscriptions.length)
+            }
+          ]}
+        />
       </div>
 
       {/* ═══ MAP TAB ═══ */}
       {activeTab === "map" && (
-        <div className="flex-1 flex items-center justify-center relative" style={{ minHeight: 0 }}>
+        <div
+          data-testid="serverlist-map-tab-panel"
+          className="flex-1 flex items-center justify-center relative"
+          style={{ minHeight: 0 }}
+        >
           <Suspense
             fallback={
               <div className="flex-1 flex items-center justify-center h-full">
@@ -411,14 +391,14 @@ export function ServerList() {
               ) : (
                 <div className="grid grid-cols-1 gap-4 p-6 pt-0 w-full max-w-7xl mx-auto">
                   {/* Search Bar */}
-                  <div className="relative">
+                  <div className="relative overflow-hidden rounded-[22px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-subtle pointer-events-none" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Поиск серверов..."
-                      className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white/90 placeholder:text-subtle focus:border-brand/30 focus:bg-white/[0.06] transition-all outline-none"
+                      className="w-full rounded-[16px] border border-white/[0.08] bg-black/10 py-3 pl-9 pr-8 text-sm text-white/90 outline-none transition-all placeholder:text-subtle focus:border-brand/30 focus:bg-white/[0.06]"
                     />
                     {searchQuery && (
                       <button
@@ -432,7 +412,7 @@ export function ServerList() {
                   </div>
 
                   {/* Сортировка */}
-                  <div className="flex bg-white/5 rounded-xl p-1 mb-2">
+                  <div className="flex rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-1 mb-2">
                     <button
                       type="button"
                       onClick={() => setSortType("ping")}
@@ -602,6 +582,10 @@ export function ServerList() {
                     return (
                       <div
                         key={sub.url}
+                        style={{
+                          contentVisibility: "auto",
+                          containIntrinsicSize: "188px"
+                        }}
                         className="rounded-2xl overflow-hidden border border-white/[0.06] bg-white/[0.02]"
                       >
                         {/* Header — gradient with name */}
@@ -701,7 +685,7 @@ export function ServerList() {
                                     strokeWidth="5"
                                     className="text-white/[0.05]"
                                   />
-                                  <motion.circle
+                                  <circle
                                     cx="30"
                                     cy="30"
                                     r="26"
@@ -718,11 +702,7 @@ export function ServerList() {
                                     strokeWidth="5"
                                     strokeLinecap="round"
                                     strokeDasharray={26 * 2 * Math.PI}
-                                    initial={{ strokeDashoffset: 26 * 2 * Math.PI }}
-                                    animate={{
-                                      strokeDashoffset: 26 * 2 * Math.PI * (1 - (hasLimits ? usagePercent : 100) / 100)
-                                    }}
-                                    transition={{ duration: 1, ease: "easeOut" }}
+                                    strokeDashoffset={26 * 2 * Math.PI * (1 - (hasLimits ? usagePercent : 100) / 100)}
                                   />
                                 </svg>
                                 <div className="absolute inset-0 flex items-center justify-center">
@@ -855,6 +835,54 @@ export function ServerList() {
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+function HeroActionButton({
+  children,
+  onClick,
+  busy = false,
+  title,
+  tone = "default"
+}: {
+  children: React.ReactNode;
+  onClick: () => void | Promise<void>;
+  busy?: boolean;
+  title: string;
+  tone?: "default" | "brand" | "warning";
+}) {
+  const toneClass =
+    tone === "brand"
+      ? "border-brand/30 bg-brand/14 text-brand-light hover:border-brand/45 hover:bg-brand/18"
+      : tone === "warning"
+        ? "border-amber-500/30 bg-amber-500/14 text-amber-300 hover:border-amber-500/45 hover:bg-amber-500/18"
+        : "border-white/10 bg-white/[0.05] text-white/82 hover:border-white/18 hover:bg-white/[0.08]";
+
+  return (
+    <motion.button
+      type="button"
+      title={title}
+      disabled={busy}
+      onClick={() => void onClick()}
+      whileHover={busy ? undefined : { scale: 1.02, y: -1 }}
+      whileTap={busy ? undefined : { scale: 0.985 }}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] transition-all shadow-[0_8px_18px_rgba(0,0,0,0.1)] disabled:cursor-wait disabled:opacity-70",
+        toneClass
+      )}
+    >
+      {children}
+    </motion.button>
+  );
+}
+
+function Globe3DIcon() {
+  return (
+    <span className="relative inline-flex h-4 w-4 items-center justify-center">
+      <span className="absolute inset-0 rounded-full border border-current opacity-80" />
+      <span className="absolute inset-y-[1px] left-1/2 w-px -translate-x-1/2 rounded-full bg-current opacity-70" />
+      <span className="absolute left-[2px] right-[2px] top-1/2 h-px -translate-y-1/2 rounded-full bg-current opacity-70" />
+    </span>
   );
 }
 

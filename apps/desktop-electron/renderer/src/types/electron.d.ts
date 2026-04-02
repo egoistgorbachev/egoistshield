@@ -3,15 +3,22 @@
  * Устраняет все `window as any` в renderer-коде.
  */
 import type {
+  AppUpdateStatus,
   DiagnosticResult,
+  IntegritySource,
   ImportResult,
   PersistedState,
   RouteProbeResult,
   RuntimeInstallResult,
   RuntimeLogSummary,
   RuntimeStatus,
+  RuntimeUpdateInfo,
   RuntimeUpdateSummary,
   StressResult,
+  TelegramProxyCommandResult,
+  TelegramProxyConfig,
+  TelegramProxyStatus,
+  TelegramProxyUpdateInfo,
   ZapretAutoSelectResult,
   ZapretCommandResult,
   ZapretDiscordCacheTarget,
@@ -52,6 +59,7 @@ export interface EgoistAPI {
   runtime: {
     installXray(): Promise<RuntimeInstallResult>;
     installAll(): Promise<RuntimeUpdateSummary>;
+    checkUpdates(): Promise<RuntimeUpdateInfo[]>;
   };
   app: {
     isAdmin(): Promise<boolean>;
@@ -84,13 +92,28 @@ export interface EgoistAPI {
     onUpdate(callback: (data: { rx: number; tx: number }) => void): () => void;
   };
   updater: {
-    onUpdateAvailable(callback: (data: { version: string }) => void): () => void;
+    onUpdateAvailable(callback: (data: { version: string; downloadUrl?: string; releaseUrl?: string }) => void): () => void;
     onDownloadProgress(callback: (data: { percent: number; transferred: number; total: number }) => void): () => void;
-    onUpdateDownloaded(callback: (data: { version: string }) => void): () => void;
+    onUpdateDownloaded(callback: (data: {
+      version: string;
+      verified?: boolean;
+      verificationMessage?: string;
+      integritySource?: IntegritySource;
+    }) => void): () => void;
     onUpdateNotAvailable(callback: () => void): () => void;
     onUpdateError(callback: (data: { message: string }) => void): () => void;
-    install(): Promise<void>;
-    check(): Promise<{ ok: boolean; version?: string; error?: string }>;
+    install(): Promise<boolean>;
+    openReleasePage(): Promise<boolean>;
+    check(): Promise<{
+      ok: boolean;
+      version?: string;
+      status?: AppUpdateStatus;
+      currentVersion?: string;
+      latestVersion?: string;
+      releaseUrl?: string;
+      downloadUrl?: string;
+      error?: string;
+    }>;
     setAuto(enabled: boolean): Promise<boolean>;
   };
   autoConnect: {
@@ -122,13 +145,27 @@ export interface EgoistAPI {
     updateIpsetList(): Promise<ZapretStatus>;
     setUpdateChecksEnabled(enabled: boolean): Promise<ZapretStatus>;
     checkUpdates(): Promise<ZapretUpdateInfo>;
+    installCoreUpdate(): Promise<ZapretStatus>;
+    /** @deprecated Legacy console updater is suppressed. Use the integrated Flowseal Core panel on the Zapret screen. */
     runCoreUpdater(): Promise<ZapretCommandResult>;
     resetNetworkState(): Promise<ZapretStatus>;
     diagnostics(): Promise<ZapretDiagnosticsReport>;
     autoSelect(): Promise<ZapretAutoSelectResult>;
+    /** @deprecated Legacy service menu is suppressed. Use the integrated Zapret service controls on the Zapret screen. */
     openServiceMenu(): Promise<ZapretCommandResult>;
     runFlowsealTests(): Promise<ZapretCommandResult>;
     cleanDiscordCache(target: ZapretDiscordCacheTarget): Promise<ZapretCommandResult>;
+  };
+  telegramProxy: {
+    status(): Promise<TelegramProxyStatus>;
+    saveConfig(config: TelegramProxyConfig): Promise<TelegramProxyStatus>;
+    start(): Promise<TelegramProxyStatus>;
+    stop(): Promise<TelegramProxyStatus>;
+    restart(): Promise<TelegramProxyStatus>;
+    checkUpdates(): Promise<TelegramProxyUpdateInfo>;
+    installUpdate(): Promise<TelegramProxyStatus>;
+    openLink(): Promise<TelegramProxyCommandResult>;
+    openLogs(): Promise<TelegramProxyCommandResult>;
   };
 }
 

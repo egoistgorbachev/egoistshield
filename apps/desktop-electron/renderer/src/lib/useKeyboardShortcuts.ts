@@ -6,6 +6,7 @@
  * Ctrl+3 → Настройки
  * Ctrl+4 → DNS
  * Ctrl+5 → Zapret
+ * Ctrl+6 → Telegram Proxy
  * Ctrl+Shift+C → Toggle VPN connection
  * Ctrl+Shift+S → Smart Connect
  */
@@ -42,6 +43,10 @@ export function useKeyboardShortcuts() {
           case "Digit5":
             e.preventDefault();
             useAppStore.getState().setScreen("zapret");
+            break;
+          case "Digit6":
+            e.preventDefault();
+            useAppStore.getState().setScreen("telegram-proxy");
             break;
         }
       }

@@ -27,7 +27,7 @@ export function OfflineBanner() {
               <WifiOff className="w-4 h-4 text-red-400" />
             </motion.div>
             <span className="text-sm font-bold text-red-300/90 tracking-wide">Нет подключения к интернету</span>
-            <span className="text-xs text-white/30">Данные из кэша</span>
+            <span className="text-xs text-white/30">Некоторые данные могут быть устаревшими</span>
           </div>
         </motion.div>
       )}

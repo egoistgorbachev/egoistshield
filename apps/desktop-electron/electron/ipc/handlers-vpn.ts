@@ -16,6 +16,9 @@ import { buildRouteProbeResult, extractRouteProbeIp } from "./route-probe";
 
 const ACTIVE_PROXY_PING_CACHE_TTL_MS = 2_000;
 const ROUTE_PROBE_ENDPOINT = "https://ipwho.is/?fields=ip,success";
+const IS_TEST_MOCK_RUNTIME =
+  process.env.EGOISTSHIELD_MOCK_RUNTIME === "1" &&
+  (process.env.NODE_ENV === "test" || process.env.VITEST === "true");
 
 let activeProxyPingInFlight: Promise<number> | null = null;
 let activeProxyPingLastValue = -1;
@@ -105,24 +108,26 @@ export function registerVpnHandlers({ stateStore, runtimeManager, zapretManager 
 
     logger.info("[vpn:connect] Connecting to:", activeNode.name, "id:", activeNode.id);
 
-    try {
-      await zapretManager.prepareForVpn(state.settings.zapretSuspendDuringVpn);
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : "Не удалось безопасно приостановить Zapret перед запуском VPN.";
-      logger.warn("[vpn:connect] Zapret suspend failed:", error);
-      return {
-        ...(await runtimeManager.status()),
-        lastError: message,
-        lifecycle: "failed" as const,
-        diagnostic: {
-          reason: "runtime_start_failed" as const,
-          details: message,
-          updatedAt: new Date().toISOString(),
-          fallbackAttempted: false,
-          fallbackTarget: null
-        }
-      };
+    if (!IS_TEST_MOCK_RUNTIME) {
+      try {
+        await zapretManager.prepareForVpn(state.settings.zapretSuspendDuringVpn);
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "Не удалось безопасно приостановить Zapret перед запуском VPN.";
+        logger.warn("[vpn:connect] Zapret suspend failed:", error);
+        return {
+          ...(await runtimeManager.status()),
+          lastError: message,
+          lifecycle: "failed" as const,
+          diagnostic: {
+            reason: "runtime_start_failed" as const,
+            details: message,
+            updatedAt: new Date().toISOString(),
+            fallbackAttempted: false,
+            fallbackTarget: null
+          }
+        };
+      }
     }
 
     const result = await runtimeManager.connect(activeNode, state.domainRules, [], {
@@ -130,7 +135,7 @@ export function registerVpnHandlers({ stateStore, runtimeManager, zapretManager 
       useTunMode: false
     });
 
-    if (!result.connected && state.settings.zapretSuspendDuringVpn) {
+    if (!IS_TEST_MOCK_RUNTIME && !result.connected && state.settings.zapretSuspendDuringVpn) {
       try {
         await zapretManager.restoreAfterVpnIfNeeded(
           state.settings.zapretSuspendDuringVpn,
@@ -184,7 +189,7 @@ export function registerVpnHandlers({ stateStore, runtimeManager, zapretManager 
     const result = await runtimeManager.disconnect();
     const state = stateStore.get();
 
-    if (state.settings.zapretSuspendDuringVpn) {
+    if (!IS_TEST_MOCK_RUNTIME && state.settings.zapretSuspendDuringVpn) {
       try {
         await zapretManager.restoreAfterVpnIfNeeded(
           state.settings.zapretSuspendDuringVpn,
@@ -331,7 +336,7 @@ export function registerVpnHandlers({ stateStore, runtimeManager, zapretManager 
       return activeProxyPingLastValue;
     }
 
-    activeProxyPingInFlight = (async () => {
+    activeProxyPingInFlight = (async (): Promise<number> => {
       try {
         const status = await runtimeManager.status();
         if (!status.connected) {
@@ -395,7 +400,7 @@ export function registerVpnHandlers({ stateStore, runtimeManager, zapretManager 
         }
 
         samples.sort((a, b) => a - b);
-        const result = samples[Math.floor(samples.length / 2)];
+        const result = samples[Math.floor(samples.length / 2)] ?? samples[0] ?? -1;
         activeProxyPingLastValue = result;
         activeProxyPingLastMeasuredAt = Date.now();
         return result;

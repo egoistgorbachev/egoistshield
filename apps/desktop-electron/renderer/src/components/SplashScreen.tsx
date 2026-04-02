@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Zap } from "lucide-react";
+import { ShieldLogo } from "./ShieldLogo";
 
 /* ──────────────────────────────────────────────────────────
    SplashScreen v8 — "Clean Power" (Framer Motion Edition)
@@ -15,7 +15,7 @@ export function SplashScreen() {
       exit={{ opacity: 0, scale: 1.05 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
     >
-      {/* Subtle radial gradient — red-orange brand center */}
+      {/* Subtle radial gradient — circular shield brand center */}
       <div
         className="absolute w-[600px] h-[600px] rounded-full pointer-events-none"
         style={{
@@ -24,31 +24,14 @@ export function SplashScreen() {
       />
 
       <div className="relative z-10 flex flex-col items-center">
-        {/* Shield + Bolt Icon */}
+        {/* Unified circular shield mark */}
         <motion.div
-          className="w-28 h-28 flex items-center justify-center will-change-transform"
+          className="flex h-28 w-28 items-center justify-center will-change-transform"
           initial={{ scale: 0.5, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.8, delay: 0.1, ease: [0.175, 0.885, 0.32, 1.275] }} // backOut approximation
         >
-          <div className="relative w-20 h-20">
-            <div
-              className="absolute inset-0 rounded-2xl flex items-center justify-center"
-              style={{
-                background: "linear-gradient(135deg, #E0401E, #FF4C29, #FF6B47)",
-                boxShadow: "0 8px 40px rgba(255,76,41,0.5)",
-                borderRadius: "28%"
-              }}
-            >
-              {/* Glass highlight */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[70%] h-[40%] bg-gradient-to-b from-white/20 to-transparent rounded-t-[28%]" />
-              <Zap
-                className="w-9 h-9 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]"
-                strokeWidth={2.5}
-                fill="rgba(255,255,255,0.15)"
-              />
-            </div>
-          </div>
+          <ShieldLogo size="large" />
         </motion.div>
 
         {/* Brand text */}
@@ -80,7 +63,7 @@ export function SplashScreen() {
         <div className="mt-6 w-9 h-9">
           <svg viewBox="0 0 40 40" className="w-full h-full -rotate-90" aria-hidden="true" focusable="false">
             <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,76,41,0.15)" strokeWidth="2.5" />
-            <motion.circle
+            <circle
               cx="20"
               cy="20"
               r="18"
@@ -89,9 +72,7 @@ export function SplashScreen() {
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeDasharray={circumference}
-              initial={{ strokeDashoffset: circumference }}
-              animate={{ strokeDashoffset: 0 }}
-              transition={{ duration: 1.0, delay: 1.2, ease: "easeInOut" }}
+              strokeDashoffset="0"
             />
             <defs>
               <linearGradient id="splash-ring-grad-v2" x1="0%" y1="0%" x2="100%" y2="100%">

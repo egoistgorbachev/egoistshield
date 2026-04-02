@@ -59,7 +59,7 @@ export function ConnectionTimeline({ isConnecting, isConnected, serverName }: Pr
         exit={{ opacity: 0, height: 0 }}
         transition={{ duration: 0.3 }}
         title={serverName ? `Сервер: ${serverName}` : undefined}
-        className="flex items-center gap-1.5 z-10"
+        className="flex flex-wrap items-center justify-center gap-1.5 px-2 z-10"
       >
         {STEPS.map((step, i) => {
           const Icon = step.icon;
@@ -77,7 +77,7 @@ export function ConnectionTimeline({ isConnecting, isConnected, serverName }: Pr
             >
               <div
                 className={cn(
-                  "flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold tracking-wide transition-all duration-300",
+                  "flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-wide transition-all duration-300",
                   isDone && "text-emerald-400 bg-emerald-500/10",
                   isActive && !isDone && "text-brand bg-brand/10",
                   isPending && "text-white/20 bg-white/[0.02]"
@@ -90,7 +90,7 @@ export function ConnectionTimeline({ isConnecting, isConnected, serverName }: Pr
                 ) : (
                   <Icon className="w-3 h-3" />
                 )}
-                <span className="hidden sm:inline">{step.label}</span>
+                <span className="leading-none whitespace-nowrap">{step.label}</span>
               </div>
               {i < STEPS.length - 1 && (
                 <div

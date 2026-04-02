@@ -12,6 +12,9 @@ $runtimeCoreDir = Join-Path $runtimeDir "core"
 $runtimeFlagsDir = Join-Path $runtimeDir "flags"
 $versionFile = Join-Path $runtimeDir "VERSION.txt"
 $tempDir = Join-Path $projectRoot "packaging\build\runtime-download-zapret"
+$packageJsonPath = Join-Path $projectRoot "package.json"
+$releaseVersion = if (Test-Path $packageJsonPath) { ((Get-Content $packageJsonPath -Raw) | ConvertFrom-Json).version } else { $null }
+$buildUserAgent = "EgoistShield-Build/" + $(if ($releaseVersion) { $releaseVersion } else { "dev" })
 
 if (-not $LocalExePath) {
   $candidate = Join-Path $env:USERPROFILE "Downloads\AyuGram Desktop\ZapretGUI.exe"
@@ -22,7 +25,7 @@ if (-not $LocalExePath) {
 
 function Get-LatestRelease {
   return Invoke-RestMethod -Uri "https://api.github.com/repos/medvedeff-true/Zapret-GUI/releases/latest" -Headers @{
-    "User-Agent" = "EgoistShield-Build/3.6.0"
+    "User-Agent" = $buildUserAgent
     "Accept" = "application/vnd.github+json"
   }
 }

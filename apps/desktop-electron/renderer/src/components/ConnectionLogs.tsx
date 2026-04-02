@@ -147,7 +147,7 @@ export function ConnectionLogs() {
             {/* Log entries */}
             {runtimeEvents.length > 0 && (
               <div className="mb-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
-                <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted">Runtime summary</div>
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted">Сводка ядра</div>
                 <div className="space-y-2">
                   {runtimeEvents
                     .slice(-4)

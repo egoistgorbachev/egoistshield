@@ -52,8 +52,8 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: EgoistShield
 
-  # Удалять AppData при деинсталляции
-  deleteAppDataOnUninstall: true
+  # По умолчанию сохраняем пользовательский профиль для repair / reinstall сценариев
+  deleteAppDataOnUninstall: false
 
   # Русский по умолчанию (LCID 1049)
   language: 1049

@@ -25,6 +25,9 @@ const DOT_RADIUS = 0.05;
 const DOT_RADIUS_ACTIVE = 0.07;
 const TEXTURE_WIDTH = 2048;
 const TEXTURE_HEIGHT = 1024;
+const LOW_POWER_CORE_THRESHOLD = 4;
+const DENSE_SERVER_THRESHOLD = 120;
+const DENSE_COUNTRY_THRESHOLD = 18;
 const DEFAULT_USER_LOCATION = COUNTRY_COORDS.ru ?? { lat: 55.75, lng: 37.61, name: "Россия" };
 
 type CoordinatePair = [number, number];
@@ -33,7 +36,24 @@ type PolygonGeometry = { type: "Polygon"; coordinates: PolygonRing[] };
 type MultiPolygonGeometry = { type: "MultiPolygon"; coordinates: PolygonRing[][] };
 type LandFeature = { type: "Feature"; geometry: PolygonGeometry | MultiPolygonGeometry };
 type LandGeoJson = LandFeature | { type: "FeatureCollection"; features: LandFeature[] };
+type CountryGroup = { servers: ServerConfig[]; bestPing: number };
+type CountryGroupMap = Map<string, CountryGroup>;
 type ConnectionArcState = { curve: THREE.QuadraticBezierCurve3; particle: THREE.Mesh };
+type GlobeRenderProfile = {
+  compact: boolean;
+  antialias: boolean;
+  autoRotate: boolean;
+  maxDpr: number;
+  sphereSegments: number;
+  atmosphereSegments: number;
+  dotSegments: number;
+  arcPointCount: number;
+  persistentLabelLimit: number;
+  animateHoverPulse: boolean;
+};
+
+let cachedWorldTexture: THREE.CanvasTexture | null = null;
+let worldTexturePromise: Promise<THREE.CanvasTexture> | null = null;
 
 function getCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   const context = canvas.getContext("2d");
@@ -65,6 +85,53 @@ function getConnectionArcState(group: THREE.Group): ConnectionArcState | null {
   return { curve: userData.curve, particle: userData.particle };
 }
 
+function getHardwareConcurrency(): number {
+  if (typeof navigator === "undefined" || typeof navigator.hardwareConcurrency !== "number") {
+    return 8;
+  }
+  return navigator.hardwareConcurrency;
+}
+
+function getRenderProfile(serverCount: number, countryCount: number): GlobeRenderProfile {
+  const lowPowerDevice = getHardwareConcurrency() <= LOW_POWER_CORE_THRESHOLD;
+  const compact = lowPowerDevice || serverCount >= DENSE_SERVER_THRESHOLD || countryCount >= DENSE_COUNTRY_THRESHOLD;
+
+  return compact
+    ? {
+        compact: true,
+        antialias: false,
+        autoRotate: false,
+        maxDpr: 1.2,
+        sphereSegments: 40,
+        atmosphereSegments: 20,
+        dotSegments: 6,
+        arcPointCount: 24,
+        persistentLabelLimit: 6,
+        animateHoverPulse: false
+      }
+    : {
+        compact: false,
+        antialias: true,
+        autoRotate: true,
+        maxDpr: 1.5,
+        sphereSegments: 64,
+        atmosphereSegments: 32,
+        dotSegments: 8,
+        arcPointCount: 40,
+        persistentLabelLimit: Number.POSITIVE_INFINITY,
+        animateHoverPulse: true
+      };
+}
+
+function getPrioritizedCountryCodes(countryGroups: CountryGroupMap, limit: number): Set<string> {
+  return new Set(
+    Array.from(countryGroups.entries())
+      .sort(([, left], [, right]) => right.servers.length - left.servers.length || left.bestPing - right.bestPing)
+      .slice(0, limit)
+      .map(([countryCode]) => countryCode)
+  );
+}
+
 interface Globe3DProps {
   servers: ServerConfig[];
   onSelectCountry?: (countryCode: string) => void;
@@ -73,7 +140,7 @@ interface Globe3DProps {
 }
 
 function groupByCountry(servers: ServerConfig[]) {
-  const map = new Map<string, { servers: ServerConfig[]; bestPing: number }>();
+  const map: CountryGroupMap = new Map();
   for (const s of servers) {
     const cc = s.countryCode?.toLowerCase() || "un";
     const group = map.get(cc) || { servers: [], bestPing: Number.POSITIVE_INFINITY };
@@ -207,14 +274,41 @@ async function generateWorldTexture(): Promise<THREE.CanvasTexture> {
   return texture;
 }
 
+function loadWorldTexture(): Promise<THREE.CanvasTexture> {
+  if (cachedWorldTexture) {
+    return Promise.resolve(cachedWorldTexture);
+  }
+
+  if (!worldTexturePromise) {
+    worldTexturePromise = generateWorldTexture()
+      .then((texture) => {
+        cachedWorldTexture = texture;
+        return texture;
+      })
+      .catch((error) => {
+        worldTexturePromise = null;
+        throw error;
+      });
+  }
+
+  return worldTexturePromise;
+}
+
 /* ── Main Globe3D wrapper ───────────────────────────────── */
 export const Globe3D = memo(function Globe3D({ servers, onSelectCountry, selectedServerId, className }: Globe3DProps) {
+  const countryGroups = useMemo(() => groupByCountry(servers), [servers]);
+  const renderProfile = useMemo(() => getRenderProfile(servers.length, countryGroups.size), [servers.length, countryGroups]);
+
   return (
     <div className={cn("relative w-full h-full flex items-center justify-center", className)}>
       <Canvas
         camera={{ position: [0, 0, 6.0], fov: 40 }}
-        dpr={[1, 1.5]}
-        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+        dpr={[1, renderProfile.maxDpr]}
+        gl={{
+          antialias: renderProfile.antialias,
+          alpha: true,
+          powerPreference: renderProfile.compact ? "default" : "high-performance"
+        }}
         style={{ background: "transparent" }}
       >
         <ambientLight intensity={0.08} />
@@ -222,14 +316,20 @@ export const Globe3D = memo(function Globe3D({ servers, onSelectCountry, selecte
         <directionalLight position={[-4, -2, -4]} intensity={0.25} color="#FF4C29" />
         <pointLight position={[0, 0, 6]} intensity={0.15} color="#FF4C29" />
 
-        <GlobeScene servers={servers} onSelectCountry={onSelectCountry} selectedServerId={selectedServerId} />
+        <GlobeScene
+          servers={servers}
+          countryGroups={countryGroups}
+          onSelectCountry={onSelectCountry}
+          selectedServerId={selectedServerId}
+          renderProfile={renderProfile}
+        />
 
         <OrbitControls
           enableZoom={false}
           enablePan={false}
           rotateSpeed={0.4}
-          autoRotate
-          autoRotateSpeed={0.3}
+          autoRotate={renderProfile.autoRotate}
+          autoRotateSpeed={renderProfile.autoRotate ? 0.3 : 0}
           minPolarAngle={Math.PI * 0.1}
           maxPolarAngle={Math.PI * 0.9}
           dampingFactor={0.08}
@@ -243,28 +343,49 @@ export const Globe3D = memo(function Globe3D({ servers, onSelectCountry, selecte
 /* ── Globe Scene (inside Canvas) ────────────────────────── */
 function GlobeScene({
   servers,
+  countryGroups,
   onSelectCountry,
-  selectedServerId
+  selectedServerId,
+  renderProfile
 }: {
   servers: ServerConfig[];
+  countryGroups: CountryGroupMap;
   onSelectCountry?: (countryCode: string) => void;
   selectedServerId?: string;
+  renderProfile: GlobeRenderProfile;
 }) {
   const isConnected = useAppStore((s) => s.isConnected);
-  const countryGroups = useMemo(() => groupByCountry(servers), [servers]);
   const selectedServer = useMemo(() => servers.find((s) => s.id === selectedServerId), [servers, selectedServerId]);
   const selectedCC = selectedServer?.countryCode?.toLowerCase();
   const [hoveredCC, setHoveredCC] = useState<string | null>(null);
+  const prioritizedLabels = useMemo(
+    () => getPrioritizedCountryCodes(countryGroups, renderProfile.persistentLabelLimit),
+    [countryGroups, renderProfile.persistentLabelLimit]
+  );
+  const handleHover = useCallback((countryCode: string | null) => {
+    setHoveredCC(countryCode);
+  }, []);
+  const handleSelectCountry = useCallback(
+    (countryCode: string) => {
+      onSelectCountry?.(countryCode);
+    },
+    [onSelectCountry]
+  );
 
   return (
     <group>
-      <GlobeSphere />
-      <AtmosphereGlow />
+      <GlobeSphere sphereSegments={renderProfile.sphereSegments} />
+      <AtmosphereGlow sphereSegments={renderProfile.atmosphereSegments} />
 
       {/* Server dots */}
       {Array.from(countryGroups.entries()).map(([cc, group]) => {
         const coords = COUNTRY_COORDS[cc];
         if (!coords) return null;
+        const isActive = cc === selectedCC;
+        const isHovered = cc === hoveredCC;
+        const isCountryConnected = isActive && isConnected;
+        const showLabel = isActive || isHovered || isCountryConnected || prioritizedLabels.has(cc);
+
         return (
           <ServerDot
             key={cc}
@@ -275,30 +396,46 @@ function GlobeScene({
             count={group.servers.length}
             ping={group.bestPing}
             color={getPingColor(group.bestPing)}
-            isActive={cc === selectedCC}
-            isConnected={cc === selectedCC && isConnected}
-            isHovered={cc === hoveredCC}
-            onHover={setHoveredCC}
-            onClick={() => onSelectCountry?.(cc)}
+            isActive={isActive}
+            isConnected={isCountryConnected}
+            isHovered={isHovered}
+            showLabel={showLabel}
+            dotSegments={renderProfile.dotSegments}
+            animateHoverPulse={renderProfile.animateHoverPulse}
+            onHover={handleHover}
+            onClick={handleSelectCountry}
           />
         );
       })}
 
       {/* Connection arc */}
       {isConnected && selectedCC && COUNTRY_COORDS[selectedCC] && (
-        <ConnectionArc lat={COUNTRY_COORDS[selectedCC].lat} lng={COUNTRY_COORDS[selectedCC].lng} />
+        <ConnectionArc
+          lat={COUNTRY_COORDS[selectedCC].lat}
+          lng={COUNTRY_COORDS[selectedCC].lng}
+          arcPointCount={renderProfile.arcPointCount}
+        />
       )}
     </group>
   );
 }
 
 /* ── Globe Sphere with Real Continent Texture ───────────── */
-function GlobeSphere() {
+const GlobeSphere = memo(function GlobeSphere({ sphereSegments }: { sphereSegments: number }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
 
   useEffect(() => {
-    generateWorldTexture().then(setTexture);
+    let disposed = false;
+    void loadWorldTexture().then((nextTexture) => {
+      if (!disposed) {
+        setTexture(nextTexture);
+      }
+    });
+
+    return () => {
+      disposed = true;
+    };
   }, []);
 
   const material = useMemo(() => {
@@ -333,13 +470,13 @@ function GlobeSphere() {
 
   return (
     <mesh ref={meshRef} material={material}>
-      <sphereGeometry args={[GLOBE_RADIUS, 64, 64]} />
+      <sphereGeometry args={[GLOBE_RADIUS, sphereSegments, sphereSegments]} />
     </mesh>
   );
-}
+});
 
 /* ── Atmosphere Glow (custom shader) ────────────────────── */
-function AtmosphereGlow() {
+const AtmosphereGlow = memo(function AtmosphereGlow({ sphereSegments }: { sphereSegments: number }) {
   const mat = useMemo(() => {
     return new THREE.ShaderMaterial({
       vertexShader: `
@@ -369,13 +506,13 @@ function AtmosphereGlow() {
 
   return (
     <mesh material={mat}>
-      <sphereGeometry args={[GLOBE_RADIUS * 1.12, 32, 32]} />
+      <sphereGeometry args={[GLOBE_RADIUS * 1.12, sphereSegments, sphereSegments]} />
     </mesh>
   );
-}
+});
 
 /* ── Server Dot ─────────────────────────────────────────── */
-function ServerDot({
+const ServerDot = memo(function ServerDot({
   cc,
   lat,
   lng,
@@ -386,6 +523,9 @@ function ServerDot({
   isActive,
   isConnected,
   isHovered,
+  showLabel,
+  dotSegments,
+  animateHoverPulse,
   onHover,
   onClick
 }: {
@@ -399,16 +539,40 @@ function ServerDot({
   isActive: boolean;
   isConnected: boolean;
   isHovered: boolean;
+  showLabel: boolean;
+  dotSegments: number;
+  animateHoverPulse: boolean;
   onHover: (cc: string | null) => void;
-  onClick: () => void;
+  onClick: (cc: string) => void;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.Mesh>(null);
   const pos = useMemo(() => latLngToVector3(lat, lng, GLOBE_RADIUS + 0.015), [lat, lng]);
   const baseRadius = DOT_RADIUS + Math.min(count * 0.005, 0.03);
   const radius = isActive ? DOT_RADIUS_ACTIVE + 0.02 : isHovered ? baseRadius * 1.4 : baseRadius;
+  const shouldAnimate = isConnected || isActive || (isHovered && animateHoverPulse);
+
+  useEffect(() => {
+    if (shouldAnimate) {
+      return;
+    }
+
+    meshRef.current?.scale.setScalar(1);
+
+    if (glowRef.current) {
+      glowRef.current.scale.setScalar(1);
+      const material = glowRef.current.material;
+      if (material instanceof THREE.MeshBasicMaterial) {
+        material.opacity = isConnected ? 0.2 : 0.12;
+      }
+    }
+  }, [isConnected, shouldAnimate]);
 
   useFrame(({ clock }) => {
+    if (!shouldAnimate) {
+      return;
+    }
+
     const t = clock.elapsedTime;
     if (meshRef.current) {
       if (isConnected) {
@@ -449,9 +613,9 @@ function ServerDot({
   const handlePointerDown = useCallback(
     (event: ThreeEvent<PointerEvent>) => {
       event.stopPropagation();
-      onClick();
+      onClick(cc);
     },
-    [onClick]
+    [cc, onClick]
   );
 
   return (
@@ -459,7 +623,7 @@ function ServerDot({
       {/* Outer glow ring */}
       {(isActive || isHovered) && (
         <mesh ref={glowRef}>
-          <sphereGeometry args={[radius * 3.5, 8, 8]} />
+          <sphereGeometry args={[radius * 3.5, dotSegments, dotSegments]} />
           <meshBasicMaterial color={isConnected ? "#10B981" : color} transparent opacity={0.12} depthWrite={false} />
         </mesh>
       )}
@@ -471,28 +635,30 @@ function ServerDot({
         onPointerOut={handlePointerOut}
         onPointerDown={handlePointerDown}
       >
-        <sphereGeometry args={[radius, 8, 8]} />
+        <sphereGeometry args={[radius, dotSegments, dotSegments]} />
         <meshBasicMaterial color={isConnected ? "#10B981" : color} />
       </mesh>
 
       {/* Country label */}
-      <Html
-        position={[0, radius + 0.07, 0]}
-        center
-        distanceFactor={5.2}
-        style={{ pointerEvents: "none", userSelect: "none" }}
-      >
-        <div
-          className="text-[11px] font-bold tracking-wider whitespace-nowrap"
-          style={{
-            color: isActive ? (isConnected ? "#FF4C29" : "#FF6B47") : "rgba(255,255,255,0.7)",
-            textShadow: "0 0 8px rgba(0,0,0,1), 0 0 16px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.9)"
-          }}
+      {showLabel && (
+        <Html
+          position={[0, radius + 0.07, 0]}
+          center
+          distanceFactor={5.2}
+          style={{ pointerEvents: "none", userSelect: "none" }}
         >
-          {cc.toUpperCase()}
-          {count > 1 && <span style={{ opacity: 0.5, marginLeft: 2 }}>×{count}</span>}
-        </div>
-      </Html>
+          <div
+            className="text-[11px] font-bold tracking-wider whitespace-nowrap"
+            style={{
+              color: isActive ? (isConnected ? "#FF4C29" : "#FF6B47") : "rgba(255,255,255,0.7)",
+              textShadow: "0 0 8px rgba(0,0,0,1), 0 0 16px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.9)"
+            }}
+          >
+            {cc.toUpperCase()}
+            {count > 1 && <span style={{ opacity: 0.5, marginLeft: 2 }}>×{count}</span>}
+          </div>
+        </Html>
+      )}
 
       {/* Premium tooltip on hover */}
       {isHovered && (
@@ -576,10 +742,18 @@ function ServerDot({
       )}
     </group>
   );
-}
+});
 
 /* ── Connection Arc ─────────────────────────────────────── */
-function ConnectionArc({ lat, lng }: { lat: number; lng: number }) {
+const ConnectionArc = memo(function ConnectionArc({
+  lat,
+  lng,
+  arcPointCount
+}: {
+  lat: number;
+  lng: number;
+  arcPointCount: number;
+}) {
   const groupRef = useRef<THREE.Group>(null);
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -620,7 +794,7 @@ function ConnectionArc({ lat, lng }: { lat: number; lng: number }) {
     mid.normalize().multiplyScalar(arcHeight);
 
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
-    const points = curve.getPoints(40);
+    const points = curve.getPoints(arcPointCount);
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
 
     const material = new THREE.LineBasicMaterial({
@@ -647,7 +821,7 @@ function ConnectionArc({ lat, lng }: { lat: number; lng: number }) {
       particleGeo.dispose();
       particleMat.dispose();
     };
-  }, [lat, lng, userLoc]);
+  }, [arcPointCount, lat, lng, userLoc]);
 
   // Animate opacity and particle
   useFrame(({ clock }) => {
@@ -677,4 +851,4 @@ function ConnectionArc({ lat, lng }: { lat: number; lng: number }) {
   });
 
   return <group ref={groupRef} />;
-}
+});

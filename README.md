@@ -14,7 +14,7 @@
   </a>
   <img src="https://img.shields.io/badge/Windows-10%2F11-0ea5e9?style=for-the-badge&logo=windows" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=for-the-badge&logo=typescript" alt="TypeScript strict" />
-  <img src="https://img.shields.io/badge/Desktop-v3.6.0-ff6b3d?style=for-the-badge" alt="Desktop 3.6.0" />
+  <img src="https://img.shields.io/badge/Desktop-v4.0.1-ff6b3d?style=for-the-badge" alt="Desktop 4.0.1" />
 </p>
 
 <p align="center">
@@ -38,12 +38,14 @@
 
 Проект ориентирован на пользователей, которым нужен **локально управляемый Windows-клиент** с современным UI и воспроизводимым релизным контуром.
 
-## Что нового в 3.6.0
+## Что нового в 4.0.1
 
-- **Отдельный экран сервисного управления**: операции обслуживания, профили, диагностика и системные утилиты собраны в одном месте.
-- **Честный route probe**: диагностический тест теперь показывает разницу между прямым и управляемым сетевым маршрутом без громких или двусмысленных формулировок.
-- **Release polish для Windows**: автозапуск синхронизируется со startup login item при старте приложения, а installer/uninstaller дочищает системные хвосты предыдущих установок.
-- **Settings cleanup**: `DNS Center` и сервисные инструменты закреплены как отдельные экраны, без дублирующих управляющих тумблеров в общих настройках.
+- **Manual desktop updates**: встроенный updater теперь проверяет релизы и ведёт пользователя на страницу GitHub Release для ручного скачивания installer.
+- **Checksum-verified runtime updates**: обновления `Xray` и `sing-box` требуют опубликованный `SHA-256`.
+- **Честный release status**: локальная сборка, которая опережает опубликованный канал, больше не маскируется под «актуальную».
+- **Проверка release-артефактов**: `release:verify` валидирует installer, `.blockmap` и `latest.yml` без требования Authenticode-подписи.
+- **Безопасный reinstall**: uninstall по умолчанию сохраняет профиль пользователя вместо тихого удаления всех данных.
+- **Оптимизированный 3D-глобус**: `Server Center` снижает нагрузку на low-end устройства и плотные наборы стран за счёт кэша текстуры, адаптивной детализации и сокращения DOM-лейблов.
 
 Подробности по изменениям: [CHANGELOG.md](CHANGELOG.md).
 

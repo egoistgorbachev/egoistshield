@@ -2,4 +2,7 @@ node_modules
 out
 .vite
 dist
+coverage
+test-results
+playwright-report
 *.log

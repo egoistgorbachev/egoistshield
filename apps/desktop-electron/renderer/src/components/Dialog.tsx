@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import { cn } from "../lib/cn";
 
 interface DialogProps {
@@ -18,6 +18,7 @@ interface DialogProps {
 export function Dialog({ isOpen, onClose, title, children, maxWidth = "max-w-sm" }: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const previousActiveRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
 
   // Focus trap + Escape
   useEffect(() => {
@@ -59,7 +60,12 @@ export function Dialog({ isOpen, onClose, title, children, maxWidth = "max-w-sm"
       const first = dialogRef.current?.querySelector<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       );
-      first?.focus();
+      if (first) {
+        first.focus();
+        return;
+      }
+
+      dialogRef.current?.focus();
     });
 
     return () => {
@@ -92,7 +98,12 @@ export function Dialog({ isOpen, onClose, title, children, maxWidth = "max-w-sm"
             ref={dialogRef}
             open
             aria-modal="true"
-            aria-label={title}
+            aria-labelledby={titleId}
+            tabIndex={-1}
+            onCancel={(event) => {
+              event.preventDefault();
+              onClose();
+            }}
             initial={{ scale: 0.95, y: 20, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.95, y: 20, opacity: 0 }}
@@ -104,7 +115,9 @@ export function Dialog({ isOpen, onClose, title, children, maxWidth = "max-w-sm"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-5 border-b border-white/5">
-              <h3 className="font-bold text-lg text-white">{title}</h3>
+              <h3 id={titleId} className="font-bold text-lg text-white">
+                {title}
+              </h3>
               <button
                 type="button"
                 onClick={onClose}

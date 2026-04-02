@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Globe2, Home, Server, Settings as SettingsIcon, Shield, Zap } from "lucide-react";
+import { Globe2, Home, Send, Server, Settings as SettingsIcon, Zap } from "lucide-react";
 import { useCallback, useState } from "react";
 import { cn } from "../lib/cn";
+import { ShieldLogo } from "./ShieldLogo";
 import { type Screen, useAppStore } from "../store/useAppStore";
 
 /* ──────────────────────────────────────────────────────────
@@ -15,6 +16,7 @@ const navItems: { id: Screen; icon: typeof Home; label: string }[] = [
   { id: "servers" as Screen, icon: Server, label: "Серверы" },
   { id: "dns", icon: Globe2, label: "DNS" },
   { id: "zapret", icon: Zap, label: "Zapret" },
+  { id: "telegram-proxy", icon: Send, label: "Прокси Telegram" },
   { id: "settings", icon: SettingsIcon, label: "Настройки" }
 ];
 
@@ -23,57 +25,32 @@ export function Sidebar() {
   const setScreen = useAppStore((s) => s.setScreen);
   const isConnected = useAppStore((s) => s.isConnected);
 
-  const shieldStyle = isConnected
-    ? {
-        bg: "bg-gradient-to-br from-[#168A62] via-[#22B57A] to-[#4ED39A]",
-        shadow: "shadow-[0_6px_22px_rgba(34,181,122,0.42),inset_0_1px_0_rgba(255,255,255,0.22)]",
-        glow: "radial-gradient(circle, rgba(34,181,122,0.38) 0%, transparent 72%)"
-      }
-    : {
-        bg: "bg-gradient-to-br from-[#FF6B47] via-[#FF4C29] to-[#D63B1B]",
-        shadow: "shadow-[0_6px_22px_rgba(255,76,41,0.42),inset_0_1px_0_rgba(255,255,255,0.22)]",
-        glow: "radial-gradient(circle, rgba(255,76,41,0.4) 0%, transparent 72%)"
-      };
-
   return (
     <nav
       aria-label="Основная навигация"
-      className="sidebar-panel relative z-30 flex flex-col items-center h-full w-16 py-2 shrink-0 select-none"
+      className="sidebar-panel relative z-30 flex h-full w-[72px] shrink-0 flex-col items-center py-2 select-none"
     >
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/[0.035] to-transparent" />
+      <div className="pointer-events-none absolute inset-y-6 right-0 w-px bg-gradient-to-b from-transparent via-white/[0.06] to-transparent" />
+
       {/* ── Shield / Status Button ── */}
-      <div className="pt-8 pb-5">
+      <div className="pt-7 pb-4">
         <motion.button
           whileTap={{ scale: 0.88 }}
           whileHover={{ scale: 1.08 }}
           onClick={() => setScreen("dashboard")}
           aria-label="Перейти на главную"
-          className="relative"
+          className="relative flex items-center justify-center"
         >
-          {/* Glow ring — CSS-only, zero JS overhead */}
-          <div
-            className="absolute inset-[-6px] rounded-full pointer-events-none animate-glow-pulse"
-            style={{ background: shieldStyle.glow }}
-          />
-          <div
-            className={cn(
-              "relative w-11 h-11 rounded-full flex items-center justify-center z-10 transition-all duration-500",
-              shieldStyle.bg,
-              shieldStyle.shadow
-            )}
-          >
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[70%] h-[38%] bg-gradient-to-b from-white/20 to-transparent rounded-full blur-[1px]" />
-            <div className="absolute inset-[1.5px] rounded-full border border-white/10" />
-            <Shield
-              className="w-5 h-5 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.4)] relative z-10"
-              strokeWidth={2.5}
-              fill="rgba(255,255,255,0.12)"
-            />
-          </div>
+          <ShieldLogo className="h-11 w-11" isConnected={isConnected} animated={false} />
         </motion.button>
+        <div className="mt-3 text-center">
+          <div className="text-[9px] font-bold uppercase tracking-[0.32em] text-white/38">Ядро</div>
+        </div>
       </div>
 
       {/* ── Separator ── */}
-      <div className="w-7 h-px bg-white/[0.06] mb-3" />
+      <div className="mb-4 h-px w-8 bg-gradient-to-r from-transparent via-white/[0.1] to-transparent" />
 
       {/* ── Nav Items ── */}
       <div className="flex flex-col items-center gap-1 flex-1">
@@ -134,7 +111,7 @@ function SidebarItem({
       aria-label={label}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex items-center justify-center w-11 h-11 rounded-xl outline-none transition-colors duration-200",
+        "group relative flex h-11 w-11 items-center justify-center rounded-[14px] outline-none transition-colors duration-200",
         disabled ? "text-whisper cursor-not-allowed" : active ? "text-brand" : "text-muted hover:text-white/65"
       )}
     >
@@ -144,13 +121,17 @@ function SidebarItem({
           layoutId="sidebar-active"
           className="absolute inset-0 rounded-xl"
           style={{
-            background: "linear-gradient(145deg, rgba(255,76,41,0.2), rgba(44,57,75,0.42))",
-            border: "1px solid rgba(255,76,41,0.28)",
-            boxShadow: "0 0 14px rgba(255,76,41,0.14), inset 0 1px 0 rgba(255,255,255,0.05)"
+            background: "linear-gradient(145deg, rgba(255,76,41,0.22), rgba(34,211,238,0.08), rgba(44,57,75,0.4))",
+            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 0 16px rgba(255,76,41,0.14), inset 0 1px 0 rgba(255,255,255,0.05)"
           }}
           transition={{ type: "spring", stiffness: 400, damping: 28 }}
         />
       )}
+
+      {!active && !disabled ? (
+        <div className="pointer-events-none absolute inset-0 rounded-[14px] border border-transparent transition-colors duration-200 group-hover:border-white/6" />
+      ) : null}
 
       <div className="relative z-10">
         <Icon className="w-5 h-5" strokeWidth={active ? 2.5 : 2} />

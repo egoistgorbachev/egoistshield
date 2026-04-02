@@ -5,6 +5,54 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [4.0.1] — 2026-04-02
+
+### 🚀 Globe Profiling Pass, Dense-Map Hardening & Final Release
+
+Релиз завершает изолированную волну оптимизации `Server Center`: 3D-карта стала заметно дешевле на low-end Windows машинах и плотных наборах стран, не меняя внешний product-flow релизов и ручных обновлений.
+
+#### ✨ Добавлено
+- **Dense-map E2E smoke**: отдельный сценарий проверяет `ServerList -> Карта` на широком наборе стран и повторном открытии tab без скачков layout.
+- **Map panel test hook**: у карты появился стабильный `data-testid` для регрессионных проверок без хрупких селекторов.
+
+#### ✅ Исправлено
+- **Cached globe texture**: `Globe3D` больше не пересоздаёт world texture на каждое повторное открытие map-tab.
+- **Adaptive render profile**: dense/low-end сцены автоматически снижают `DPR`, детализацию sphere/atmosphere/dots и стоимость connection arc.
+- **Reduced DOM label pressure**: в тяжёлом режиме глобус оставляет только приоритетные country labels плюс active/hovered state вместо постоянного рендера всех подписей.
+- **Memoized country dots**: hover/select на карте больше не заставляет весь набор маркеров лишний раз перерисовываться.
+- **Release docs sync**: desktop docs, root README и package metadata обновлены под final-version `4.0.1`.
+
+#### 🧪 Верификация
+- `npm run build:vite`
+- `npm test`
+- `npm run stress`
+- `npm run test:e2e`
+- `npm run release:verify`
+- `npm run dist`
+
+## [4.0.0] — 2026-04-02
+
+### 🚀 Product Hardening, Honest Updates & Safe Reinstall
+
+Релиз переводит desktop-клиент в более зрелое product-состояние: desktop updater перестаёт делать скрытую установку из приложения, uninstall больше не ведёт себя как destructive reset, а release-контур честно показывает, когда локальная сборка опережает публичный канал.
+
+#### ✨ Добавлено
+- **Manual desktop updates**: приложение проверяет GitHub Release и открывает страницу релиза для ручного скачивания installer вместо скрытого запуска установки.
+- **Checksum-verified runtime updates**: `Xray` и `sing-box` принимают обновления только при совпадении опубликованного `SHA-256 checksum`.
+- **Release verification script**: post-build команда `npm run release:verify` проверяет полноту release-артефактов и согласованность `latest.yml`.
+
+#### ✅ Исправлено
+- **Honest updater status**: ручная проверка обновлений различает `актуально`, `есть обновление` и `локальная сборка опережает канал`, вместо ложного `up to date`.
+- **Non-destructive uninstall**: uninstall/reinstall по умолчанию сохраняет профиль пользователя, настройки, подписки и логи.
+- **Unified brand icon**: splash/onboarding/tray/installer assets сведены к одному круглому shield-mark без разнобоя по форме.
+- **Release docs**: desktop-документация и changelog синхронизированы с product-версией `4.0.0`.
+
+#### 🧪 Верификация
+- `npm test`
+- `npm run test:e2e`
+- `npx playwright test -g "навигация — tab Zapret" --repeat-each=12`
+- `npm run dist`
+
 ## [3.6.0] — 2026-04-01
 
 ### 🚀 Service Tools, Route Probe & Release Polish
@@ -167,7 +215,7 @@
 
 #### 📝 Репозиторий
 - README полностью переработан — HTML-таблица возможностей, раздел «Интерфейс», FAQ, лицензия
-- Юридический аудит — убраны названия anti-DPI протоколов из README
+- Юридический аудит — из README убраны спорные технические формулировки и избыточно рискованные публичные акценты
 - `publish.private` → `false` (репо публичное)
 - GitHub Topics и публичное описание репозитория дополнительно очищены до нейтрального позиционирования.
 

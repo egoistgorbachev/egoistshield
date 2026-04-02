@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Home, Server, Settings as SettingsIcon, Shield } from "lucide-react";
+import { Home, Server, Settings as SettingsIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { cn } from "../lib/cn";
+import { ShieldLogo } from "./ShieldLogo";
 import { type Screen, useAppStore } from "../store/useAppStore";
 
 /* ──────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@ export function BottomNav() {
           );
         })}
 
-        {/* Central Shield — gradient elevated circle */}
+        {/* Central brand mark */}
         <motion.button
           whileTap={{ scale: 0.88 }}
           whileHover={{ scale: 1.05 }}
@@ -58,41 +59,7 @@ export function BottomNav() {
           aria-label="Щит"
           className="relative -top-5 flex-shrink-0"
         >
-          {/* Glow */}
-          <motion.div
-            className="absolute inset-[-10px] rounded-full pointer-events-none"
-            animate={{
-              opacity: [0.5, 0.8, 0.5]
-            }}
-            transition={{ duration: 3, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-            style={{
-              background: isConnected
-                ? "radial-gradient(circle, rgba(34,181,122,0.36) 0%, transparent 70%)"
-                : "radial-gradient(circle, rgba(255,76,41,0.38) 0%, transparent 70%)"
-            }}
-          />
-
-          {/* Button body */}
-          <div
-            className="relative w-[56px] h-[56px] rounded-full flex items-center justify-center z-10 transition-all duration-500"
-            style={{
-              background: isConnected
-                ? "linear-gradient(135deg, #168A62, #22B57A, #4ED39A)"
-                : "linear-gradient(135deg, #D63B1B, #FF4C29, #FF6B47)",
-              boxShadow: isConnected
-                ? "0 6px 24px rgba(34,181,122,0.4), inset 0 1px 0 rgba(255,255,255,0.2)"
-                : "0 6px 24px rgba(255,76,41,0.5), inset 0 1px 0 rgba(255,255,255,0.2)"
-            }}
-          >
-            {/* Glass highlight */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[75%] h-[40%] bg-gradient-to-b from-white/20 to-transparent rounded-full blur-[1px]" />
-            <div className="absolute inset-[1.5px] rounded-full border border-white/10" />
-            <Shield
-              className="w-6 h-6 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.4)] relative z-10"
-              strokeWidth={2.5}
-              fill="rgba(255,255,255,0.12)"
-            />
-          </div>
+          <ShieldLogo className="h-[56px] w-[56px]" isConnected={isConnected} animated={false} />
         </motion.button>
 
         {navItemsRight.map((item) => (

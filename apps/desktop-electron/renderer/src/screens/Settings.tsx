@@ -6,9 +6,11 @@ import {
   FileText,
   Globe2,
   HelpCircle,
+  Info,
   Loader2,
   Monitor,
   RefreshCw,
+  Send,
   Settings as SettingsIcon,
   Shield,
   ShieldAlert,
@@ -18,8 +20,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import type { RuntimeUpdateInfo } from "../../../electron/ipc/contracts";
 import { ConnectionLogs } from "../components/ConnectionLogs";
 import { Dialog } from "../components/Dialog";
+import { PageHero } from "../components/PageHero";
+import { SegmentedTabs } from "../components/SegmentedTabs";
 import { getAPI } from "../lib/api";
 import { cn } from "../lib/cn";
 import { useAppStore } from "../store/useAppStore";
@@ -58,8 +63,18 @@ export function Settings() {
     error: string | null;
   } | null>(null);
   const [updateChecking, setUpdateChecking] = useState(false);
-  const [updateCheckResult, setUpdateCheckResult] = useState<"idle" | "upToDate" | "available" | "error">("idle");
-  const [updateErrorMsg, setUpdateErrorMsg] = useState("");
+  const [updateCheckResult, setUpdateCheckResult] = useState<"idle" | "upToDate" | "available" | "ahead" | "error">(
+    "idle"
+  );
+  const [updateStatusMessage, setUpdateStatusMessage] = useState("");
+  const [updateReleaseUrl, setUpdateReleaseUrl] = useState<string | null>(null);
+  const [updateVersions, setUpdateVersions] = useState<{ currentVersion: string; latestVersion: string | null }>({
+    currentVersion: __APP_VERSION__,
+    latestVersion: null
+  });
+  const [runtimeUpdates, setRuntimeUpdates] = useState<RuntimeUpdateInfo[]>([]);
+  const [runtimeChecking, setRuntimeChecking] = useState(false);
+  const [runtimeInstalling, setRuntimeInstalling] = useState(false);
 
   const runRouteProbe = async () => {
     setRouteProbeTesting(true);
@@ -117,365 +132,548 @@ export function Settings() {
   return (
     <>
       <main className="relative z-10 flex-1 p-6 h-full overflow-y-auto custom-scrollbar">
-        <div className="mb-6 mt-4">
-          <h1 className="text-2xl font-display font-bold text-white/90 flex items-center gap-3">
-            <SettingsIcon className="text-brand/60 w-7 h-7" />
-            Настройки
-          </h1>
-          <p className="text-muted mt-2 text-sm font-medium tracking-wide">
-            Сеть, безопасность и системные параметры приложения.
-          </p>
-        </div>
+        <div className="mx-auto mt-4 flex max-w-6xl flex-col gap-6 pb-12">
+          <PageHero
+            eyebrow="Система"
+            title="Настройки"
+            icon={<SettingsIcon className="h-7 w-7 text-brand-light" />}
+            description="Единый центр управления приложением, сетью, безопасностью и встроенными инструментами Windows."
+            badgeLayout="balanced"
+            badges={[
+              {
+                label: autoUpdate ? "Автопроверка обновлений вкл" : "Автопроверка обновлений выкл",
+                icon: <RefreshCw className="h-3.5 w-3.5" />,
+                tone: autoUpdate ? "success" : "neutral"
+              },
+              {
+                label: notifications ? "Уведомления вкл" : "Уведомления выкл",
+                icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+                tone: notifications ? "accent" : "neutral"
+              },
+              {
+                label: killSwitch ? "Блокировка без VPN" : "Без блокировки",
+                icon: <Shield className="h-3.5 w-3.5" />,
+                tone: killSwitch ? "warning" : "neutral"
+              }
+            ]}
+            actions={
+              <div className="grid gap-3 sm:grid-cols-3 xl:max-w-[560px]">
+                <HeroMetric label="Версия" value={`v${__APP_VERSION__}`} />
+                <HeroMetric label="DNS" value={systemDnsServers ? "Свой" : "DNS Windows"} />
+                <HeroMetric label="Автозапуск" value={autoStart ? "Вкл" : "Выкл"} />
+              </div>
+            }
+          />
 
-        {/* Tab Navigation */}
-        <div className="flex p-1 rounded-2xl mb-6 glass-panel relative max-w-xl">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "relative flex-1 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 flex items-center justify-center gap-2 z-10",
-                activeTab === tab.id ? "text-brand" : "text-subtle hover:text-white/60"
-              )}
-            >
-              {activeTab === tab.id && (
-                <motion.div
-                  layoutId="settings-tab-bg"
-                  className="absolute inset-0 bg-brand/10 border border-brand/15 rounded-xl shadow-md"
-                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                />
-              )}
-              <span className="relative z-10 flex items-center gap-2">
-                {tab.icon}
-                {tab.label}
-              </span>
-            </button>
-          ))}
-        </div>
+          <SegmentedTabs
+            label="Разделы настроек"
+            activeId={activeTab}
+            onChange={setActiveTab}
+            className="max-w-[760px]"
+            items={TABS.map((tab) => ({ id: tab.id, label: tab.label, icon: tab.icon }))}
+          />
 
-        {/* Tab Content */}
-        <AnimatePresence mode="wait">
-          {activeTab === "general" && (
-            <motion.div
-              key="general"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="max-w-6xl mx-auto w-full flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start pb-12"
-            >
-              <SettingsCard title="Приложение" icon={<Monitor className="w-5 h-5 text-brand-light" />}>
-                <ToggleRow
-                  label="Автозапуск"
-                  description="Запуск при входе в Windows."
-                  tooltip="Приложение автоматически запустится при загрузке системы. Удобно, если вы хотите всегда быть под защитой VPN без ручного запуска."
-                  enabled={autoStart}
-                  onChange={() => updateSetting("autoStart", !autoStart)}
-                />
-                <ToggleRow
-                  label="Уведомления"
-                  description="Системные оповещения о статусе."
-                  tooltip="Показывать системные уведомления при подключении, отключении и ошибках VPN."
-                  enabled={notifications}
-                  onChange={() => updateSetting("notifications", !notifications)}
-                />
-                <ToggleRow
-                  label="Автообновление"
-                  description="Скачивать новые версии автоматически."
-                  tooltip="Приложение будет автоматически проверять и скачивать новые версии при запуске. Обновление установится при следующем перезапуске."
-                  enabled={autoUpdate}
-                  onChange={() => {
-                    const next = !autoUpdate;
-                    updateSetting("autoUpdate", next);
-                    const api = getAPI();
-                    api?.updater?.setAuto?.(next).catch((error: unknown) => {
-                      toast.error(getErrorMessage(error, "Не удалось обновить режим автообновления"));
-                    });
-                  }}
-                />
-
-                {/* Проверить обновления */}
-                <div className="flex items-center justify-between px-1 py-2">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold text-white/90">Обновления</span>
-                    <span className="text-xs text-muted">v{__APP_VERSION__}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setUpdateChecking(true);
-                      setUpdateCheckResult("idle");
+          {/* Tab Content */}
+          <AnimatePresence mode="wait">
+            {activeTab === "general" && (
+              <motion.div
+                key="general"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="w-full flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start"
+              >
+                <SettingsCard title="Приложение" icon={<Monitor className="w-5 h-5 text-brand-light" />}>
+                  <ToggleRow
+                    label="Автозапуск"
+                    description="Запуск при входе в Windows."
+                    tooltip="Приложение автоматически запустится при загрузке системы. Удобно, если вы хотите всегда быть под защитой VPN без ручного запуска."
+                    enabled={autoStart}
+                    onChange={() => updateSetting("autoStart", !autoStart)}
+                  />
+                  <ToggleRow
+                    label="Уведомления"
+                    description="Системные оповещения о статусе."
+                    tooltip="Показывать системные уведомления при подключении, отключении и ошибках VPN."
+                    enabled={notifications}
+                    onChange={() => updateSetting("notifications", !notifications)}
+                  />
+                  <ToggleRow
+                    label="Автопроверка обновлений"
+                    description="Периодически проверять новые версии desktop-клиента."
+                    tooltip="Приложение будет автоматически проверять, появился ли новый релиз на GitHub. Установка остаётся ручной: вы сами открываете страницу релиза и скачиваете installer."
+                    enabled={autoUpdate}
+                    onChange={() => {
+                      const next = !autoUpdate;
+                      updateSetting("autoUpdate", next);
                       const api = getAPI();
-                      try {
-                        const result = await api?.updater?.check?.();
-                        setUpdateChecking(false);
-                        if (result?.ok && result?.version) {
-                          setUpdateCheckResult("available");
-                        } else if (result?.ok) {
-                          setUpdateCheckResult("upToDate");
-                        } else {
-                          setUpdateCheckResult("error");
-                          setUpdateErrorMsg(result?.error || "Неизвестная ошибка");
-                        }
-                        setTimeout(() => setUpdateCheckResult("idle"), 5000);
-                      } catch (error: unknown) {
-                        setUpdateChecking(false);
-                        setUpdateCheckResult("error");
-                        setUpdateErrorMsg(getErrorMessage(error, "Не удалось проверить"));
-                        setTimeout(() => setUpdateCheckResult("idle"), 5000);
-                      }
+                      api?.updater?.setAuto?.(next).catch((error: unknown) => {
+                        toast.error(getErrorMessage(error, "Не удалось обновить режим автопроверки"));
+                      });
                     }}
-                    disabled={updateChecking}
-                    className={cn(
-                      "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
-                      updateCheckResult === "upToDate"
-                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                        : updateCheckResult === "available"
-                          ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                          : updateCheckResult === "error"
-                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                            : "bg-white/5 text-muted hover:text-white hover:bg-white/10 border border-white/10"
-                    )}
-                  >
-                    {updateChecking ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Проверяем...
-                      </>
-                    ) : updateCheckResult === "upToDate" ? (
-                      <>
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Актуальная версия
-                      </>
-                    ) : updateCheckResult === "available" ? (
-                      <>
-                        <Download className="w-3.5 h-3.5" /> Есть обновление!
-                      </>
-                    ) : updateCheckResult === "error" ? (
-                      <>
-                        <AlertTriangle className="w-3.5 h-3.5" /> {updateErrorMsg || "Ошибка проверки"}
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5" /> Проверить
-                      </>
-                    )}
-                  </button>
-                </div>
-              </SettingsCard>
-            </motion.div>
-          )}
+                  />
 
-          {activeTab === "network" && (
-            <motion.div
-              key="network"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="max-w-6xl mx-auto w-full flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start pb-12"
-            >
-              <SettingsCard title="DNS-центр" icon={<Globe2 className="w-5 h-5 text-brand" />}>
-                <div className="px-1 py-2 flex flex-col gap-4">
-                  <div className="space-y-1">
-                    <span className="text-sm font-semibold text-white/90">
-                      {systemDnsServers
-                        ? "Активен пользовательский системный DNS"
-                        : "Используется системный DNS по умолчанию"}
-                    </span>
-                    <p className="text-xs text-muted leading-relaxed">
-                      Полное управление системным DNS вынесено на отдельный экран с пресетами, ручным вводом и быстрым
-                      сбросом до дефолтной конфигурации Windows.
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/8 bg-void/55 px-4 py-4 text-sm text-white/80">
-                    {systemDnsServers || "По умолчанию Windows"}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setScreen("dns")}
-                    className="w-full py-3 rounded-2xl bg-brand/15 border border-brand/30 text-brand-light text-sm font-bold hover:bg-brand/20 transition-colors"
-                  >
-                    Открыть DNS-центр
-                  </button>
-                </div>
-              </SettingsCard>
-
-              <SettingsCard
-                title="Безопасность"
-                className="h-full"
-                icon={<ShieldAlert className="w-5 h-5 text-neon-red" />}
-              >
-                <ToggleRow
-                  label="Kill Switch"
-                  description="Блокировка трафика при обрыве VPN."
-                  tooltip="Если VPN неожиданно отключится, весь интернет-трафик будет заблокирован. Это не даст утечь вашему реальному IP. Полезно при работе с чувствительными данными."
-                  enabled={killSwitch}
-                  onChange={() => updateSetting("killSwitch", !killSwitch)}
-                />
-                <ToggleRow
-                  label="Secure DNS"
-                  description="DNS через защищённый туннель VPN."
-                  tooltip="Когда включено, DNS-запросы внутри VPN-конфига идут через защищённые резолверы вместо обычного системного DNS."
-                  enabled={fakeDns}
-                  onChange={() => updateSetting("fakeDns", !fakeDns)}
-                />
-                <ToggleRow
-                  label="Авто-подключение"
-                  description="VPN включается при запуске."
-                  tooltip="При старте приложения VPN автоматически подключится к последнему использованному серверу. Защита 24/7."
-                  enabled={autoConnect}
-                  onChange={() => updateSetting("autoConnect", !autoConnect)}
-                />
-              </SettingsCard>
-
-              <SettingsCard
-                title="Автоподбор ядра"
-                className="h-full"
-                icon={<Shield className="w-5 h-5 text-accent" />}
-              >
-                <div className="px-1 py-2 flex flex-col gap-3">
-                  <p className="text-sm text-white/85 leading-relaxed">
-                    Приложение само выбирает и поднимает подходящее ядро под тип сервера:
-                  </p>
-                  <div className="rounded-2xl border border-white/8 bg-void/50 px-4 py-4 space-y-2 text-sm text-muted">
-                    <p>
-                      <span className="text-white/90 font-semibold">Xray</span> используется как основной вариант для
-                      `VLESS / VMess / Trojan / Shadowsocks`, где он обычно даёт лучший баланс стабильности и задержки.
-                    </p>
-                    <p>
-                      <span className="text-white/90 font-semibold">Sing-box</span> включается автоматически для
-                      `Hysteria2 / TUIC / WireGuard` и остаётся fallback-вариантом там, где это реально полезно.
-                    </p>
-                    <p>
-                      Smart Connect теперь переключает серверы плавнее, без принудительного обрыва старой сессии перед
-                      подъёмом новой.
-                    </p>
-                  </div>
-                </div>
-              </SettingsCard>
-
-              <SettingsCard
-                title="Zapret Center"
-                className="h-full"
-                icon={<ShieldCheck className="w-5 h-5 text-emerald-400" />}
-              >
-                <div className="px-1 py-2 flex flex-col gap-4">
-                  <div className="rounded-2xl border border-white/8 bg-void/55 px-4 py-4 text-sm text-white/82">
-                    Отдельный экран Zapret теперь полностью отвечает за службу, профили, автозапуск, диагностику,
-                    Flowseal-инструменты и очистку кешей. В настройках оставляем только входную точку, чтобы не было
-                    двух разных центров управления одной и той же системой.
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setScreen("zapret")}
-                    className="w-full rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 transition-colors hover:bg-emerald-500/16"
-                  >
-                    Открыть Zapret Center
-                  </button>
-                </div>
-              </SettingsCard>
-            </motion.div>
-          )}
-
-          {activeTab === "advanced" && (
-            <motion.div
-              key="advanced"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="max-w-6xl mx-auto w-full flex flex-col gap-6 pb-12"
-            >
-              <SettingsCard title="Диагностика" icon={<Shield className="w-5 h-5 text-accent" />}>
-                {/* Route Probe */}
-                <div className="flex items-center justify-between px-1 py-2">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold text-white/90">Проверка сетевого маршрута</span>
-                    <span className="text-xs text-muted">Быстрый probe прямого и VPN egress-маршрута</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={runRouteProbe}
-                    disabled={routeProbeTesting}
-                    className={cn(
-                      "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
-                      routeProbeResult?.error
-                        ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                        : routeProbeResult && !routeProbeResult.bypassDetected
+                  {/* Проверить обновления */}
+                  <div className="flex items-center justify-between px-1 py-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-semibold text-white/90">Обновления</span>
+                      <span className="text-xs text-muted">
+                        v{updateVersions.currentVersion}
+                        {updateVersions.latestVersion ? ` · канал v${updateVersions.latestVersion}` : ""}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setUpdateChecking(true);
+                        setUpdateCheckResult("idle");
+                        setUpdateStatusMessage("");
+                        setUpdateReleaseUrl(null);
+                        const api = getAPI();
+                        try {
+                          const result = await api?.updater?.check?.();
+                          setUpdateChecking(false);
+                          setUpdateVersions({
+                            currentVersion: result?.currentVersion || __APP_VERSION__,
+                            latestVersion: result?.latestVersion ?? null
+                          });
+                          setUpdateReleaseUrl(result?.releaseUrl ?? result?.downloadUrl ?? null);
+                          if (result?.status === "update-available" && result?.version) {
+                            setUpdateCheckResult("available");
+                            setUpdateStatusMessage(
+                              result.ok
+                                ? `Найдена версия v${result.version}. Скачайте обновление вручную со страницы релиза.`
+                                : `Найдена версия v${result.version}, но release metadata требует ручной проверки: ${result.error ?? "проверьте страницу релиза вручную"}.`
+                            );
+                          } else if (result?.ok && result?.status === "local-newer") {
+                            setUpdateCheckResult("ahead");
+                            setUpdateStatusMessage(
+                              result?.latestVersion
+                                ? `Локальная сборка опережает опубликованный канал: приложение уже на v${result.currentVersion ?? __APP_VERSION__}, а в релизах доступна только v${result.latestVersion}.`
+                                : "Локальная сборка опережает опубликованный релизный канал."
+                            );
+                          } else if (result?.ok) {
+                            setUpdateCheckResult("upToDate");
+                            setUpdateStatusMessage("Опубликованный релизный канал уже соответствует локальной версии.");
+                          } else {
+                            setUpdateCheckResult("error");
+                            setUpdateStatusMessage(result?.error || "Неизвестная ошибка");
+                          }
+                        } catch (error: unknown) {
+                          setUpdateChecking(false);
+                          setUpdateCheckResult("error");
+                          setUpdateStatusMessage(getErrorMessage(error, "Не удалось проверить"));
+                        }
+                      }}
+                      disabled={updateChecking}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                        updateCheckResult === "upToDate"
                           ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : routeProbeResult?.bypassDetected
-                            ? "bg-red-500/10 text-red-400 border border-red-500/20"
-                            : "bg-white/5 text-muted hover:text-white hover:bg-white/10 border border-white/10"
-                    )}
-                  >
-                    {routeProbeTesting ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Тестируем...
-                      </>
-                    ) : routeProbeResult?.error ? (
-                      <>
-                        <AlertTriangle className="w-3.5 h-3.5" /> {routeProbeResult.error}
-                      </>
-                    ) : routeProbeResult && !routeProbeResult.bypassDetected ? (
-                      <>
-                        <ShieldCheck className="w-3.5 h-3.5" /> Маршрут через VPN
-                      </>
-                    ) : routeProbeResult?.bypassDetected ? (
-                      <>
-                        <ShieldAlert className="w-3.5 h-3.5" /> Есть обход VPN
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="w-3.5 h-3.5" /> Проверить
-                      </>
-                    )}
-                  </button>
-                </div>
-                {routeProbeResult && !routeProbeResult.error && (
+                          : updateCheckResult === "available"
+                            ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                            : updateCheckResult === "ahead"
+                              ? "bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                              : updateCheckResult === "error"
+                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                : "bg-white/5 text-muted hover:text-white hover:bg-white/10 border border-white/10"
+                      )}
+                    >
+                      {updateChecking ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Проверяем...
+                        </>
+                      ) : updateCheckResult === "upToDate" ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Актуальная версия
+                        </>
+                      ) : updateCheckResult === "available" ? (
+                        <>
+                          <Download className="w-3.5 h-3.5" /> Есть обновление!
+                        </>
+                      ) : updateCheckResult === "ahead" ? (
+                        <>
+                          <Info className="w-3.5 h-3.5" /> Канал отстаёт
+                        </>
+                      ) : updateCheckResult === "error" ? (
+                        <>
+                          <AlertTriangle className="w-3.5 h-3.5" /> Ошибка проверки
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5" /> Проверить
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {updateStatusMessage ? (
+                    <div
+                      className={cn(
+                        "px-1 pt-1 text-xs leading-relaxed",
+                        updateCheckResult === "available"
+                          ? "text-blue-200/80"
+                          : updateCheckResult === "upToDate"
+                            ? "text-emerald-300/80"
+                            : updateCheckResult === "ahead"
+                              ? "text-amber-300/80"
+                              : "text-amber-400/80"
+                      )}
+                    >
+                      {updateStatusMessage}
+                    </div>
+                  ) : null}
+                  {updateCheckResult === "available" && updateReleaseUrl ? (
+                    <div className="px-1 pt-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const api = getAPI();
+                          try {
+                            if (api?.updater?.openReleasePage) {
+                              await api.updater.openReleasePage();
+                              return;
+                            }
+                            await api?.updater?.install?.();
+                          } catch (error: unknown) {
+                            toast.error(getErrorMessage(error, "Не удалось открыть страницу релиза"));
+                          }
+                        }}
+                        className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 bg-blue-500/10 text-blue-200 border border-blue-400/20 hover:bg-blue-500/15"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Открыть релиз
+                      </button>
+                    </div>
+                  ) : null}
+                </SettingsCard>
+              </motion.div>
+            )}
+
+            {activeTab === "network" && (
+              <motion.div
+                key="network"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="w-full flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start"
+              >
+                <SettingsCard title="DNS-центр" icon={<Globe2 className="w-5 h-5 text-brand" />}>
+                  <div className="px-1 py-2 flex flex-col gap-4">
+                    <div className="space-y-1">
+                      <span className="text-sm font-semibold text-white/90">
+                        {systemDnsServers
+                          ? "Активен пользовательский системный DNS"
+                          : "Используется системный DNS по умолчанию"}
+                      </span>
+                      <p className="text-xs text-muted leading-relaxed">
+                        Полное управление системным DNS вынесено на отдельный экран с пресетами, ручным вводом и быстрым
+                        сбросом до дефолтной конфигурации Windows.
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/8 bg-void/55 px-4 py-4 text-sm text-white/80">
+                      {systemDnsServers || "По умолчанию Windows"}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setScreen("dns")}
+                      className="w-full py-3 rounded-2xl bg-brand/15 border border-brand/30 text-brand-light text-sm font-bold hover:bg-brand/20 transition-colors"
+                    >
+                      Открыть DNS-центр
+                    </button>
+                  </div>
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Безопасность"
+                  className="h-full"
+                  icon={<ShieldAlert className="w-5 h-5 text-neon-red" />}
+                >
+                  <ToggleRow
+                    label="Блокировка без VPN"
+                    description="Блокировка трафика при обрыве VPN."
+                    tooltip="Если VPN неожиданно отключится, весь интернет-трафик будет заблокирован. Это не даст утечь вашему реальному IP. Полезно при работе с чувствительными данными."
+                    enabled={killSwitch}
+                    onChange={() => updateSetting("killSwitch", !killSwitch)}
+                  />
+                  <ToggleRow
+                    label="Защищённый DNS"
+                    description="DNS через защищённый туннель VPN."
+                    tooltip="Когда включено, DNS-запросы внутри VPN-конфига идут через защищённые резолверы вместо обычного системного DNS."
+                    enabled={fakeDns}
+                    onChange={() => updateSetting("fakeDns", !fakeDns)}
+                  />
+                  <ToggleRow
+                    label="Авто-подключение"
+                    description="VPN включается при запуске."
+                    tooltip="При старте приложения VPN автоматически подключится к последнему использованному серверу. Защита 24/7."
+                    enabled={autoConnect}
+                    onChange={() => updateSetting("autoConnect", !autoConnect)}
+                  />
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Автоподбор ядра"
+                  className="h-full"
+                  icon={<Shield className="w-5 h-5 text-accent" />}
+                >
+                  <div className="px-1 py-2 flex flex-col gap-3">
+                    <p className="text-sm text-white/85 leading-relaxed">
+                      Приложение само выбирает и поднимает подходящее ядро под тип сервера:
+                    </p>
+                    <div className="rounded-2xl border border-white/8 bg-void/50 px-4 py-4 space-y-2 text-sm text-muted">
+                      <p>
+                        <span className="text-white/90 font-semibold">Xray</span> используется как основной вариант для
+                        `VLESS / VMess / Trojan / Shadowsocks`, где он обычно даёт лучший баланс стабильности и
+                        задержки.
+                      </p>
+                      <p>
+                        <span className="text-white/90 font-semibold">Sing-box</span> включается автоматически для
+                        `Hysteria2 / TUIC / WireGuard` и остаётся резервным вариантом там, где это реально полезно.
+                      </p>
+                      <p>
+                        Умное подключение теперь переключает серверы плавнее, без принудительного обрыва старой сессии
+                        перед подъёмом новой.
+                      </p>
+                    </div>
+                  </div>
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Центр Zapret"
+                  className="h-full"
+                  icon={<ShieldCheck className="w-5 h-5 text-emerald-400" />}
+                >
+                  <div className="px-1 py-2 flex flex-col gap-4">
+                    <div className="rounded-2xl border border-white/8 bg-void/55 px-4 py-4 text-sm text-white/82">
+                      Отдельный экран Zapret теперь полностью отвечает за службу, профили, автозапуск, диагностику,
+                      Flowseal-инструменты и очистку кешей. В настройках оставляем только входную точку, чтобы не было
+                      двух разных центров управления одной и той же системой.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setScreen("zapret")}
+                      className="w-full rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 transition-colors hover:bg-emerald-500/16"
+                    >
+                      Открыть центр Zapret
+                    </button>
+                  </div>
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Прокси Telegram"
+                  className="h-full"
+                  icon={<Send className="w-5 h-5 text-cyan-300" />}
+                >
+                  <div className="px-1 py-2 flex flex-col gap-4">
+                    <div className="rounded-2xl border border-white/8 bg-void/55 px-4 py-4 text-sm text-white/82">
+                      Отдельный экран прокси Telegram управляет фоновым `tg-ws-proxy`, MTProto-конфигурацией, ссылкой
+                      подключения, логами и встроенным обновлением без отдельного окна в трее.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setScreen("telegram-proxy")}
+                      className="w-full rounded-2xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-sm font-bold text-cyan-300 transition-colors hover:bg-cyan-500/16"
+                    >
+                      Открыть прокси Telegram
+                    </button>
+                  </div>
+                </SettingsCard>
+              </motion.div>
+            )}
+
+            {activeTab === "advanced" && (
+              <motion.div
+                key="advanced"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="w-full flex flex-col gap-6"
+              >
+                <SettingsCard title="Диагностика" icon={<Shield className="w-5 h-5 text-accent" />}>
+                  {/* Route Probe */}
+                  <div className="flex items-center justify-between px-1 py-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-semibold text-white/90">Проверка сетевого маршрута</span>
+                      <span className="text-xs text-muted">Быстрая проверка прямого и VPN-маршрута</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={runRouteProbe}
+                      disabled={routeProbeTesting}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                        routeProbeResult?.error
+                          ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                          : routeProbeResult && !routeProbeResult.bypassDetected
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            : routeProbeResult?.bypassDetected
+                              ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                              : "bg-white/5 text-muted hover:text-white hover:bg-white/10 border border-white/10"
+                      )}
+                    >
+                      {routeProbeTesting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Тестируем...
+                        </>
+                      ) : routeProbeResult?.error ? (
+                        <>
+                          <AlertTriangle className="w-3.5 h-3.5" /> {routeProbeResult.error}
+                        </>
+                      ) : routeProbeResult && !routeProbeResult.bypassDetected ? (
+                        <>
+                          <ShieldCheck className="w-3.5 h-3.5" /> Маршрут через VPN
+                        </>
+                      ) : routeProbeResult?.bypassDetected ? (
+                        <>
+                          <ShieldAlert className="w-3.5 h-3.5" /> Есть обход VPN
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="w-3.5 h-3.5" /> Проверить
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {routeProbeResult && !routeProbeResult.error && (
+                    <div className="px-1 pt-1 text-xs leading-relaxed text-muted">
+                      Прямой маршрут: {routeProbeResult.directIp ?? "неизвестно"} · VPN-маршрут:{" "}
+                      {routeProbeResult.vpnIp ?? "неизвестно"}
+                    </div>
+                  )}
                   <div className="px-1 pt-1 text-xs leading-relaxed text-muted">
-                    Прямой egress: {routeProbeResult.directIp ?? "неизвестно"} · VPN egress:{" "}
-                    {routeProbeResult.vpnIp ?? "неизвестно"}
+                    Это быстрая проверка маршрута для поиска обхода VPN, а не лабораторная проверка утечки DNS по
+                    реальным DNS-серверам.
                   </div>
-                )}
-                <div className="px-1 pt-1 text-xs leading-relaxed text-muted">
-                  Это быстрый egress-probe для поиска обхода VPN, а не лабораторный DNS leak test по реальным
-                  resolver-серверам.
-                </div>
 
-                {/* Connection Logs */}
-                <div className="flex items-center justify-between px-1 py-2 mt-2">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold text-white/90">Журнал подключений</span>
-                    <span className="text-xs text-muted">Диагностические логи работы ядер</span>
+                  {/* Connection Logs */}
+                  <div className="flex items-center justify-between px-1 py-2 mt-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-semibold text-white/90">Журнал подключений</span>
+                      <span className="text-xs text-muted">Диагностические логи работы ядер</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowLogsModal(true)}
+                      className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 bg-white/5 text-muted hover:text-white hover:bg-white/10 border border-white/10"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> Открыть
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowLogsModal(true)}
-                    className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 bg-white/5 text-muted hover:text-white hover:bg-white/10 border border-white/10"
-                  >
-                    <FileText className="w-3.5 h-3.5" /> Открыть
-                  </button>
-                </div>
-              </SettingsCard>
+                </SettingsCard>
 
-              <SettingsCard title="Опасная зона" icon={<AlertTriangle className="w-5 h-5 text-red-400" />}>
-                <ActionRow
-                  label="Сброс настроек"
-                  description="Вернуть приложение к заводскому состоянию."
-                  tooltip="Удаляет все ваши настройки, профили, подписки и импортированные серверы. Приложение будет полностью очищено. Это действие нельзя отменить."
-                  buttonText="Сбросить"
-                  buttonIcon={<AlertTriangle className="w-4 h-4" />}
-                  onClick={() => setShowResetModal(true)}
-                  variant="danger"
-                />
-              </SettingsCard>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                <SettingsCard title="Обновления VPN-ядер" icon={<RefreshCw className="w-5 h-5 text-brand-light" />}>
+                  <div className="rounded-2xl border border-white/8 bg-void/45 px-4 py-4 text-sm text-white/82">
+                    При запуске приложения `Xray` и `Sing-box` всё ещё поднимаются автоматически, но здесь можно вручную
+                    проверить их новые версии и принудительно применить обновление.
+                  </div>
+
+                  {runtimeUpdates.length > 0 ? (
+                    <div className="grid gap-3">
+                      {runtimeUpdates.map((item) => (
+                        <div
+                          key={item.runtimeKind}
+                          className="rounded-2xl border border-white/8 bg-void/45 px-4 py-4 text-sm text-white/82"
+                        >
+                          <div className="font-semibold text-white/90">{item.displayName}</div>
+                          <div className="mt-2">Текущая версия: {item.currentVersion ?? "—"}</div>
+                          <div className="mt-1">Последняя версия: {item.latestVersion ?? "—"}</div>
+                          <div className="mt-2 text-xs text-muted leading-relaxed">{item.message}</div>
+                          {item.verificationMessage ? (
+                            <div className="mt-2 text-xs text-amber-300/80 leading-relaxed">
+                              Проверка архива: {item.verificationMessage}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      disabled={runtimeChecking}
+                      onClick={async () => {
+                        setRuntimeChecking(true);
+                        try {
+                          const api = getAPI();
+                          const info = await api?.runtime?.checkUpdates?.();
+                          setRuntimeUpdates(info ?? []);
+                          toast.success("Проверка Xray и Sing-box завершена.");
+                        } catch (error: unknown) {
+                          toast.error(getErrorMessage(error, "Не удалось проверить версии Xray и Sing-box"));
+                        } finally {
+                          setRuntimeChecking(false);
+                        }
+                      }}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white/85 hover:bg-white/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {runtimeChecking ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                      Проверить ядра
+                    </button>
+                    <button
+                      type="button"
+                      disabled={runtimeInstalling}
+                      onClick={async () => {
+                        setRuntimeInstalling(true);
+                        try {
+                          const api = getAPI();
+                          const result = await api?.runtime?.installAll?.();
+                          const updatedCount = result?.results?.filter((item) => item.updated).length ?? 0;
+                          const firstFailure = result?.results?.find((item) => !item.ok);
+                          const info = await api?.runtime?.checkUpdates?.();
+                          setRuntimeUpdates(info ?? []);
+                          if (result?.ok) {
+                            toast.success(
+                              updatedCount > 0
+                                ? `VPN-ядра обновлены (${updatedCount}).`
+                                : result?.message || "VPN-ядра уже актуальны."
+                            );
+                          } else {
+                            toast.error(
+                              firstFailure?.message || result?.message || "Не удалось обновить Xray и Sing-box"
+                            );
+                          }
+                        } catch (error: unknown) {
+                          toast.error(getErrorMessage(error, "Не удалось обновить Xray и Sing-box"));
+                        } finally {
+                          setRuntimeInstalling(false);
+                        }
+                      }}
+                      className="rounded-2xl border border-brand/20 bg-brand/10 px-4 py-3 text-sm font-bold text-brand-light hover:bg-brand/15 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {runtimeInstalling ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      Обновить ядра
+                    </button>
+                  </div>
+                </SettingsCard>
+
+                <SettingsCard title="Опасная зона" icon={<AlertTriangle className="w-5 h-5 text-red-400" />}>
+                  <ActionRow
+                    label="Сброс настроек"
+                    description="Вернуть приложение к заводскому состоянию."
+                    tooltip="Удаляет все ваши настройки, профили, подписки и импортированные серверы. Приложение будет полностью очищено. Это действие нельзя отменить."
+                    buttonText="Сбросить"
+                    buttonIcon={<AlertTriangle className="w-4 h-4" />}
+                    onClick={() => setShowResetModal(true)}
+                    variant="danger"
+                  />
+                </SettingsCard>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </main>
 
       {/* Модалка подтверждения сброса */}
@@ -533,28 +731,46 @@ function SettingsCard({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-50px" }}
       className={cn(
-        "glass-panel group rounded-[22px] p-6 transition-all duration-500 relative overflow-hidden",
+        "group relative overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,26,39,0.94),rgba(7,21,31,0.96))] p-6 shadow-[0_20px_54px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.04)] transition-all duration-500",
         className
       )}
     >
       {/* Corner glow */}
-      <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-brand/4 to-transparent rounded-full blur-[25px] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,76,41,0.12),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(34,211,238,0.06),transparent_24%)] opacity-80" />
+      <div className="absolute top-0 right-0 h-20 w-20 rounded-full bg-gradient-to-bl from-brand/6 to-transparent blur-[25px] pointer-events-none opacity-0 transition-opacity duration-700 group-hover:opacity-100" />
 
       {/* Title with gradient underline */}
       <div className="mb-5 relative z-10">
-        <h3 className="text-[13px] font-display font-semibold text-white/85 flex items-center gap-3 tracking-[0.15em] uppercase">
+        <h3 className="flex items-center gap-3 text-[13px] font-display font-semibold uppercase tracking-[0.15em] text-white/88">
           <div
-            className="p-2 rounded-xl border border-brand/10 transition-colors"
-            style={{ background: "rgba(38,201,154,0.06)" }}
+            className="rounded-[14px] border border-white/10 p-2 transition-colors"
+            style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))" }}
           >
             {icon}
           </div>
           {title}
         </h3>
-        <div className="mt-3 h-px bg-gradient-to-r from-brand/15 via-brand/5 to-transparent" />
+        <div className="mt-3 h-px bg-gradient-to-r from-brand/20 via-white/6 to-transparent" />
       </div>
       <div className="flex flex-col gap-1 relative z-10">{children}</div>
     </motion.div>
+  );
+}
+
+function HeroMetric({
+  label,
+  value
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-[20px] border border-white/10 bg-black/10 px-3.5 py-3 backdrop-blur-xl">
+      <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/42">{label}</div>
+      <div className="mt-1.5 truncate text-sm font-semibold text-white/90" title={value}>
+        {value}
+      </div>
+    </div>
   );
 }
 

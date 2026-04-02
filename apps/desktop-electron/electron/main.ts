@@ -1,9 +1,9 @@
-import { exec, execFile, spawnSync } from "node:child_process";
+import { exec, execFile, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
-import { BrowserWindow, Menu, Notification, Tray, app, ipcMain, nativeImage } from "electron";
+import { BrowserWindow, Menu, Notification, Tray, app, ipcMain, nativeImage, shell } from "electron";
 
 // ── electron-builder NSIS инсталлер ──
 // Все install/update/uninstall операции (taskkill, cleanup, ярлыки)
@@ -13,9 +13,16 @@ import { BrowserWindow, Menu, Notification, Tray, app, ipcMain, nativeImage } fr
 import { buildAppPathConfig, detectRuntimeEnvironment } from "./app-paths";
 import { fullCleanup } from "./ipc/dns-cleanup";
 import { registerIpcHandlers } from "./ipc/handlers";
+import {
+  buildGitHubAssetDownloadUrl,
+  compareLooseVersions,
+  normalizeVersionTag,
+  resolveLatestGitHubRelease
+} from "./ipc/github-release";
 import { syncWindowsLoginItemSettings } from "./ipc/login-item-settings";
 import logger, { configureLoggerPaths } from "./ipc/logger";
 import { StateStore } from "./ipc/state-store";
+import { TelegramProxyManager } from "./ipc/telegram-proxy-manager";
 import { VpnRuntimeManager } from "./ipc/vpn-manager";
 import { resolveWindowsExecutable } from "./ipc/windows-system-binaries";
 import { ZapretManager } from "./ipc/zapret-manager";
@@ -47,143 +54,231 @@ configureLoggerPaths(appPathConfig.logsDir);
 
 const USER_DATA_DIR = app.getPath("userData");
 
-// ── IPC: Автообновление через GitHub Releases (Squirrel.Windows) ──
+// ── IPC: Автообновление через GitHub Releases + release-page fallback ──
 const GITHUB_OWNER = "egoistgorbachev";
 const GITHUB_REPO = "egoistshield";
+const APP_RELEASE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+const APP_RELEASE_PAGE_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 
 let autoUpdateEnabled = true;
 let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
 
-/**
- * Semver comparison: returns true if `remote` is strictly newer than `current`.
- * Supports standard X.Y.Z format. If parsing fails, falls back to string comparison.
- */
-function isNewerVersion(remote: string, current: string): boolean {
-  const parse = (v: string) => v.split(".").map((n) => Number.parseInt(n, 10));
-  const r = parse(remote);
-  const c = parse(current);
-  const len = Math.max(r.length, c.length);
-  for (let i = 0; i < len; i++) {
-    const rv = r[i] ?? 0;
-    const cv = c[i] ?? 0;
-    if (rv > cv) return true;
-    if (rv < cv) return false;
-  }
-  return false; // equal
-}
-
-// Проверка обновлений в обход API-лимитов GitHub (60 req/hr)
-async function checkUpdateViaGitHubAPI(): Promise<{
+type AppUpdateCheckResult = {
   ok: boolean;
   version: string | null;
+  status?: "up-to-date" | "update-available" | "local-newer";
+  currentVersion?: string;
+  latestVersion?: string | null;
   downloadUrl?: string;
+  releaseUrl?: string;
   error?: string;
-}> {
+};
+
+async function checkUpdateViaGitHubAPI(): Promise<AppUpdateCheckResult> {
   try {
-    // HEAD запрос к latest URL всегда редиректит на актуальный тег (без расходования API-лимитов)
-    const res = await fetch(`https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`, {
-      method: "HEAD",
-      redirect: "follow",
-      headers: { "User-Agent": `EgoistShield/${app.getVersion()}` },
-      signal: AbortSignal.timeout(10_000)
+    const resolvedRelease = await resolveLatestGitHubRelease(APP_RELEASE_API_URL, {
+      "User-Agent": `EgoistShield/${app.getVersion()}`,
+      Accept: "application/vnd.github+json"
     });
 
-    if (!res.ok) return { ok: false, version: null, error: `GitHub HTTP: ${res.status}` };
-
-    // Извлекаем версию из финального URL после редиректа (например, .../releases/tag/v1.9.1)
-    const match = res.url.match(/\/releases\/tag\/(v?[\d\.]+)/);
-    const latestTag = match?.[1]?.replace(/^v/, "") ?? null;
-
-    if (!latestTag) return { ok: true, version: null };
-
     const current = app.getVersion();
-
-    // Обновлять только если remote > current
-    if (!isNewerVersion(latestTag, current)) {
-      logger.info(`[updater] Текущая версия ${current} >= ${latestTag}, обновление не требуется`);
-      return { ok: true, version: null };
+    const latestTagRaw = resolvedRelease.tag_name?.trim() ?? null;
+    const latestTag = normalizeVersionTag(latestTagRaw);
+    if (!latestTag) {
+      return {
+        ok: true,
+        version: null,
+        status: "up-to-date",
+        currentVersion: current,
+        latestVersion: null
+      };
     }
 
-    // NSIS инсталлер имеет предсказуемое имя
-    const downloadUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/v${latestTag}/EgoistShield-${latestTag}-Setup.exe`;
+    const versionComparison = compareLooseVersions(latestTag, current);
+    if (versionComparison <= 0) {
+      const status = versionComparison === 0 ? "up-to-date" : "local-newer";
+      if (status === "local-newer") {
+        logger.warn(`[updater] Локальная версия ${current} опережает release-канал ${latestTag}`);
+      } else {
+        logger.info(`[updater] Текущая версия ${current} совпадает с release-каналом ${latestTag}`);
+      }
+
+      return {
+        ok: true,
+        version: null,
+        status,
+        currentVersion: current,
+        latestVersion: latestTag
+      };
+    }
+
+    const expectedAssetName = `EgoistShield-${latestTag}-Setup.exe`;
+    const asset =
+      resolvedRelease.release && Array.isArray(resolvedRelease.release.assets)
+        ? resolvedRelease.release.assets.find((item) => item.name === expectedAssetName)
+        : null;
+    const downloadUrl =
+      asset?.browser_download_url ??
+      (latestTagRaw ? buildGitHubAssetDownloadUrl(APP_RELEASE_API_URL, latestTagRaw, expectedAssetName) : null);
+
+    if (!downloadUrl) {
+      return {
+        ok: false,
+        version: latestTag,
+        status: "update-available",
+        currentVersion: current,
+        latestVersion: latestTag,
+        releaseUrl: resolvedRelease.html_url ?? APP_RELEASE_PAGE_URL,
+        error: `В релизе ${latestTag} не найден ${expectedAssetName}.`
+      };
+    }
 
     return {
       ok: true,
       version: latestTag,
-      downloadUrl
+      status: "update-available",
+      currentVersion: current,
+      latestVersion: latestTag,
+      downloadUrl,
+      releaseUrl: resolvedRelease.html_url ?? `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, version: null, error: msg };
+    return {
+      ok: false,
+      version: null,
+      currentVersion: app.getVersion(),
+      latestVersion: null,
+      error: msg
+    };
   }
+}
+
+function emitUpdateError(message: string): void {
+  logger.warn("[updater] Ошибка:", message);
+  mainWindow?.webContents.send("update-error", { message });
+}
+
+async function openAppReleasePage(result?: AppUpdateCheckResult): Promise<boolean> {
+  const releaseUrl = result?.releaseUrl ?? APP_RELEASE_PAGE_URL;
+  await shell.openExternal(releaseUrl);
+  return true;
 }
 
 function setupAutoUpdater(): void {
   if (!app.isPackaged) {
-    logger.info("[updater] Dev-режим: автообновление отключено");
+    logger.info("[updater] Dev-режим: фоновые проверки desktop-релизов отключены");
     return;
   }
 
-  // === NSIS installer: используем GitHub API вместо Squirrel ===
-  // Squirrel autoUpdater несовместим с NSIS-инсталятором.
   const doCheck = async () => {
     if (!autoUpdateEnabled) return;
     try {
       const result = await checkUpdateViaGitHubAPI();
       if (result.version) {
-        logger.info(`[updater] Доступна новая версия: ${result.version}`);
+        logger.info(`[updater] Доступна новая версия desktop-клиента: ${result.version}`);
         mainWindow?.webContents.send("update-available", {
           version: result.version,
-          downloadUrl: result.downloadUrl
+          downloadUrl: result.downloadUrl,
+          releaseUrl: result.releaseUrl
         });
 
         if (Notification.isSupported()) {
           new Notification({
             title: "EgoistShield: Обновление",
-            body: `Доступна версия ${result.version}`,
+            body: `Доступна версия ${result.version}. Скачайте релиз вручную со страницы проекта.`,
             silent: true
           }).show();
         }
+      } else if (result.status === "local-newer") {
+        logger.warn(
+          `[updater] Автопроверка: локальная версия ${result.currentVersion ?? app.getVersion()} новее опубликованного канала ${result.latestVersion ?? "unknown"}`
+        );
+        mainWindow?.webContents.send("update-not-available");
       } else {
         logger.info("[updater] Текущая версия актуальна");
         mainWindow?.webContents.send("update-not-available");
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      logger.warn("[updater] Ошибка проверки:", msg);
+      emitUpdateError(msg);
     }
   };
 
   setTimeout(doCheck, 10_000);
   updateCheckInterval = setInterval(doCheck, 4 * 60 * 60 * 1000);
-  logger.info(`[updater] Автообновление настроено (GitHub API), текущая: ${app.getVersion()}`);
+  logger.info(`[updater] Автопроверка релизов настроена (manual download mode), текущая: ${app.getVersion()}`);
 }
 
 ipcMain.handle("updater:install", async () => {
-  if (!app.isPackaged) {
-    logger.warn("[updater] Dev-режим: установка обновления невозможна");
-    return;
-  }
-  // NSIS: открываем ссылку на скачивание в браузере
   try {
     const result = await checkUpdateViaGitHubAPI();
-    if (result.downloadUrl) {
-      const { shell } = require("electron") as typeof import("electron");
-      await shell.openExternal(result.downloadUrl);
-    }
+    return await openAppReleasePage(result);
   } catch (err) {
-    logger.error("[updater] Ошибка открытия страницы обновления:", err);
+    emitUpdateError(err instanceof Error ? err.message : String(err));
+    return false;
+  }
+});
+
+ipcMain.handle("updater:open-release-page", async () => {
+  try {
+    const result = await checkUpdateViaGitHubAPI();
+    return await openAppReleasePage(result);
+  } catch (error) {
+    emitUpdateError(error instanceof Error ? error.message : String(error));
+    return false;
   }
 });
 
 ipcMain.handle("updater:check", async () => {
-  const result = await checkUpdateViaGitHubAPI();
-  return { ok: result.ok, version: result.version, error: result.error };
+  try {
+    const result = await checkUpdateViaGitHubAPI();
+    if (result.status !== "update-available" || !result.version) {
+      return {
+        ok: result.ok,
+        version: result.version ?? undefined,
+        status: result.status,
+        currentVersion: result.currentVersion,
+        latestVersion: result.latestVersion ?? undefined,
+        releaseUrl: result.releaseUrl,
+        downloadUrl: result.downloadUrl,
+        error: result.error
+      };
+    }
+
+    mainWindow?.webContents.send("update-available", {
+      version: result.version,
+      downloadUrl: result.downloadUrl,
+      releaseUrl: result.releaseUrl
+    });
+    return {
+      ok: result.ok,
+      version: result.version,
+      status: result.status,
+      currentVersion: result.currentVersion,
+      latestVersion: result.latestVersion ?? undefined,
+      releaseUrl: result.releaseUrl,
+      downloadUrl: result.downloadUrl,
+      error: result.error
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emitUpdateError(message);
+    return {
+      ok: false,
+      version: undefined,
+      status: undefined,
+      currentVersion: app.getVersion(),
+      latestVersion: undefined,
+      releaseUrl: APP_RELEASE_PAGE_URL,
+      error: message
+    };
+  }
 });
 
 ipcMain.handle("updater:set-auto", async (_event, enabled: boolean) => {
   autoUpdateEnabled = enabled;
-  logger.info(`[updater] autoDownload set to ${enabled}`);
+  logger.info(`[updater] autoCheck set to ${enabled}`);
 
   if (globalStateStore) {
     try {
@@ -199,7 +294,14 @@ ipcMain.handle("updater:set-auto", async (_event, enabled: boolean) => {
   } else if (enabled && !updateCheckInterval && app.isPackaged) {
     const doCheck = async () => {
       try {
-        await checkUpdateViaGitHubAPI();
+        const result = await checkUpdateViaGitHubAPI();
+        if (result.version) {
+          mainWindow?.webContents.send("update-available", {
+            version: result.version,
+            downloadUrl: result.downloadUrl,
+            releaseUrl: result.releaseUrl
+          });
+        }
       } catch (error: unknown) {
         logger.warn("[updater] Scheduled check failed:", error);
       }
@@ -210,6 +312,61 @@ ipcMain.handle("updater:set-auto", async (_event, enabled: boolean) => {
   return enabled;
 });
 
+async function checkManagedComponentUpdates(): Promise<void> {
+  try {
+    if (globalZapretManager) {
+      const status = await globalZapretManager.status();
+      if (status.updateChecksEnabled) {
+        const info = await globalZapretManager.checkForUpdates();
+        if (info.updateAvailable && info.latestVersion && notifiedComponentVersions.get("zapret-core") !== info.latestVersion) {
+          notifiedComponentVersions.set("zapret-core", info.latestVersion);
+          if (Notification.isSupported()) {
+            new Notification({
+              title: "EgoistShield: Flowseal Core",
+              body: `Доступно обновление ${info.latestVersion}`,
+              silent: true
+            }).show();
+          }
+        }
+      }
+    }
+
+    if (globalTelegramProxyManager && (await globalTelegramProxyManager.shouldCheckUpdates())) {
+      const info = await globalTelegramProxyManager.checkForUpdates();
+      if (
+        info.updateAvailable &&
+        info.latestVersion &&
+        notifiedComponentVersions.get("telegram-proxy") !== info.latestVersion
+      ) {
+        notifiedComponentVersions.set("telegram-proxy", info.latestVersion);
+        if (Notification.isSupported()) {
+          new Notification({
+            title: "EgoistShield: Telegram Proxy",
+            body: `Доступно обновление ${info.latestVersion}`,
+            silent: true
+          }).show();
+        }
+      }
+    }
+  } catch (error) {
+    logger.warn("[updates] Managed component check failed:", error);
+  }
+}
+
+function setupManagedComponentUpdateChecks(): void {
+  if (componentUpdateInterval) {
+    clearInterval(componentUpdateInterval);
+  }
+
+  setTimeout(() => {
+    void checkManagedComponentUpdates();
+  }, 20_000);
+
+  componentUpdateInterval = setInterval(() => {
+    void checkManagedComponentUpdates();
+  }, 6 * 60 * 60 * 1000);
+}
+
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
@@ -217,8 +374,11 @@ let mainWindow: BrowserWindow | null = null;
 export let tray: Tray | null = null;
 export let globalRuntimeManager: VpnRuntimeManager | null = null;
 export let globalZapretManager: ZapretManager | null = null;
+export let globalTelegramProxyManager: TelegramProxyManager | null = null;
 let trafficInterval: NodeJS.Timeout | null = null;
 let isQuitting = false;
+let componentUpdateInterval: ReturnType<typeof setInterval> | null = null;
+const notifiedComponentVersions = new Map<string, string>();
 
 // ── Network config constants ──
 const SINGBOX_TRAFFIC_URL = "http://127.0.0.1:9090/traffic";
@@ -237,8 +397,17 @@ app.on("before-quit", () => {
         logger.warn("[zapret] Failed to restore service during app shutdown:", error);
       });
   }
+  if (globalTelegramProxyManager) {
+    void globalTelegramProxyManager.stop().catch((error: unknown) => {
+      logger.warn("[telegram-proxy] Failed to stop background runtime during app shutdown:", error);
+    });
+  }
   // Cleanup DNS/proxy and kill VPN processes on exit
   fullCleanup().catch((e) => logger.warn("[exit] cleanup failed:", e));
+  if (componentUpdateInterval) {
+    clearInterval(componentUpdateInterval);
+    componentUpdateInterval = null;
+  }
   if (tray) {
     tray.destroy();
     tray = null;
@@ -515,7 +684,10 @@ async function createMainWindow(): Promise<void> {
   if (!globalZapretManager) {
     globalZapretManager = new ZapretManager(process.resourcesPath, app.getAppPath(), USER_DATA_DIR);
   }
-  await registerIpcHandlers(mainWindow, stateStore, globalRuntimeManager, globalZapretManager);
+  if (!globalTelegramProxyManager) {
+    globalTelegramProxyManager = new TelegramProxyManager(process.resourcesPath, app.getAppPath(), USER_DATA_DIR);
+  }
+  await registerIpcHandlers(mainWindow, stateStore, globalRuntimeManager, globalZapretManager, globalTelegramProxyManager);
 
   // Auto-connect: если включён autoConnect и есть сохранённый сервер
   const loadedState = await stateStore.load();
@@ -659,8 +831,9 @@ if (!lock) {
     // Запуск фонового трекинга трафика для UI
     startTrafficMonitoring();
 
-    // ── Автообновление через GitHub API (NSIS-совместимый) ──
+    // ── Автообновление через GitHub Releases + fallback (NSIS-совместимый) ──
     setupAutoUpdater();
+    setupManagedComponentUpdateChecks();
 
     app.on("activate", async () => {
       if (!mainWindow) {

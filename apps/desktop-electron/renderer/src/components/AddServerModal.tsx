@@ -47,6 +47,7 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
   const [scanError, setScanError] = useState("");
   const [scanSuccess, setScanSuccess] = useState<{ added: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previousActiveRef = useRef<HTMLElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
   useEffect(() => {
@@ -70,6 +71,18 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
     }
     return () => stopScan();
   }, [activeTab, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    previousActiveRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    return () => {
+      previousActiveRef.current?.focus();
+    };
+  }, [isOpen]);
 
   const handleImportUrl = async () => {
     if (!urlInput.trim()) return;
@@ -196,9 +209,17 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
       }
     };
     window.addEventListener("keydown", handleTab);
-    // Auto-focus the first <button> inside modal
+    // Auto-focus the first interactive control, falling back to the dialog container.
     requestAnimationFrame(() => {
-      modalRef.current?.querySelector<HTMLElement>("button, input")?.focus();
+      const firstFocusable = modalRef.current?.querySelector<HTMLElement>(
+        'button, input, textarea, select, [tabindex]:not([tabindex="-1"])'
+      );
+      if (firstFocusable) {
+        firstFocusable.focus();
+        return;
+      }
+
+      modalRef.current?.focus();
     });
     return () => window.removeEventListener("keydown", handleTab);
   }, [isOpen, onClose]);
@@ -339,19 +360,31 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-server-modal-title"
+            aria-describedby="add-server-modal-description"
+            tabIndex={-1}
             className="w-full max-w-sm bg-panel/95 backdrop-blur-md border border-white/5 rounded-[2rem] shadow-2xl overflow-hidden relative"
           >
             {/* Header */}
             <div className="p-6 pb-4 border-b border-white/5 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-white tracking-wide">Добавить Сервер</h2>
+              <h2 id="add-server-modal-title" className="text-xl font-bold text-white tracking-wide">
+                Добавить Сервер
+              </h2>
               <button
                 type="button"
                 onClick={onClose}
+                aria-label="Закрыть окно добавления сервера"
                 className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-muted hover:text-white transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            <p id="add-server-modal-description" className="sr-only">
+              Импортируйте сервер или подписку через буфер обмена, ссылку, файл конфигурации либо QR-код.
+            </p>
 
             {/* Tabs */}
             <div className="flex p-1 bg-surface rounded-lg mx-6 mb-4">
@@ -392,7 +425,11 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                   <p className="text-sm text-muted mb-2">
                     Вставьте ссылку vmess://, vless://, ss://, trojan:// или ссылку на подписку.
                   </p>
+                  <label htmlFor="add-server-url" className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+                    Ссылка или подписка
+                  </label>
                   <input
+                    id="add-server-url"
                     type="text"
                     placeholder="vless://..."
                     value={urlInput}
@@ -494,7 +531,7 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                     Нажмите кнопку или <span className="text-brand font-bold">Ctrl+V</span> в любой момент
                   </p>
                   {clipboardText && (
-                    <div className="w-full bg-white/[0.03] rounded-xl p-3 border border-white/[0.06]">
+                    <div aria-live="polite" className="w-full bg-white/[0.03] rounded-xl p-3 border border-white/[0.06]">
                       <p
                         className={cn(
                           "text-xs font-mono break-all",
@@ -575,7 +612,11 @@ export function AddServerModal({ isOpen, onClose }: AddServerModalProps) {
                           </div>
                         )}
 
-                        {scanError && <div className="text-red-400 text-xs text-center p-4">{scanError}</div>}
+                        {scanError && (
+                          <div aria-live="assertive" className="text-red-400 text-xs text-center p-4">
+                            {scanError}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex gap-2 w-full">

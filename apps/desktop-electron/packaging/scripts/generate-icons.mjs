@@ -1,104 +1,123 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import pngToIco from "png-to-ico";
 import sharp from "sharp";
 
-async function main() {
+const PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const WORKSPACE_ROOT = path.resolve(PROJECT_DIR, "../../..");
+
+export function getMasterLogoPath() {
+  return path.join(WORKSPACE_ROOT, "artifacts", "egoistshield", "logo", "egoistshield-logo-for-crop-4096.png");
+}
+
+function createPngOptions() {
+  return {
+    quality: 100,
+    compressionLevel: 9,
+    palette: false
+  };
+}
+
+async function ensureMasterLogoExists() {
+  const masterLogoPath = getMasterLogoPath();
+  await fs.access(masterLogoPath);
+  return masterLogoPath;
+}
+
+async function writeResizedPng(inputPath, size, outputPath) {
+  await sharp(inputPath)
+    .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png(createPngOptions())
+    .toFile(outputPath);
+}
+
+async function copyMasterPng(inputPath, outputPath) {
+  const buffer = await sharp(inputPath).png(createPngOptions()).toBuffer();
+  await fs.writeFile(outputPath, buffer);
+}
+
+async function writeInstallerSidebar(masterLogoPath, outputPath) {
+  const canvasSize = 512;
+  const logoSize = 320;
+  const offset = Math.round((canvasSize - logoSize) / 2);
+  const logoBuffer = await sharp(masterLogoPath)
+    .resize(logoSize, logoSize, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png(createPngOptions())
+    .toBuffer();
+
+  const backgroundSvg = `
+    <svg width="${canvasSize}" height="${canvasSize}" viewBox="0 0 ${canvasSize} ${canvasSize}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="outerGlow" cx="50%" cy="42%" r="52%">
+          <stop offset="0%" stop-color="rgba(255, 113, 74, 0.30)" />
+          <stop offset="100%" stop-color="rgba(255, 113, 74, 0)" />
+        </radialGradient>
+        <linearGradient id="surface" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#09131F" />
+          <stop offset="100%" stop-color="#050A10" />
+        </linearGradient>
+      </defs>
+      <rect width="${canvasSize}" height="${canvasSize}" rx="96" fill="url(#surface)" />
+      <circle cx="${canvasSize / 2}" cy="${canvasSize / 2}" r="176" fill="url(#outerGlow)" />
+    </svg>
+  `;
+
+  await sharp(Buffer.from(backgroundSvg))
+    .composite([{ input: logoBuffer, left: offset, top: offset }])
+    .png(createPngOptions())
+    .toFile(outputPath);
+}
+
+export async function main() {
   const rootDir = path.resolve();
-  const srcLogoPath = path.join(rootDir, "..", "..", "..", "..", "new logo.png");
   const tmpDir = path.join(rootDir, "packaging", "scripts", "tmp-icons");
   const assetsDir = path.join(rootDir, "renderer", "public", "assets");
   const installerDir = path.join(rootDir, "packaging", "installer", "assets");
+  const buildResourcesDir = path.join(rootDir, "packaging", "build-resources");
+  const masterLogoPath = await ensureMasterLogoExists();
 
   await fs.mkdir(tmpDir, { recursive: true });
+  await fs.mkdir(assetsDir, { recursive: true });
+  await fs.mkdir(installerDir, { recursive: true });
+  await fs.mkdir(buildResourcesDir, { recursive: true });
 
-  try {
-    await fs.access(srcLogoPath);
-  } catch {
-    console.error(`Source logo not found at: ${srcLogoPath}`);
-    return;
-  }
+  console.log(`Generating icon set from master logo: ${masterLogoPath}`);
 
-  const srcMeta = await sharp(srcLogoPath).metadata();
-  console.log(`Source: ${srcMeta.width}x${srcMeta.height} ${srcMeta.format}`);
-
-  // ─────────────────────────────────────────────────────────
-  // Используем СТРОГО оригинал без обрезки/искажения.
-  // contain = вписываем в квадрат, сохраняя пропорции.
-  // Прозрачный фон заполняет оставшееся пространство.
-  // ─────────────────────────────────────────────────────────
-
-  // ─── 1. MULTI-SIZE ICO ───
-  console.log("Generating multi-size ICO (original, no crop)...");
-  const icoSizes = [16, 32, 48, 64, 128, 256];
+  const icoSizes = [16, 20, 24, 32, 40, 48, 64, 128, 256];
   const icoPngs = await Promise.all(
     icoSizes.map(async (size) => {
-      const p = path.join(tmpDir, `ico-${size}.png`);
-      await sharp(srcLogoPath)
-        .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-        .png({ quality: 100 })
-        .toFile(p);
-      return p;
+      const tempPath = path.join(tmpDir, `ico-${size}.png`);
+      await writeResizedPng(masterLogoPath, size, tempPath);
+      return tempPath;
     })
   );
+
   const icoData = await pngToIco(icoPngs);
   await fs.writeFile(path.join(assetsDir, "icon.ico"), icoData);
+  await fs.writeFile(path.join(assetsDir, "favicon.ico"), icoData);
   await fs.writeFile(path.join(installerDir, "installerHeaderIcon.ico"), icoData);
 
-  // ─── 2. HIGH-RES PNG (1024x1024) ───
-  console.log("Generating 1024x1024 PNG...");
-  const pngBuf1024 = await sharp(srcLogoPath)
-    .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .png({ quality: 100 })
-    .toBuffer();
-  await fs.writeFile(path.join(assetsDir, "shield-logo.png"), pngBuf1024);
-  await fs.writeFile(path.join(assetsDir, "egoist-logo.png"), pngBuf1024);
+  await copyMasterPng(masterLogoPath, path.join(assetsDir, "icon.png"));
+  await copyMasterPng(masterLogoPath, path.join(assetsDir, "shield-logo.png"));
+  await copyMasterPng(masterLogoPath, path.join(assetsDir, "egoist-logo.png"));
+  await copyMasterPng(masterLogoPath, path.join(assetsDir, "logo-original.png"));
+  await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-icon.png"));
+  await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-default.png"));
+  await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-connected.png"));
+  await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-disconnected.png"));
+  await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-error.png"));
+  await writeInstallerSidebar(masterLogoPath, path.join(buildResourcesDir, "installerSidebar.png"));
 
-  // Копируем оригинал как есть
-  await fs.copyFile(srcLogoPath, path.join(assetsDir, "logo-original.png"));
-
-  // ─── 3. FAVICON ICO ───
-  console.log("Generating favicon.ico...");
-  const favSizes = [16, 32, 48];
-  const favPngs = await Promise.all(
-    favSizes.map(async (size) => {
-      const p = path.join(tmpDir, `fav-${size}.png`);
-      await sharp(srcLogoPath)
-        .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-        .png()
-        .toFile(p);
-      return p;
-    })
-  );
-  const faviconIcoData = await pngToIco(favPngs);
-  await fs.writeFile(path.join(assetsDir, "favicon.ico"), faviconIcoData);
-
-  // ─── 4. TRAY ICONS (32x32) ───
-  console.log("Generating tray icons (32x32)...");
-  const trayBase = sharp(srcLogoPath).resize(32, 32, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } });
-
-  await trayBase.clone().modulate({ brightness: 0.85 }).png().toFile(path.join(assetsDir, "tray-default.png"));
-  await trayBase
-    .clone()
-    .modulate({ brightness: 1.2, saturation: 1.3 })
-    .png()
-    .toFile(path.join(assetsDir, "tray-connected.png"));
-  await trayBase
-    .clone()
-    .grayscale()
-    .modulate({ brightness: 0.55 })
-    .png()
-    .toFile(path.join(assetsDir, "tray-disconnected.png"));
-  await trayBase
-    .clone()
-    .tint({ r: 255, g: 0, b: 0 })
-    .modulate({ brightness: 0.75 })
-    .png()
-    .toFile(path.join(assetsDir, "tray-error.png"));
-
-  // ─── Cleanup ───
   await fs.rm(tmpDir, { recursive: true, force: true });
-  console.log("✅ All icons generated (original proportions, no crop)!");
+  console.log("✅ Brand assets generated from the cropped master logo.");
 }
 
-main().catch(console.error);
+const entryPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
+
+if (entryPath === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

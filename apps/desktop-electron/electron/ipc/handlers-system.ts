@@ -124,6 +124,10 @@ export function registerSystemHandlers({ window, stateStore, runtimeManager, zap
     return result;
   });
 
+  ipcMain.handle("runtime:check-updates", async () => {
+    return runtimeManager.checkRuntimeUpdates();
+  });
+
   // File picker
   ipcMain.handle("system:pick-file", async (_event, rawFilters: unknown) => {
     const filters = PickFileFilterSchema.parse(rawFilters);

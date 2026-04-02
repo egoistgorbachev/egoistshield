@@ -13,6 +13,8 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   retries: 1,
+  workers: 1,
+  fullyParallel: false,
   reporter: [["list"]],
   use: {
     trace: "on-first-retry",

@@ -8,7 +8,7 @@
  *  • Auto-closes on action execution
  */
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, Globe, LayoutDashboard, Search, Server, Settings, Shield, Zap } from "lucide-react";
+import { Activity, Globe, LayoutDashboard, Search, Send, Server, Settings, Shield, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MOTION } from "../lib/motion";
 import type { ServerConfig } from "../store/useAppStore";
@@ -119,6 +119,15 @@ export function CommandPalette() {
         group: "navigation",
         action: () => setScreen("zapret"),
         keywords: "zapret dpi winws flowseal обход"
+      },
+      {
+        id: "nav-telegram-proxy",
+        label: "Прокси Telegram",
+        sublabel: "Ctrl+6",
+        icon: <Send className="w-4 h-4" />,
+        group: "navigation",
+        action: () => setScreen("telegram-proxy"),
+        keywords: "telegram proxy прокси telegram mtproto tg ws proxy flowseal"
       }
     ];
 
@@ -134,12 +143,12 @@ export function CommandPalette() {
       },
       {
         id: "action-smart",
-        label: "Smart Connect",
+        label: "Умное подключение",
         sublabel: "Ctrl+Shift+S",
         icon: <Zap className="w-4 h-4" />,
         group: "actions",
         action: () => smartConnect(),
-        keywords: "smart быстрый автоматический"
+        keywords: "умный smart быстрый автоматический"
       }
     ];
 

@@ -20,6 +20,7 @@ import type {
   RuntimeKind,
   RuntimeLifecycle,
   RuntimeStatus,
+  RuntimeUpdateInfo,
   StressResult,
   VpnNode
 } from "./contracts";
@@ -860,6 +861,10 @@ export class VpnRuntimeManager extends EventEmitter {
 
   public async installAllRuntimes(): Promise<{ ok: boolean; message: string; results: RuntimeInstallResult[] }> {
     return this.installer.installAll();
+  }
+
+  public async checkRuntimeUpdates(): Promise<RuntimeUpdateInfo[]> {
+    return this.installer.checkUpdates();
   }
 
   public connect(

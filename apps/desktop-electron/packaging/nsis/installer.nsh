@@ -55,11 +55,14 @@
   ; Даём системе время отпустить winws/WinDivert файлы после stop/delete service.
   Sleep 2000
 
-  ; Очистка temp и AppData
+  ; Очистка temp без удаления пользовательского профиля.
+  ; Reinstall/repair не должен молча сносить настройки, подписки и логи.
   RMDir /r "$TEMP\EgoistShield"
-  Delete "$APPDATA\EgoistShield\zapret\core\bin\WinDivert64.sys"
-  Delete "$APPDATA\EgoistShield\zapret\core\bin\WinDivert.dll"
-  RMDir /r "$APPDATA\EgoistShield\zapret"
-  RMDir /r "$APPDATA\EgoistShield"
-  RMDir /r "$LOCALAPPDATA\EgoistShield"
+
+  ; После выхода uninstaller дочищаем пустой каталог установки отдельным cmd-процессом.
+  ; Это снимает lock на Uninstall *.exe и убирает пустой $INSTDIR без ожидания reboot.
+  Exec '"$SYSDIR\cmd.exe" /C cd /d "$TEMP" & ping 127.0.0.1 -n 5 >NUL & rmdir /S /Q "$INSTDIR"'
+
+  ; Дополнительный fallback на случай, если директория останется занята.
+  RMDir /r /REBOOTOK "$INSTDIR"
 !macroend

@@ -59,13 +59,13 @@ const CONNECTION_MODE_TOOLTIP_CONTENT: Record<
   { title: string; description: string; accentClass: string }
 > = {
   smart: {
-    title: "Smart Mode",
+    title: "Умный режим",
     description: "Автоматически выбирает сервер с лучшим пингом и обходит сбои подключения.",
     accentClass: "text-brand border-brand/20"
   },
   default: {
-    title: "Default Mode",
-    description: "Строго подключается только к выбранному серверу.",
+    title: "Точный режим",
+    description: "Подключается только к выбранному серверу без автопереключения.",
     accentClass: "text-white/90 border-white/10"
   }
 };
@@ -144,25 +144,36 @@ function InfoCard({
   onClick?: () => void;
   className?: string;
 }) {
+  const cardClassName = cn(
+    "relative flex items-center gap-3 px-4 py-3.5 rounded-2xl cursor-default",
+    "bg-glass-subtle border border-glass-border-subtle shadow-card",
+    "backdrop-blur-md transition-all duration-300 group overflow-visible",
+    "hover:-translate-y-[1px] hover:border-glass-border-medium hover:shadow-[0_4px_20px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)]",
+    "active:scale-[0.98] active:duration-100",
+    onClick &&
+      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#082032]",
+    className
+  );
+
+  const glow = (
+    <div
+      className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+      style={{ background: "linear-gradient(135deg, rgba(255,76,41,0.06), transparent 60%)" }}
+    />
+  );
+
+  if (onClick) {
+    return (
+      <motion.button type="button" onClick={onClick} className={cardClassName}>
+        {glow}
+        {children}
+      </motion.button>
+    );
+  }
+
   return (
-    <motion.div
-      onClick={onClick}
-      role={onClick ? "button" : undefined}
-      className={cn(
-        "relative flex items-center gap-3 px-4 py-3.5 rounded-2xl cursor-default",
-        "bg-glass-subtle border border-glass-border-subtle shadow-card",
-        "backdrop-blur-md transition-all duration-300 group overflow-visible",
-        "hover:-translate-y-[1px] hover:border-glass-border-medium hover:shadow-[0_4px_20px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)]",
-        "active:scale-[0.98] active:duration-100",
-        onClick && "cursor-pointer",
-        className
-      )}
-    >
-      {/* Hover glow */}
-      <div
-        className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100"
-        style={{ background: "linear-gradient(135deg, rgba(255,76,41,0.06), transparent 60%)" }}
-      />
+    <motion.div className={cardClassName}>
+      {glow}
       {children}
     </motion.div>
   );
@@ -312,21 +323,56 @@ export function Dashboard() {
   const downMBs = traffic.down / 1024;
   const upMBs = traffic.up / 1024;
   const maxSpeed = Math.max(downMBs, upMBs, 10);
+  const connectionVisualState = isDisconnecting
+    ? "disconnecting"
+    : isConnecting || isSmartConnecting
+      ? "connecting"
+      : isConnected
+        ? "connected"
+        : "disconnected";
+  const powerButtonLabel =
+    connectionVisualState === "disconnecting"
+      ? "Отключение..."
+      : connectionVisualState === "connecting"
+        ? "Подключение..."
+        : connectionVisualState === "connected"
+          ? "Отключить VPN"
+          : "Подключить VPN";
+  const powerStatusLabel =
+    connectionVisualState === "disconnecting"
+      ? "ОТКЛЮЧЕНИЕ..."
+      : connectionVisualState === "connecting"
+        ? "ПОДКЛЮЧЕНИЕ..."
+        : connectionVisualState === "connected"
+          ? "ЗАЩИЩЕНО"
+          : "ОТКЛЮЧЕНО";
 
   // Главная кнопка должна быть предельно читаемой:
   // фирменный оранжевый в off-state и насыщенный зелёный в on-state,
   // без скачков цвета из-за качества пинга.
   const btnGrad = useMemo(() => {
-    if (isConnecting) return "linear-gradient(135deg, #FF6B47, #FF4C29)";
-    if (!isConnected) return "linear-gradient(135deg, #E0401E, #FF4C29, #FF6B47)";
+    if (connectionVisualState === "connecting" || connectionVisualState === "disconnecting") {
+      return "linear-gradient(135deg, #FF6B47, #FF4C29)";
+    }
+
+    if (connectionVisualState === "disconnected") {
+      return "linear-gradient(135deg, #E0401E, #FF4C29, #FF6B47)";
+    }
+
     return "linear-gradient(135deg, #047857, #10B981, #34D399)";
-  }, [isConnected, isConnecting]);
+  }, [connectionVisualState]);
 
   const btnShadow = useMemo(() => {
-    if (isConnecting) return "0 8px 40px rgba(255,76,41,0.4), 0 2px 8px rgba(255,76,41,0.2)";
-    if (!isConnected) return "0 8px 40px rgba(255,76,41,0.5), 0 2px 8px rgba(255,76,41,0.3)";
+    if (connectionVisualState === "connecting" || connectionVisualState === "disconnecting") {
+      return "0 8px 40px rgba(255,76,41,0.4), 0 2px 8px rgba(255,76,41,0.2)";
+    }
+
+    if (connectionVisualState === "disconnected") {
+      return "0 8px 40px rgba(255,76,41,0.5), 0 2px 8px rgba(255,76,41,0.3)";
+    }
+
     return "0 8px 40px rgba(16,185,129,0.42), 0 2px 8px rgba(16,185,129,0.22)";
-  }, [isConnected, isConnecting]);
+  }, [connectionVisualState]);
 
   const hideConnectionModeTooltip = (mode: ConnectionMode): void => {
     if (hoveredMode !== mode) {
@@ -440,10 +486,15 @@ export function Dashboard() {
               whileHover={{ scale: 1.06 }}
               whileTap={{ scale: 0.88 }}
               transition={MOTION.spring.bouncy}
-              aria-label={isConnecting ? "Подключение..." : isConnected ? "Отключить VPN" : "Подключить VPN"}
+              aria-label={powerButtonLabel}
+              data-connection-state={connectionVisualState}
+              disabled={connectionVisualState === "connecting" || connectionVisualState === "disconnecting"}
               className={cn(
                 "relative w-36 h-36 rounded-full focus:outline-none z-10 group",
-                isConnected && !isConnecting && !isDisconnecting && "animate-shield-breathe"
+                connectionVisualState === "connecting" || connectionVisualState === "disconnecting"
+                  ? "cursor-progress"
+                  : "cursor-pointer",
+                connectionVisualState === "connected" && "animate-shield-breathe"
               )}
             >
               {/* Pulsing focus ring (keyboard a11y) — CSS-only, zero GPU when not focused */}
@@ -467,7 +518,7 @@ export function Dashboard() {
 
               {/* Icon */}
               <div className="relative z-10 flex items-center justify-center w-full h-full">
-                {isConnecting ? (
+                {connectionVisualState === "connecting" || connectionVisualState === "disconnecting" ? (
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
@@ -483,30 +534,24 @@ export function Dashboard() {
 
           {/* ═══ STATUS TEXT ═══ */}
           <div className="flex flex-col items-center gap-2 z-10 shrink-0">
-            <AnimatePresence mode="wait">
-              <motion.h1
-                key={isDisconnecting ? "disc" : isConnecting ? "conn" : isConnected ? "on" : "off"}
-                initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                className={cn(
-                  "text-2xl font-display font-bold tracking-[0.25em] uppercase",
-                  isConnected ? "text-emerald-400" : "text-brand"
-                )}
-                style={{
-                  textShadow: isConnected ? "0 0 24px rgba(16,185,129,0.6)" : "0 0 24px rgba(255,76,41,0.6)"
-                }}
-              >
-                {isDisconnecting
-                  ? "ОТКЛЮЧЕНИЕ..."
-                  : isConnecting
-                    ? "ПОДКЛЮЧЕНИЕ..."
-                    : isConnected
-                      ? "ЗАЩИЩЕНО"
-                      : "ОТКЛЮЧЕНО"}
-              </motion.h1>
-            </AnimatePresence>
+            <motion.h1
+              key={connectionVisualState}
+              initial={{ opacity: 0, y: 8, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className={cn(
+                "text-2xl font-display font-bold tracking-[0.25em] uppercase",
+                connectionVisualState === "connected" ? "text-emerald-400" : "text-brand"
+              )}
+              style={{
+                textShadow:
+                  connectionVisualState === "connected"
+                    ? "0 0 24px rgba(16,185,129,0.6)"
+                    : "0 0 24px rgba(255,76,41,0.6)"
+              }}
+            >
+              {powerStatusLabel}
+            </motion.h1>
 
             {(isConnected || isConnecting || isDisconnecting) && currentServer && (
               <motion.div
@@ -543,73 +588,75 @@ export function Dashboard() {
               style={NO_DRAG_REGION_STYLE}
               className="relative z-20 flex flex-col items-center gap-3 shrink-0"
             >
-              <div className="relative flex items-center gap-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-1 backdrop-blur-sm">
-                <button
-                  type="button"
-                  onClick={() => setConnectionMode("smart")}
-                  onPointerEnter={() => setHoveredMode("smart")}
-                  onPointerLeave={() => hideConnectionModeTooltip("smart")}
-                  onMouseEnter={() => setHoveredMode("smart")}
-                  onMouseLeave={() => hideConnectionModeTooltip("smart")}
-                  onFocus={() => setHoveredMode("smart")}
-                  onBlur={() => hideConnectionModeTooltip("smart")}
-                  className={cn(
-                    "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300",
-                    connectionMode === "smart"
-                      ? "bg-brand/15 text-brand border border-brand/25 shadow-[0_0_12px_rgba(255,76,41,0.18)]"
-                      : "text-muted hover:text-white/60"
-                  )}
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  Smart
-                </button>
+              <div className="relative flex w-[248px] max-w-[calc(100vw-112px)] flex-col items-center pb-[70px]">
+                <div className="relative flex items-center gap-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-1 backdrop-blur-sm">
+                  <button
+                    type="button"
+                    onClick={() => setConnectionMode("smart")}
+                    onPointerEnter={() => setHoveredMode("smart")}
+                    onPointerLeave={() => hideConnectionModeTooltip("smart")}
+                    onMouseEnter={() => setHoveredMode("smart")}
+                    onMouseLeave={() => hideConnectionModeTooltip("smart")}
+                    onFocus={() => setHoveredMode("smart")}
+                    onBlur={() => hideConnectionModeTooltip("smart")}
+                    className={cn(
+                      "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300",
+                      connectionMode === "smart"
+                        ? "bg-brand/15 text-brand border border-brand/25 shadow-[0_0_12px_rgba(255,76,41,0.18)]"
+                        : "text-muted hover:text-white/60"
+                    )}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    Умный
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setConnectionMode("default")}
-                  onPointerEnter={() => setHoveredMode("default")}
-                  onPointerLeave={() => hideConnectionModeTooltip("default")}
-                  onMouseEnter={() => setHoveredMode("default")}
-                  onMouseLeave={() => hideConnectionModeTooltip("default")}
-                  onFocus={() => setHoveredMode("default")}
-                  onBlur={() => hideConnectionModeTooltip("default")}
-                  className={cn(
-                    "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300",
-                    connectionMode === "default"
-                      ? "bg-white/[0.08] text-white/80 border border-white/[0.12] shadow-[0_0_12px_rgba(255,255,255,0.05)]"
-                      : "text-muted hover:text-white/60"
-                  )}
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  Default
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setConnectionMode("default")}
+                    onPointerEnter={() => setHoveredMode("default")}
+                    onPointerLeave={() => hideConnectionModeTooltip("default")}
+                    onMouseEnter={() => setHoveredMode("default")}
+                    onMouseLeave={() => hideConnectionModeTooltip("default")}
+                    onFocus={() => setHoveredMode("default")}
+                    onBlur={() => hideConnectionModeTooltip("default")}
+                    className={cn(
+                      "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300",
+                      connectionMode === "default"
+                        ? "bg-white/[0.08] text-white/80 border border-white/[0.12] shadow-[0_0_12px_rgba(255,255,255,0.05)]"
+                        : "text-muted hover:text-white/60"
+                    )}
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    Точный
+                  </button>
+                </div>
 
-              <div className="flex min-h-[58px] w-full items-start justify-center">
-                <AnimatePresence mode="wait">
-                  {hoveredMode && (
-                    <motion.div
-                      key={hoveredMode}
-                      data-testid="connection-mode-tooltip"
-                      initial={{ opacity: 0, y: -4, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                      transition={{ duration: 0.16, ease: "easeOut" }}
-                      className="rounded-2xl border bg-[#2C394B]/96 px-3 py-2.5 text-center text-[10px] leading-tight text-white/90 shadow-[0_12px_36px_rgba(0,0,0,0.42)] backdrop-blur-md pointer-events-none"
-                      style={{ ...NO_DRAG_REGION_STYLE, width: 248, maxWidth: "calc(100vw - 112px)" }}
-                    >
-                      <span
-                        className={cn(
-                          "mb-1 block border-b pb-1 font-bold",
-                          CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].accentClass
-                        )}
+                <div className="pointer-events-none absolute inset-x-0 top-full flex justify-center pt-3">
+                  <AnimatePresence mode="wait">
+                    {hoveredMode && (
+                      <motion.div
+                        key={hoveredMode}
+                        data-testid="connection-mode-tooltip"
+                        initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                        transition={{ duration: 0.16, ease: "easeOut" }}
+                        className="rounded-2xl border bg-[#2C394B]/96 px-3 py-2.5 text-center text-[10px] leading-tight text-white/90 shadow-[0_12px_36px_rgba(0,0,0,0.42)] backdrop-blur-md"
+                        style={{ ...NO_DRAG_REGION_STYLE, width: 248, maxWidth: "calc(100vw - 112px)" }}
                       >
-                        {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].title}
-                      </span>
-                      {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].description}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                        <span
+                          className={cn(
+                            "mb-1 block border-b pb-1 font-bold",
+                            CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].accentClass
+                          )}
+                        >
+                          {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].title}
+                        </span>
+                        {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].description}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </motion.div>
           )}
@@ -702,15 +749,7 @@ export function Dashboard() {
                     )}
                   >
                     {ipCountryCode ? (
-                      <img
-                        src={`https://flagcdn.com/w40/${ipCountryCode}.png`}
-                        alt={ipCountryCode}
-                        className="w-5 h-4 object-cover rounded-[3px] shadow-sm"
-                        style={{ imageRendering: "auto" }}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
+                      <FlagIcon code={ipCountryCode} size={20} className="shadow-sm shadow-black/20" />
                     ) : (
                       <ShieldCheck className={cn("w-4 h-4", isConnected ? "text-[#FF6B47]" : "text-subtle")} />
                     )}

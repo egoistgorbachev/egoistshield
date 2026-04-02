@@ -9,10 +9,13 @@ $runtimeDir = Join-Path $projectRoot "runtime\xray"
 $runtimeExe = Join-Path $runtimeDir "xray.exe"
 $versionFile = Join-Path $runtimeDir "VERSION.txt"
 $tempDir = Join-Path $projectRoot "packaging\build\runtime-download"
+$packageJsonPath = Join-Path $projectRoot "package.json"
+$releaseVersion = if (Test-Path $packageJsonPath) { ((Get-Content $packageJsonPath -Raw) | ConvertFrom-Json).version } else { $null }
+$buildUserAgent = "EgoistShield-Build/" + $(if ($releaseVersion) { $releaseVersion } else { "dev" })
 
 function Get-LatestRelease {
   return Invoke-RestMethod -Uri "https://api.github.com/repos/XTLS/Xray-core/releases/latest" -Headers @{
-    "User-Agent" = "EgoistShield-Build/2.0"
+    "User-Agent" = $buildUserAgent
     "Accept" = "application/vnd.github+json"
   }
 }

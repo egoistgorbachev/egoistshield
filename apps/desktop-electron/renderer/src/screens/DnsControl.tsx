@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, Globe2, ShieldCheck, Sparkles, Wifi } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { parseDnsServers } from "../../../shared/system-dns";
+import { PageHero } from "../components/PageHero";
 import { getAPI } from "../lib/api";
 import { cn } from "../lib/cn";
 import { useAppStore } from "../store/useAppStore";
@@ -38,6 +39,9 @@ const DNS_PRESETS = [
   }
 ] as const;
 
+const DNS_TEXTAREA_MIN_HEIGHT = 100;
+const DNS_TEXTAREA_MAX_HEIGHT = 360;
+
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -57,6 +61,20 @@ function splitDnsServers(value: string): string[] {
   }
 }
 
+function resizeDnsTextarea(textarea: HTMLTextAreaElement | null): void {
+  if (!textarea) {
+    return;
+  }
+
+  textarea.style.height = "auto";
+
+  const nextHeight = Math.min(Math.max(textarea.scrollHeight, DNS_TEXTAREA_MIN_HEIGHT), DNS_TEXTAREA_MAX_HEIGHT);
+  const isCapped = textarea.scrollHeight > DNS_TEXTAREA_MAX_HEIGHT;
+
+  textarea.style.height = `${nextHeight}px`;
+  textarea.style.overflowY = isCapped ? "auto" : "hidden";
+}
+
 function getPresetId(serversValue: string): string | null {
   const normalized = splitDnsServers(serversValue).join("|");
   const preset = DNS_PRESETS.find((item) => item.servers.join("|") === normalized);
@@ -73,6 +91,7 @@ export function DnsControl() {
   const [isApplying, setIsApplying] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const dnsTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     setDraft(systemDnsServers);
@@ -91,6 +110,10 @@ export function DnsControl() {
       .then((value) => setIsAdmin(value))
       .catch(() => setIsAdmin(false));
   }, []);
+
+  useEffect(() => {
+    resizeDnsTextarea(dnsTextareaRef.current);
+  }, [draft]);
 
   const validationMessage = useMemo(() => {
     if (!draft.trim()) {
@@ -179,22 +202,40 @@ export function DnsControl() {
     <main className="relative z-10 flex-1 h-full overflow-y-auto custom-scrollbar px-6 py-6">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 pb-12">
         <div className="pt-4">
-          <div className="max-w-3xl">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-brand-light/90">
-              <Sparkles className="h-3.5 w-3.5" />
-              DNS Center
-            </div>
-            <div className="mt-4">
-              <h1 className="flex items-center gap-3 text-3xl font-display font-bold text-white/95">
-                <Globe2 className="h-8 w-8 text-brand-light" />
-                Управление DNS
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
-                Отдельный экран для системного DNS: быстрые пресеты, ручной ввод, сброс по умолчанию и понятный статус
-                Windows-конфигурации без лишней навигации по настройкам.
-              </p>
-            </div>
-          </div>
+          <PageHero
+            eyebrow="Центр DNS"
+            title="Управление DNS"
+            icon={<Globe2 className="h-7 w-7 text-brand-light" />}
+            description="Системный DNS, пресеты, ручной ввод и быстрый сброс в одном компактном экране."
+            badgeLayout="balanced"
+            badges={[
+              {
+                label: activeDnsServers.length > 0 ? "Свой DNS" : "DNS Windows",
+                icon: <Sparkles className="h-3.5 w-3.5" />,
+                tone: activeDnsServers.length > 0 ? "brand" : "neutral"
+              },
+              {
+                label: isAdmin === false ? "Нужны права" : "Готово",
+                icon: <ShieldCheck className="h-3.5 w-3.5" />,
+                tone: isAdmin === false ? "warning" : "success"
+              },
+              {
+                label: fakeDns ? "DNS в VPN" : "DNS в VPN выкл",
+                icon: <Wifi className="h-3.5 w-3.5" />,
+                tone: fakeDns ? "accent" : "neutral"
+              }
+            ]}
+            actions={
+              <div className="grid gap-3 sm:grid-cols-3 xl:max-w-[620px]">
+                <HeroMetric label="Режим" value={activeModeLabel} />
+                <HeroMetric
+                  label="Серверы"
+                  value={activeDnsServers.length > 0 ? activeDnsServers.join(" · ") : "DNS Windows"}
+                />
+                <HeroMetric label="Применение" value={isAdmin === false ? "Нужны права" : "Готово"} />
+              </div>
+            }
+          />
         </div>
 
         <section className="grid gap-6">
@@ -207,11 +248,11 @@ export function DnsControl() {
                   <h2 className="text-xl font-display font-semibold text-white/95">{activeModeLabel}</h2>
                   <p className="max-w-xl text-sm leading-relaxed text-muted">
                     Настройка применяется ко всей системе Windows. Для защищённого DNS внутри самого VPN используйте
-                    переключатель Secure DNS на экране настроек.
+                    переключатель «Защищённый DNS» на экране настроек.
                   </p>
                 </div>
                 <div className="flex w-full max-w-[420px] flex-col gap-3 xl:items-end">
-                  <div className="flex flex-wrap gap-2 xl:justify-end">
+                  <div className="flex flex-nowrap gap-2 overflow-x-auto xl:justify-end [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     <StatusChip
                       icon={<ShieldCheck className="h-3.5 w-3.5" />}
                       label={isAdmin === false ? "Нужен запуск от администратора" : "Готов к применению"}
@@ -219,7 +260,7 @@ export function DnsControl() {
                     />
                     <StatusChip
                       icon={<Wifi className="h-3.5 w-3.5" />}
-                      label={fakeDns ? "Secure DNS в VPN включён" : "Secure DNS в VPN выключен"}
+                      label={fakeDns ? "DNS в VPN включён" : "DNS в VPN выключен"}
                       tone={fakeDns ? "success" : "neutral"}
                     />
                   </div>
@@ -232,23 +273,30 @@ export function DnsControl() {
                 </label>
                 <textarea
                   id="system-dns-input"
+                  ref={dnsTextareaRef}
                   value={draft}
                   onChange={(event) => {
                     setDraft(event.target.value);
                     setSelectedPresetId(getPresetId(event.target.value));
+                    resizeDnsTextarea(event.target);
                   }}
-                  rows={6}
+                  rows={3}
                   placeholder={"1.1.1.1, 1.0.0.1\n8.8.8.8"}
-                  className="w-full resize-none rounded-3xl border border-white/10 bg-[#081B2B]/85 px-4 py-4 text-sm leading-relaxed text-white/90 outline-none transition-all focus:border-brand/35 focus:ring-2 focus:ring-brand/20"
+                  className="w-full resize-none overflow-hidden rounded-[24px] border border-white/10 bg-[#081B2B]/85 px-4 py-2.5 text-sm leading-[1.5] text-white/90 outline-none transition-all focus:border-brand/35 focus:ring-2 focus:ring-brand/20"
                 />
-                <div className="mt-3 flex items-start justify-between gap-4">
-                  <div className="text-xs leading-relaxed text-muted">
+                <div className="mt-2 flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.035] px-3.5 py-2">
+                  <div
+                    className="min-w-0 flex-1 truncate text-[11px] leading-none text-muted"
+                    title="Формат: IP-адреса DNS, `IP:port` или URL с IP-хостом через запятую, пробел или новую строку."
+                  >
                     Формат: IP-адреса DNS, `IP:port` или URL с IP-хостом через запятую, пробел или новую строку.
                   </div>
                   {validationMessage ? (
-                    <div className="text-xs font-semibold text-amber-300">{validationMessage}</div>
+                    <div className="shrink-0 truncate text-[11px] font-semibold text-amber-300" title={validationMessage}>
+                      {validationMessage}
+                    </div>
                   ) : (
-                    <div className="text-xs font-semibold text-emerald-300">Формат ввода корректный</div>
+                    <div className="shrink-0 text-[11px] font-semibold text-emerald-300">Формат ввода корректный</div>
                   )}
                 </div>
               </div>
@@ -336,6 +384,23 @@ export function DnsControl() {
         </section>
       </div>
     </main>
+  );
+}
+
+function HeroMetric({
+  label,
+  value
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-[20px] border border-white/10 bg-black/10 px-3.5 py-3 backdrop-blur-xl">
+      <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/42">{label}</div>
+      <div className="mt-1.5 truncate text-sm font-semibold text-white/90" title={value}>
+        {value}
+      </div>
+    </div>
   );
 }
 

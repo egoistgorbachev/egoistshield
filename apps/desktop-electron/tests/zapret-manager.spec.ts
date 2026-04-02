@@ -1,5 +1,9 @@
+import os from "node:os";
+import path from "node:path";
+import { promises as fs } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ZapretStatus } from "../electron/ipc/contracts";
+import packageJson from "../package.json";
 import { resolveWindowsExecutable } from "../electron/ipc/windows-system-binaries";
 import {
   buildDiscordCacheCleanupPlan,
@@ -7,6 +11,7 @@ import {
   ZapretManager as ZapretManagerClass,
   applyZapretPlaceholders,
   compareZapretProfileNames,
+  isFlowsealRootPayloadEntry,
   isWindowsServiceMissingError,
   parseZapretWinwsArgs,
   splitWindowsCommandLine
@@ -19,6 +24,7 @@ start "zapret: %~n0" /min "%BIN%winws.exe" --wf-tcp=80,443,%GameFilterTCP% --wf-
 --filter-udp=443 --hostlist="%LISTS%list-general.txt" --dpi-desync=fake --new ^
 --filter-tcp=%GameFilterTCP% --dpi-desync=fake --dpi-desync-fake-tls=^!
 `;
+const APP_VERSION = packageJson.version;
 
 interface ServiceQueryResult {
   installed: boolean;
@@ -31,6 +37,8 @@ interface ZapretManagerInternals {
   assertNoExternalConflict(): Promise<void>;
   assertStandaloneStopped(): Promise<void>;
   ensurePathExists(targetPath: string, errorMessage: string): Promise<void>;
+  applyFlowsealScriptFixes(coreDir: string): Promise<void>;
+  readCoreVersion(): Promise<string | null>;
   buildServiceCommand(profileName: string): Promise<{
     profile: { name: string; fileName: string };
     args: string;
@@ -141,6 +149,113 @@ describe("zapret-manager helpers", () => {
       "C:\\Users\\test\\AppData\\Roaming\\discordcanary\\Partitions\\discord_voice\\GPUCache"
     );
     expect(new Set(plan.directories).size).toBe(plan.directories.length);
+  });
+
+  it("распознаёт payload-элементы Flowseal из root-layout архива", () => {
+    expect(isFlowsealRootPayloadEntry("bin", true)).toBe(true);
+    expect(isFlowsealRootPayloadEntry("lists", true)).toBe(true);
+    expect(isFlowsealRootPayloadEntry("utils", true)).toBe(true);
+    expect(isFlowsealRootPayloadEntry("service.bat", false)).toBe(true);
+    expect(isFlowsealRootPayloadEntry("general (ALT3).bat", false)).toBe(true);
+    expect(isFlowsealRootPayloadEntry("cloudflare_switch.bat", false)).toBe(true);
+
+    expect(isFlowsealRootPayloadEntry(".service", true)).toBe(false);
+    expect(isFlowsealRootPayloadEntry(".github", true)).toBe(false);
+    expect(isFlowsealRootPayloadEntry("README.md", false)).toBe(false);
+    expect(isFlowsealRootPayloadEntry("LICENSE.txt", false)).toBe(false);
+  });
+
+  it("автоматически патчит legacy Flowseal service/update scripts под managed update flow", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "egoist-zapret-scriptfix-"));
+    const coreDir = path.join(tempRoot, "core");
+    const fastDir = path.join(coreDir, "fast");
+    await fs.mkdir(fastDir, { recursive: true });
+
+    try {
+      await fs.writeFile(
+        path.join(coreDir, "service.bat"),
+        [
+          "@echo off",
+          'set "LOCAL_VERSION=%CURRENT_VERSION%"',
+          `for /f "delims=" %%A in ('powershell -NoProfile -Command "(Invoke-WebRequest -Uri ''%GITHUB_VERSION_URL%'' -UseBasicParsing).Content.Trim()" 2^>nul') do set "GITHUB_VERSION=%%A"`,
+          "echo done"
+        ].join("\r\n"),
+        "utf8"
+      );
+      await fs.writeFile(path.join(fastDir, "update_service.bat"), "@echo off\r\necho legacy updater\r\n", "utf8");
+
+      const manager = new ZapretManagerClass(
+        "C:\\resources",
+        "C:\\app",
+        "C:\\Users\\test\\AppData\\Roaming\\EgoistShield"
+      ) as unknown as ZapretManagerInternals;
+
+      await manager.applyFlowsealScriptFixes(coreDir);
+
+      const serviceScript = await fs.readFile(path.join(coreDir, "service.bat"), "utf8");
+      const updateScript = await fs.readFile(path.join(fastDir, "update_service.bat"), "utf8");
+
+      expect(serviceScript).toContain('set "LOCAL_VERSION=unknown"');
+      expect(serviceScript).toContain(
+        'if exist "%~dp0..\\VERSION.txt" for /f "usebackq delims=" %%A in ("%~dp0..\\VERSION.txt") do set "LOCAL_VERSION=%%~A"'
+      );
+      expect(serviceScript).toContain(`User-Agent: EgoistShield/${APP_VERSION}`);
+      expect(updateScript).toContain("sc delete WinDivert >nul 2>nul");
+      expect(updateScript).toContain("sc delete WinDivert14 >nul 2>nul");
+      expect(updateScript).toContain(`User-Agent'='EgoistShield/${APP_VERSION}`);
+      expect(updateScript).toContain("Expand-Archive -LiteralPath '%ZIP_PATH%' -DestinationPath '%UNPACK_DIR%' -Force");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("читает текущую версию Core из VERSION.txt, а не из legacy LOCAL_VERSION=unknown", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "egoist-zapret-version-"));
+    const userDataDir = path.join(tempRoot, "user-data");
+    const workDir = path.join(userDataDir, "zapret");
+    await fs.mkdir(path.join(workDir, "core"), { recursive: true });
+
+    try {
+      await fs.writeFile(path.join(workDir, "VERSION.txt"), "v1.9.7b\n", "utf8");
+      await fs.writeFile(path.join(workDir, "core", "service.bat"), '@echo off\r\nset "LOCAL_VERSION=unknown"\r\n', "utf8");
+
+      const manager = new ZapretManagerClass(path.join(tempRoot, "resources"), path.join(tempRoot, "app"), userDataDir);
+      const internal = manager as unknown as ZapretManagerInternals;
+
+      await expect(internal.readCoreVersion()).resolves.toBe("v1.9.7b");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("ensureProvisioned не откатывает уже обновлённый Core на более старый bundled runtime", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "egoist-zapret-refresh-"));
+    const resourcesPath = path.join(tempRoot, "resources");
+    const appPath = path.join(tempRoot, "app");
+    const userDataDir = path.join(tempRoot, "user-data");
+    const bundledRuntimeDir = path.join(resourcesPath, "runtime", "zapret");
+    const workDir = path.join(userDataDir, "zapret");
+
+    await fs.mkdir(path.join(bundledRuntimeDir, "core"), { recursive: true });
+    await fs.mkdir(path.join(workDir, "core"), { recursive: true });
+
+    try {
+      await fs.writeFile(path.join(bundledRuntimeDir, "VERSION.txt"), "v1.7.3\n", "utf8");
+      await fs.writeFile(path.join(bundledRuntimeDir, "core", "service.bat"), "@echo off\r\necho bundled build\r\n", "utf8");
+
+      await fs.writeFile(path.join(workDir, "VERSION.txt"), "v1.9.7b\n", "utf8");
+      await fs.writeFile(path.join(workDir, "core", "service.bat"), "@echo off\r\necho updated build\r\n", "utf8");
+
+      const manager = new ZapretManagerClass(resourcesPath, appPath, userDataDir);
+      const internal = manager as unknown as ZapretManagerInternals;
+
+      await internal.ensureProvisioned();
+
+      await expect(fs.readFile(path.join(workDir, "VERSION.txt"), "utf8")).resolves.toContain("v1.9.7b");
+      await expect(fs.readFile(path.join(workDir, "core", "service.bat"), "utf8")).resolves.toContain("updated build");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 });
 
@@ -286,19 +401,26 @@ describe("ZapretManager command launchers", () => {
     internal = manager as unknown as ZapretManagerInternals;
   });
 
-  it("openServiceMenu открывает отдельную cmd-консоль для service.bat", async () => {
-    vi.spyOn(internal, "ensureProvisioned").mockResolvedValue(undefined);
-    vi.spyOn(internal, "ensurePathExists").mockResolvedValue(undefined);
+  it("openServiceMenu остаётся безопасным deprecated-wrapper без запуска legacy консоли", async () => {
     const launchConsoleCommandSpy = vi.spyOn(internal, "launchConsoleCommand").mockResolvedValue(undefined);
 
     const result = await manager.openServiceMenu();
 
-    expect(launchConsoleCommandSpy).toHaveBeenCalledWith(
-      resolveWindowsExecutable("cmd.exe"),
-      ["/d", "/k", "C:\\Users\\test\\AppData\\Roaming\\EgoistShield\\zapret\\core\\service.bat"],
-      { cwd: "C:\\Users\\test\\AppData\\Roaming\\EgoistShield\\zapret\\core" }
-    );
-    expect(result.opened).toBe(true);
+    expect(launchConsoleCommandSpy).not.toHaveBeenCalled();
+    expect(result.opened).toBe(false);
+    expect(result.message).toContain("Сервисное консольное меню Flowseal больше не используется");
+    expect(result.output).toContain("Deprecated console workflow suppressed");
+  });
+
+  it("runCoreUpdater остаётся безопасным deprecated-wrapper без запуска updater.bat", async () => {
+    const launchConsoleCommandSpy = vi.spyOn(internal, "launchConsoleCommand").mockResolvedValue(undefined);
+
+    const result = await manager.runCoreUpdater();
+
+    expect(launchConsoleCommandSpy).not.toHaveBeenCalled();
+    expect(result.opened).toBe(false);
+    expect(result.message).toContain("Классический консольный обновлятор Flowseal Core больше не используется");
+    expect(result.output).toContain("integrated Flowseal Core panel");
   });
 
   it("runFlowsealTests открывает отдельную PowerShell-консоль для test zapret.ps1", async () => {
@@ -320,5 +442,63 @@ describe("ZapretManager command launchers", () => {
       { cwd: "C:\\Users\\test\\AppData\\Roaming\\EgoistShield\\zapret\\core\\utils" }
     );
     expect(result.opened).toBe(true);
+  });
+
+  it("checkForUpdates выдаёт понятную ошибку, если Flowseal version endpoint отвечает HTTP 403", async () => {
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: false,
+          status: 403
+        })
+      );
+      vi.spyOn(internal, "ensureProvisioned").mockResolvedValue(undefined);
+      vi.spyOn(internal, "readCoreVersion").mockResolvedValue("v1.7.3");
+
+      await expect(manager.checkForUpdates()).rejects.toThrow(
+        "Не удалось выполнить проверку обновлений Flowseal Core: сервер Flowseal временно отклонил запрос (HTTP 403)."
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("checkForUpdates не предлагает повторное обновление, если версии отличаются только префиксом v", async () => {
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          text: vi.fn().mockResolvedValue("1.9.7b")
+        })
+      );
+      vi.spyOn(internal, "ensureProvisioned").mockResolvedValue(undefined);
+      vi.spyOn(internal, "readCoreVersion").mockResolvedValue("v1.9.7b");
+
+      await expect(manager.checkForUpdates()).resolves.toMatchObject({
+        currentVersion: "v1.9.7b",
+        latestVersion: "1.9.7b",
+        updateAvailable: false
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("updateIpsetList выдаёт понятную ошибку по таймауту Flowseal", async () => {
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockRejectedValue(Object.assign(new Error("The operation was aborted"), { name: "AbortError" }))
+      );
+      vi.spyOn(internal, "ensureProvisioned").mockResolvedValue(undefined);
+
+      await expect(manager.updateIpsetList()).rejects.toThrow(
+        "Не удалось выполнить обновление списка IP для Zapret: сервер Flowseal не ответил вовремя."
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

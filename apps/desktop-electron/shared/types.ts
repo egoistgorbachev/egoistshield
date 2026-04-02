@@ -107,6 +107,8 @@ export interface PersistedState {
 }
 
 export type RuntimeKind = "xray" | "sing-box";
+export type IntegritySource = "authenticode" | "sha256" | "none";
+export type AppUpdateStatus = "up-to-date" | "update-available" | "local-newer";
 export type RuntimeLifecycle =
   | "idle"
   | "probing"
@@ -176,6 +178,22 @@ export interface RuntimeInstallResult {
   runtimeKind: RuntimeKind;
   version: string | null;
   updated: boolean;
+  verified?: boolean;
+  verificationMessage?: string | null;
+  integritySource?: IntegritySource | null;
+}
+
+export interface RuntimeUpdateInfo {
+  runtimeKind: RuntimeKind;
+  displayName: string;
+  currentVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  message: string;
+  verified?: boolean;
+  verificationMessage?: string | null;
+  integritySource?: IntegritySource | null;
 }
 
 export interface RuntimeUpdateSummary {
@@ -239,6 +257,47 @@ export interface ZapretUpdateInfo {
   updateAvailable: boolean;
   releaseUrl: string;
   message: string;
+}
+
+export interface TelegramProxyConfig {
+  host: string;
+  port: number;
+  secret: string;
+  dcIp: string[];
+  verbose: boolean;
+  bufKb: number;
+  poolSize: number;
+  logMaxMb: number;
+  checkUpdates: boolean;
+}
+
+export interface TelegramProxyUpdateInfo {
+  currentVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  message: string;
+}
+
+export interface TelegramProxyCommandResult {
+  ok: boolean;
+  opened: boolean;
+  message: string;
+  output: string;
+}
+
+export interface TelegramProxyStatus {
+  available: boolean;
+  running: boolean;
+  pid: number | null;
+  runtimePath: string | null;
+  configPath: string;
+  logPath: string;
+  currentVersion: string | null;
+  connectionUrl: string | null;
+  updateChecksEnabled: boolean;
+  config: TelegramProxyConfig;
+  lastError: string | null;
 }
 
 export interface ZapretDiagnosticsItem {

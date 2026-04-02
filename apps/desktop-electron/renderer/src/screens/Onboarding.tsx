@@ -78,7 +78,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
           Добро пожаловать
         </h1>
         <p className="text-lg text-muted max-w-xs leading-relaxed">
-          в <span className="font-bold text-white/90">EgoistShield</span> — ваш персональный цифровой щит
+          в <span className="font-bold text-white/90">EgoistShield</span> — локальный клиент для защищённых подключений
         </p>
       </motion.div>
 
@@ -88,7 +88,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
         transition={{ delay: 0.9, duration: 0.5 }}
         className="space-y-2 mt-2"
       >
-        {["Безлимитный VPN-трафик", "Шифрование военного класса", "Нулевой сбор данных"].map((text, i) => (
+        {["Импорт через ссылку, файл и буфер обмена", "Встроенные сетевые компоненты", "Ручная проверка обновлений и диагностика"].map((text, i) => (
           <motion.div
             key={text}
             initial={{ opacity: 0, x: -20 }}
@@ -140,13 +140,13 @@ function SetupStep({ onComplete }: { onComplete: () => void }) {
     let cancelled = false;
 
     const steps = [
-      { at: 10, text: "Инициализация ядра защиты..." },
+      { at: 10, text: "Подготовка приложения..." },
       { at: 25, text: "Установка Xray runtime..." },
       { at: 50, text: "Настройка сетевых модулей..." },
-      { at: 70, text: "Конфигурация шифрования..." },
-      { at: 85, text: "Синхронизация с сервером..." },
+      { at: 70, text: "Проверка локальной конфигурации..." },
+      { at: 85, text: "Синхронизация локального состояния..." },
       { at: 95, text: "Финальная проверка..." },
-      { at: 100, text: "Готово!" }
+      { at: 100, text: "Готово" }
     ];
 
     async function run(): Promise<void> {
@@ -310,10 +310,10 @@ function DoneStep({ onFinish }: { onFinish: () => void }) {
         className="space-y-2"
       >
         <h1 className="text-2xl font-black bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
-          Ваш щит активирован!
+          Приложение готово
         </h1>
         <p className="text-sm text-muted max-w-xs leading-relaxed">
-          EgoistShield готов к работе. Добавьте серверы и подключайтесь одним нажатием.
+          EgoistShield готов к первому запуску. Добавьте серверы и выберите нужный режим подключения.
         </p>
       </motion.div>
 

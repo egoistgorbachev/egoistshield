@@ -99,6 +99,11 @@ export function registerZapretHandlers({ stateStore, runtimeManager, zapretManag
     return zapretManager.checkForUpdates();
   });
 
+  ipcMain.handle("zapret:install-core-update", async () => {
+    await assertVpnDisconnected(runtimeManager, "Сначала отключите VPN внутри EgoistShield, затем обновляйте Flowseal Core.");
+    return zapretManager.installCoreUpdate();
+  });
+
   ipcMain.handle("zapret:run-core-updater", async () => {
     return zapretManager.runCoreUpdater();
   });
@@ -118,7 +123,6 @@ export function registerZapretHandlers({ stateStore, runtimeManager, zapretManag
   });
 
   ipcMain.handle("zapret:open-service-menu", async () => {
-    await assertVpnDisconnected(runtimeManager, "Сначала отключите VPN внутри EgoistShield, затем открывайте меню Flowseal Service.");
     return zapretManager.openServiceMenu();
   });
 

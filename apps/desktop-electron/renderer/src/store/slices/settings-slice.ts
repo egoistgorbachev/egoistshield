@@ -4,7 +4,7 @@
 import type { StateCreator } from "zustand";
 import { getAPI } from "../../lib/api";
 
-export type Screen = "dashboard" | "servers" | "dns" | "zapret" | "settings";
+export type Screen = "dashboard" | "servers" | "dns" | "zapret" | "telegram-proxy" | "settings";
 
 export interface SettingsSlice {
   currentScreen: Screen;

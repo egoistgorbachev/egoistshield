@@ -73,6 +73,62 @@ const STATE_WITH_MULTIPLE_NODES: PersistedState = {
   nodes: [SAMPLE_NODE, SECOND_SAMPLE_NODE],
   activeNodeId: SAMPLE_NODE.id
 };
+const STATE_WITH_LARGE_NODE_SET: PersistedState = {
+  ...CLEAN_STATE,
+  nodes: Array.from({ length: 240 }, (_, index) => {
+    const nodeNumber = String(index + 1).padStart(3, "0");
+    const countryCode = index % 3 === 0 ? "nl" : index % 3 === 1 ? "fi" : "de";
+
+    return {
+      ...SAMPLE_NODE,
+      id: `node-large-${index + 1}`,
+      name: `Load Test ${nodeNumber}`,
+      server: `10.${Math.floor(index / 200) + 10}.${Math.floor((index % 200) / 50) + 20}.${(index % 50) + 10}`,
+      uri: `vless://11111111-1111-1111-1111-111111111111@10.${Math.floor(index / 200) + 10}.${Math.floor((index % 200) / 50) + 20}.${(index % 50) + 10}:443?security=tls#LoadTest${nodeNumber}`,
+      countryCode
+    };
+  }),
+  activeNodeId: "node-large-1"
+};
+const MAP_DENSE_COUNTRY_CODES = [
+  "nl",
+  "fi",
+  "de",
+  "gb",
+  "fr",
+  "se",
+  "no",
+  "dk",
+  "pl",
+  "cz",
+  "at",
+  "ch",
+  "it",
+  "es",
+  "pt",
+  "ie",
+  "us",
+  "ca",
+  "jp",
+  "sg"
+] as const;
+const STATE_WITH_DENSE_MAP_NODE_SET: PersistedState = {
+  ...CLEAN_STATE,
+  nodes: MAP_DENSE_COUNTRY_CODES.flatMap((countryCode, countryIndex) =>
+    Array.from({ length: 2 }, (_, replicaIndex) => {
+      const suffix = `${countryCode}-${replicaIndex + 1}`;
+      return {
+        ...SAMPLE_NODE,
+        id: `node-map-${suffix}`,
+        name: `Map Dense ${countryCode.toUpperCase()} ${replicaIndex + 1}`,
+        server: `172.${countryIndex + 16}.${replicaIndex + 30}.${countryIndex + replicaIndex + 10}`,
+        uri: `vless://11111111-1111-1111-1111-111111111111@172.${countryIndex + 16}.${replicaIndex + 30}.${countryIndex + replicaIndex + 10}:443?security=tls#MapDense${countryCode.toUpperCase()}${replicaIndex + 1}`,
+        countryCode
+      };
+    })
+  ),
+  activeNodeId: "node-map-nl-1"
+};
 
 function assertBoundsAreStable(
   before: { x: number; y: number; width: number; height: number } | null,
@@ -192,17 +248,110 @@ test.describe("EgoistShield E2E", () => {
     const zapretTab = page.getByRole("button", { name: "Zapret" }).first();
     if (await zapretTab.isVisible()) {
       await zapretTab.click();
-      await expect(page.locator("text=Zapret Control").first()).toBeVisible();
+      await expect
+        .poll(
+          async () =>
+            (await page.getByRole("heading", { name: "Центр Zapret" }).count()) > 0 ||
+            (await page.getByText(/Ядро (готово|недоступно)/).count()) > 0,
+          { timeout: 15_000 }
+        )
+        .toBe(true);
       await expect(page.getByText("Error invoking remote method 'zapret:status'")).toHaveCount(0);
       await expect
-        .poll(async () => await page.locator("select").first().evaluate((element) => element.querySelectorAll("option").length), {
-          timeout: 15_000
-        })
+        .poll(
+          async () =>
+            await page
+              .locator("select")
+              .first()
+              .evaluate((element) => element.querySelectorAll("option").length),
+          {
+            timeout: 15_000
+          }
+        )
         .toBeGreaterThan(0);
       await expect
         .poll(async () => await page.locator("select").first().inputValue(), { timeout: 15_000 })
         .toMatch(/\S+/);
+
+      const zapretStatus = await page.evaluate(async () => {
+        return window.egoistAPI?.zapret.status();
+      });
+
+      expect(zapretStatus?.coreVersion).toBeTruthy();
+      expect(zapretStatus?.coreVersion?.toLowerCase()).not.toContain("unknown");
+
+      if (!zapretStatus?.coreVersion) {
+        throw new Error("Zapret coreVersion is unavailable");
+      }
+
+      await expect(page.getByText(zapretStatus.coreVersion, { exact: false }).first()).toBeVisible();
+      await expect(page.getByRole("button", { name: "Классический обновлятор" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Сервисное меню" })).toHaveCount(0);
+
+      const deprecatedWrappers = await page.evaluate(async () => {
+        const api = window.egoistAPI?.zapret;
+        if (!api) {
+          return null;
+        }
+
+        const [updater, serviceMenu] = await Promise.all([api.runCoreUpdater(), api.openServiceMenu()]);
+        return { updater, serviceMenu };
+      });
+
+      expect(deprecatedWrappers?.updater.opened).toBe(false);
+      expect(deprecatedWrappers?.serviceMenu.opened).toBe(false);
+      expect(deprecatedWrappers?.updater.message).toContain("встроенный блок Flowseal Core");
+      expect(deprecatedWrappers?.serviceMenu.message).toContain("Все действия со службой доступны прямо в центре Zapret");
     }
+  });
+
+  test("hero верхних экранов держит теги в одной строке, а Серверы выравнивают кнопку Добавить с индикаторами", async () => {
+    await page.evaluate(async (nextState: PersistedState) => {
+      await window.egoistAPI?.state.set(nextState);
+    }, STATE_WITH_MULTIPLE_NODES);
+
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    const assertSingleLineHeroBadges = async (
+      buttonName: string,
+      readyBadgePattern: RegExp,
+      withRailAction = false
+    ) => {
+      await page.getByRole("button", { name: buttonName }).first().click();
+      await expect(page.getByText(readyBadgePattern).first()).toBeVisible({ timeout: 15_000 });
+
+      const badges = page.locator('[data-testid="page-hero-badge"]');
+      await expect(badges).toHaveCount(3);
+
+      const firstBox = await badges.nth(0).boundingBox();
+      const secondBox = await badges.nth(1).boundingBox();
+      const thirdBox = await badges.nth(2).boundingBox();
+
+      expect(firstBox).not.toBeNull();
+      expect(secondBox).not.toBeNull();
+      expect(thirdBox).not.toBeNull();
+
+      if (!firstBox || !secondBox || !thirdBox) {
+        throw new Error(`Hero badge bounds are unavailable for ${buttonName}`);
+      }
+
+      expect(Math.abs(firstBox.y - secondBox.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(firstBox.y - thirdBox.y)).toBeLessThanOrEqual(1);
+
+      if (withRailAction) {
+        const actionBox = await page.locator('[data-testid="page-hero-rail-action"]').boundingBox();
+        expect(actionBox).not.toBeNull();
+        if (!actionBox) {
+          throw new Error(`Hero rail action bounds are unavailable for ${buttonName}`);
+        }
+        expect(Math.abs(firstBox.y - actionBox.y)).toBeLessThanOrEqual(6);
+      }
+    };
+
+    await assertSingleLineHeroBadges("Серверы", /узлов/i, true);
+    await assertSingleLineHeroBadges("Zapret", /Ядро (готово|недоступно)/i);
+    await assertSingleLineHeroBadges("Настройки", /Автопроверка обновлений/i);
   });
 
   test("навигация — возврат на Главную", async () => {
@@ -342,6 +491,40 @@ test.describe("EgoistShield E2E", () => {
     await expect(dnsTextarea).toHaveValue("");
   });
 
+  test("DNS textarea стартует компактно и растёт только при длинном вводе", async () => {
+    await page.evaluate(async (nextState: PersistedState) => {
+      await window.egoistAPI?.state.set(nextState);
+    }, CLEAN_STATE);
+
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "DNS" }).first().click();
+
+    const dnsTextarea = page.locator("#system-dns-input");
+    await expect(dnsTextarea).toBeVisible();
+
+    const initialHeight = await dnsTextarea.evaluate((element) => element.getBoundingClientRect().height);
+    expect(initialHeight).toBeLessThanOrEqual(130);
+
+    await dnsTextarea.fill(
+      "1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n149.112.112.112\n94.140.14.14\n94.140.15.15\n77.88.8.8\n77.88.8.1\n208.67.222.222\n208.67.220.220"
+    );
+
+    const expandedState = await dnsTextarea.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      overflowY: window.getComputedStyle(element).overflowY
+    }));
+
+    expect(expandedState.height).toBeGreaterThanOrEqual(initialHeight);
+    expect(expandedState.height).toBeLessThanOrEqual(380);
+    expect(
+      expandedState.scrollHeight - expandedState.clientHeight <= 8 || expandedState.overflowY === "auto"
+    ).toBeTruthy();
+  });
+
   test("DNS экран показывает нижний блок с важными примечаниями без обрезания и overflow", async () => {
     await page.evaluate(async (nextState: PersistedState) => {
       await window.egoistAPI?.state.set(nextState);
@@ -380,12 +563,12 @@ test.describe("EgoistShield E2E", () => {
     await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
     await page.waitForTimeout(4_200);
 
-    const smartModeButton = page.getByRole("button", { name: "Smart" });
+    const smartModeButton = page.getByRole("button", { name: "Умный" });
     const serverCard = page.getByText("QA Showcase NL");
     await expect(smartModeButton).toBeVisible();
     await smartModeButton.hover();
 
-    const tooltipTitle = page.getByText("Smart Mode");
+    const tooltipTitle = page.getByText("Умный режим");
     const tooltipDescription = page.getByText(
       "Автоматически выбирает сервер с лучшим пингом и обходит сбои подключения."
     );
@@ -418,7 +601,7 @@ test.describe("EgoistShield E2E", () => {
     expect(hasHorizontalOverflow).toBe(false);
   });
 
-  test("hover подсказок Smart и Default не сдвигает dashboard layout", async () => {
+  test("hover подсказок Умный и Точный не сдвигает dashboard layout", async () => {
     await page.evaluate(async (nextState: PersistedState) => {
       await window.egoistAPI?.state.set(nextState);
     }, STATE_WITH_SAMPLE_NODE);
@@ -427,8 +610,8 @@ test.describe("EgoistShield E2E", () => {
     await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
     await page.waitForTimeout(4_200);
 
-    const smartModeButton = page.getByRole("button", { name: "Smart" });
-    const defaultModeButton = page.getByRole("button", { name: "Default" });
+    const smartModeButton = page.getByRole("button", { name: "Умный" });
+    const defaultModeButton = page.getByRole("button", { name: "Точный" });
     const serverCardTitle = page.getByText("QA Showcase NL");
 
     const smartBefore = await smartModeButton.boundingBox();
@@ -436,7 +619,7 @@ test.describe("EgoistShield E2E", () => {
     const serverBefore = await serverCardTitle.boundingBox();
 
     await smartModeButton.hover();
-    await expect(page.getByText("Smart Mode")).toBeVisible();
+    await expect(page.getByText("Умный режим")).toBeVisible();
     const smartAfter = await smartModeButton.boundingBox();
     const defaultAfterSmartHover = await defaultModeButton.boundingBox();
     const serverAfterSmartHover = await serverCardTitle.boundingBox();
@@ -446,7 +629,7 @@ test.describe("EgoistShield E2E", () => {
     assertBoundsAreStable(serverBefore, serverAfterSmartHover, "server card after smart hover");
 
     await defaultModeButton.hover();
-    await expect(page.getByText("Default Mode")).toBeVisible();
+    await expect(page.getByText("Точный режим")).toBeVisible();
     const defaultAfter = await defaultModeButton.boundingBox();
     const smartAfterDefaultHover = await smartModeButton.boundingBox();
     const serverAfterDefaultHover = await serverCardTitle.boundingBox();
@@ -555,6 +738,53 @@ test.describe("EgoistShield E2E", () => {
     await expect(page.getByRole("heading", { name: "Добавить Сервер" })).toBeHidden();
   });
 
+  test("ServerList держит большой набор узлов и остаётся отзывчивым при поиске", async () => {
+    await page.evaluate(async (nextState: PersistedState) => {
+      await window.egoistAPI?.state.set(nextState);
+    }, STATE_WITH_LARGE_NODE_SET);
+
+    await reloadCurrentPage(page);
+    await page.getByRole("button", { name: "Серверы" }).first().click();
+
+    await expect(page.getByText(/240 узлов/i).first()).toBeVisible({ timeout: 5_000 });
+
+    const searchInput = page.getByPlaceholder("Поиск серверов...");
+    await searchInput.fill("Load Test 199");
+
+    await expect(page.getByText("Load Test 199")).toBeVisible({ timeout: 2_000 });
+    await expect(page.getByText("Load Test 001")).toHaveCount(0);
+  });
+
+  test("ServerList карта выдерживает плотный набор стран и повторное открытие без скачков layout", async () => {
+    await page.evaluate(async (nextState: PersistedState) => {
+      await window.egoistAPI?.state.set(nextState);
+    }, STATE_WITH_DENSE_MAP_NODE_SET);
+
+    await reloadCurrentPage(page);
+    await page.getByRole("button", { name: "Серверы" }).first().click();
+
+    await page.getByRole("tab", { name: "Карта" }).click();
+
+    const mapPanel = page.locator('[data-testid="serverlist-map-tab-panel"]');
+    const mapCanvas = mapPanel.locator("canvas");
+
+    await expect(mapPanel).toBeVisible({ timeout: 10_000 });
+    await expect(mapCanvas).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(800);
+
+    const firstBounds = await mapCanvas.boundingBox();
+
+    await page.getByRole("tab", { name: "Узлы" }).click();
+    await expect(page.getByPlaceholder("Поиск серверов...")).toBeVisible({ timeout: 5_000 });
+
+    await page.getByRole("tab", { name: "Карта" }).click();
+    await expect(mapCanvas).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(400);
+
+    const secondBounds = await mapCanvas.boundingBox();
+    assertBoundsAreStable(firstBounds, secondBounds, "Dense map canvas");
+  });
+
   test("Settings toggles и diagnostics modal работают и не ломают layout", async () => {
     await reloadCurrentPage(page);
     await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
@@ -566,7 +796,7 @@ test.describe("EgoistShield E2E", () => {
     await expect(networkTab).toBeVisible();
 
     await networkTab.click();
-    const secureDnsSwitch = page.getByRole("switch", { name: "Secure DNS" });
+    const secureDnsSwitch = page.getByRole("switch", { name: "Защищённый DNS" });
     const secureDnsBefore = await secureDnsSwitch.getAttribute("aria-checked");
     await secureDnsSwitch.click();
     await expect(secureDnsSwitch).toHaveAttribute("aria-checked", secureDnsBefore === "true" ? "false" : "true");
@@ -577,6 +807,132 @@ test.describe("EgoistShield E2E", () => {
     await expect(page.getByRole("heading", { name: "Журнал подключений" })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("heading", { name: "Журнал подключений" })).toBeHidden();
+  });
+
+  test("Settings screen shortcuts открывают центр Zapret и прокси Telegram", async () => {
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "Настройки" }).first().click();
+    await page.getByRole("tab", { name: "Сеть" }).click();
+
+    await page.getByRole("button", { name: "Открыть DNS-центр" }).click();
+    await expect(page.getByRole("heading", { name: "Управление DNS" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Настройки" }).first().click();
+    await page.getByRole("tab", { name: "Сеть" }).click();
+
+    await page.getByRole("button", { name: "Открыть центр Zapret" }).click();
+    await expect(page.locator("text=Центр Zapret").first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Настройки" }).first().click();
+    await page.getByRole("tab", { name: "Сеть" }).click();
+
+    await page.getByRole("button", { name: "Открыть прокси Telegram" }).click();
+    await expect(page.getByRole("heading", { name: "Прокси Telegram" })).toBeVisible();
+  });
+
+  test("Прокси Telegram показывает локализованный фоновый UX без старого tray-копирайта", async () => {
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "Прокси Telegram" }).first().click();
+
+    await expect(page.getByRole("heading", { name: "Прокси Telegram" })).toBeVisible();
+    await expect(page.getByText(/Фоновый `tg-ws-proxy`, которым полностью управляет EgoistShield/i)).toBeVisible();
+    await expect(page.getByText(/скрытый фоновый процесс без отдельного окна в трее/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Встроенные обновления/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Применить обновление" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Установить обновление" })).toHaveCount(0);
+    await expect(page.getByText(/sidecar/i)).toHaveCount(0);
+    await expect(page.getByText(/Headless Managed Runtime|Runtime Ready|No Tray App/)).toHaveCount(0);
+  });
+
+  test("Прокси Telegram выполняет save/check/start/restart/stop на реальном фоне", async () => {
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "Прокси Telegram" }).first().click();
+    await expect(page.getByRole("heading", { name: "Прокси Telegram" })).toBeVisible();
+
+    const numberInputs = page.locator("input[type='number']");
+    await numberInputs.first().fill("15455");
+    await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+
+    await expect(page.getByText("Конфигурация прокси Telegram сохранена.")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/port=15455/)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "Проверить" }).last().click();
+    await expect(page.getByText(/Прокси Telegram/).last()).toBeVisible();
+    await expect(page.getByText(/GitHub HTTP 403/)).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Запустить", exact: true }).click();
+    await expect(page.getByText(/Прокси Telegram запущен\./)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/^В фоне · PID \d+$/)).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole("button", { name: "Перезапустить", exact: true }).click();
+    await expect(page.getByText(/Прокси Telegram перезапущен\./)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/^В фоне · PID \d+$/)).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole("button", { name: "Остановить", exact: true }).click();
+    await expect(page.getByText(/Прокси Telegram остановлен\./)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Остановлен", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
+  });
+
+  test("Прокси Telegram держит три кнопки ссылки в одной строке без переноса", async () => {
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "Прокси Telegram" }).first().click();
+    await expect(page.getByRole("heading", { name: "Прокси Telegram" })).toBeVisible();
+
+    const copyButton = page.getByRole("button", { name: "Копировать" });
+    const openButton = page.getByRole("button", { name: "Открыть" });
+    const logsButton = page.getByRole("button", { name: "Логи" }).first();
+
+    const copyBounds = await copyButton.boundingBox();
+    const openBounds = await openButton.boundingBox();
+    const logsBounds = await logsButton.boundingBox();
+
+    expect(copyBounds).not.toBeNull();
+    expect(openBounds).not.toBeNull();
+    expect(logsBounds).not.toBeNull();
+
+    if (!copyBounds || !openBounds || !logsBounds) {
+      throw new Error("Connection action bounds are unavailable");
+    }
+
+    expect(Math.abs(copyBounds.y - openBounds.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(copyBounds.y - logsBounds.y)).toBeLessThanOrEqual(1);
+  });
+
+  test("Прокси Telegram показывает путь к логу в одну строку с truncate без остаточных переносов", async () => {
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "Прокси Telegram" }).first().click();
+    await expect(page.getByRole("heading", { name: "Прокси Telegram" })).toBeVisible();
+
+    const logValue = page
+      .getByText("Лог", { exact: true })
+      .locator("xpath=..")
+      .locator("span")
+      .last();
+
+    await expect(logValue).toBeVisible();
+
+    const styles = await logValue.evaluate((element) => {
+      const computed = window.getComputedStyle(element);
+      return {
+        whiteSpace: computed.whiteSpace,
+        textOverflow: computed.textOverflow,
+        overflowX: computed.overflowX
+      };
+    });
+
+    expect(styles.whiteSpace).toBe("nowrap");
+    expect(styles.textOverflow).toBe("ellipsis");
+    expect(styles.overflowX).toBe("hidden");
   });
 
   test("Settings toggles persist в backend-state и переживают reload", async () => {
@@ -612,7 +968,7 @@ test.describe("EgoistShield E2E", () => {
 
     const autoStartSwitch = page.getByRole("switch", { name: "Автозапуск" });
     const notificationsSwitch = page.getByRole("switch", { name: "Уведомления" });
-    const autoUpdateSwitch = page.getByRole("switch", { name: "Автообновление" });
+    const autoUpdateSwitch = page.getByRole("switch", { name: "Автопроверка обновлений" });
 
     await expect(autoStartSwitch).toHaveAttribute("aria-checked", "false");
     await expect(notificationsSwitch).toHaveAttribute("aria-checked", "true");
@@ -625,13 +981,13 @@ test.describe("EgoistShield E2E", () => {
     await expect(page.getByRole("switch", { name: "Уведомления" })).toHaveAttribute("aria-checked", "false");
 
     await autoUpdateSwitch.click({ force: true });
-    await expect(page.getByRole("switch", { name: "Автообновление" })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByRole("switch", { name: "Автопроверка обновлений" })).toHaveAttribute("aria-checked", "false");
 
     await page.getByRole("tab", { name: "Сеть" }).click();
     await page.waitForTimeout(250);
 
-    const secureDnsSwitch = page.getByRole("switch", { name: "Secure DNS" });
-    const killSwitch = page.getByRole("switch", { name: "Kill Switch" });
+    const secureDnsSwitch = page.getByRole("switch", { name: "Защищённый DNS" });
+    const killSwitch = page.getByRole("switch", { name: "Блокировка без VPN" });
     const autoConnectSwitch = page.getByRole("switch", { name: "Авто-подключение" });
 
     await expect(secureDnsSwitch).toHaveAttribute("aria-checked", "false");
@@ -639,10 +995,10 @@ test.describe("EgoistShield E2E", () => {
     await expect(autoConnectSwitch).toHaveAttribute("aria-checked", "false");
 
     await secureDnsSwitch.click({ force: true });
-    await expect(page.getByRole("switch", { name: "Secure DNS" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("switch", { name: "Защищённый DNS" })).toHaveAttribute("aria-checked", "true");
 
     await killSwitch.click({ force: true });
-    await expect(page.getByRole("switch", { name: "Kill Switch" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("switch", { name: "Блокировка без VPN" })).toHaveAttribute("aria-checked", "true");
 
     await autoConnectSwitch.click({ force: true });
     await expect(page.getByRole("switch", { name: "Авто-подключение" })).toHaveAttribute("aria-checked", "true");
@@ -670,12 +1026,117 @@ test.describe("EgoistShield E2E", () => {
 
     await expect(page.getByRole("switch", { name: "Автозапуск" })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByRole("switch", { name: "Уведомления" })).toHaveAttribute("aria-checked", "false");
-    await expect(page.getByRole("switch", { name: "Автообновление" })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByRole("switch", { name: "Автопроверка обновлений" })).toHaveAttribute("aria-checked", "false");
 
     await page.getByRole("tab", { name: "Сеть" }).click();
-    await expect(page.getByRole("switch", { name: "Secure DNS" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByRole("switch", { name: "Kill Switch" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("switch", { name: "Защищённый DNS" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("switch", { name: "Блокировка без VPN" })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByRole("switch", { name: "Авто-подключение" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("Settings advanced screen открывает и закрывает reset modal без побочных эффектов", async () => {
+    await page.evaluate(async (nextState: PersistedState) => {
+      await window.egoistAPI?.state.set(nextState);
+    }, CLEAN_STATE);
+
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "Настройки" }).first().click();
+    await page.getByRole("tab", { name: "Расширенные" }).click();
+
+    await page.getByRole("button", { name: "Сбросить" }).click();
+    await expect(page.getByRole("heading", { name: "Сброс данных" })).toBeVisible();
+    await page.getByRole("button", { name: "Отмена" }).click();
+    await expect(page.getByRole("heading", { name: "Сброс данных" })).toBeHidden();
+
+    const persistedSettings = await page.evaluate(async () => {
+      const state = await window.egoistAPI?.state.get();
+      return state?.settings ?? null;
+    });
+
+    expect(persistedSettings).toMatchObject({
+      autoStart: false,
+      autoUpdate: true,
+      notifications: true
+    });
+  });
+
+  test("ключевые экраны не создают горизонтальный overflow после UI polishing", async () => {
+    await page.evaluate(async (nextState: PersistedState) => {
+      await window.egoistAPI?.state.set(nextState);
+    }, STATE_WITH_MULTIPLE_NODES);
+
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    const screens: Array<{
+      button: string;
+      heading: string | RegExp;
+    }> = [
+      { button: "Серверы", heading: "Серверы" },
+      { button: "DNS", heading: "Управление DNS" },
+      { button: "Zapret", heading: "Центр Zapret" },
+      { button: "Прокси Telegram", heading: "Прокси Telegram" },
+      { button: "Настройки", heading: "Настройки" }
+    ];
+
+    for (const screen of screens) {
+      await page.getByRole("button", { name: screen.button }).first().click();
+      await expect(page.getByRole("heading", { name: screen.heading }).first()).toBeVisible();
+
+      const hasHorizontalOverflow = await page
+        .locator("main")
+        .first()
+        .evaluate((element) => element.scrollWidth - element.clientWidth > 1);
+
+      expect(hasHorizontalOverflow, `${screen.button} screen should not overflow horizontally`).toBe(false);
+    }
+  });
+
+  test("навигация по ключевым экранам проходит без renderer console errors", async () => {
+    const consoleErrors: string[] = [];
+    const listener = (message: import("@playwright/test").ConsoleMessage) => {
+      if (message.type() === "error") {
+        consoleErrors.push(message.text());
+      }
+    };
+
+    page.on("console", listener);
+
+    try {
+      await reloadCurrentPage(page);
+      await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+      const screens = [
+        { button: "Главная", heading: /QA Showcase NL|ОТКЛЮЧЕНО|ЗАЩИЩЕНО/ },
+        { button: "Серверы", heading: "Серверы" },
+        { button: "DNS", heading: "Управление DNS" },
+        { button: "Zapret", heading: "Центр Zapret" },
+        { button: "Прокси Telegram", heading: "Прокси Telegram" },
+        { button: "Настройки", heading: "Настройки" }
+      ] as const;
+
+      for (const screen of screens) {
+        await page.getByRole("button", { name: screen.button }).first().click();
+        if (screen.button === "Главная") {
+          await expect(page.getByTestId("dashboard-scroll-area")).toBeVisible({ timeout: 15_000 });
+        } else {
+          await expect(page.getByRole("heading", { name: screen.heading }).first()).toBeVisible({ timeout: 15_000 });
+        }
+      }
+    } finally {
+      page.off("console", listener);
+    }
+
+    const meaningfulConsoleErrors = consoleErrors.filter(
+      (entry) =>
+        !entry.includes("Autocomplete blocklist request cancelled") &&
+        !entry.includes("Autofill.enable") &&
+        !entry.includes("favicon")
+    );
+
+    expect(meaningfulConsoleErrors).toEqual([]);
   });
 
   test("карточки серверов больше не показывают badge Рекомендуем", async () => {
