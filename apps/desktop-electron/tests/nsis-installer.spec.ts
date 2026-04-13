@@ -36,4 +36,12 @@ describe("active NSIS installer script", () => {
 
     expect(script).toContain('DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "EgoistShield"');
   });
+
+  it("does not schedule install directory deletion during app updates", () => {
+    const script = readFileSync(activeInstallerScriptPath, "utf8");
+
+    expect(script).toContain("${ifNot} ${isUpdated}");
+    expect(script).toContain('Exec \'"$SYSDIR\\cmd.exe" /C cd /d "$TEMP" & ping 127.0.0.1 -n 5 >NUL & rmdir /S /Q "$INSTDIR"\'');
+    expect(script).toContain('RMDir /r /REBOOTOK "$INSTDIR"');
+  });
 });

@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { UsageRecord } from "../shared/types";
+import type {
+	SystemDohCommandResult,
+	SystemDohStatus,
+	UsageRecord,
+} from "../shared/types";
 import type {
   AppUpdateStatus,
   RouteProbeResult,
@@ -100,6 +104,12 @@ const api = {
       ipcRenderer.invoke("system:set-dns-servers", dnsServers),
     resetDnsServers: (): Promise<{ ok: boolean; message: string; servers: string[] }> =>
       ipcRenderer.invoke("system:reset-dns-servers"),
+    systemDohStatus: (): Promise<SystemDohStatus> =>
+      ipcRenderer.invoke("system-doh:status"),
+    applySystemDoh: (url: string): Promise<SystemDohCommandResult> =>
+      ipcRenderer.invoke("system-doh:apply", url),
+    resetSystemDoh: (): Promise<SystemDohCommandResult> =>
+      ipcRenderer.invoke("system-doh:reset"),
     getMyIp: (): Promise<{ ip: string | null; countryCode: string | null; error: string | null }> =>
       ipcRenderer.invoke("vpn:get-my-ip"),
     routeProbe: (): Promise<RouteProbeResult> => ipcRenderer.invoke("vpn:route-probe"),

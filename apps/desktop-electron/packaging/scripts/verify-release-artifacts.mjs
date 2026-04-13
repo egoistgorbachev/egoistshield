@@ -39,6 +39,18 @@ async function assertArtifactExists(label, filePath) {
   return fileStat;
 }
 
+async function assertAnyArtifactExists(label, filePaths) {
+  for (const filePath of filePaths) {
+    if (existsSync(filePath)) {
+      return assertArtifactExists(label, filePath);
+    }
+  }
+
+  throw new Error(
+    `${label} is missing: ${filePaths.map((filePath) => path.relative(projectRoot, filePath)).join(" or ")}`
+  );
+}
+
 function ensureString(value, label) {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`${label} is missing or empty.`);
@@ -63,10 +75,15 @@ export async function verifyReleaseArtifacts(rootDir = projectRoot) {
   const latestYmlPath = path.join(releaseDir, "latest.yml");
   const installerPath = path.join(releaseDir, installerName);
   const blockmapPath = path.join(releaseDir, blockmapName);
+  const telegramProxyCandidates = [
+    path.join(releaseDir, "win-unpacked", "resources", "runtime", "tg-ws-proxy", "egoistshield-tg-ws-proxy.bin"),
+    path.join(releaseDir, "win-unpacked", "resources", "runtime", "tg-ws-proxy", "TgWsProxy_windows_7_64bit.exe")
+  ];
 
   const installerStat = await assertArtifactExists("Installer", installerPath);
   const blockmapStat = await assertArtifactExists("Blockmap", blockmapPath);
   const latestYmlStat = await assertArtifactExists("latest.yml", latestYmlPath);
+  await assertAnyArtifactExists("Telegram Proxy runtime", telegramProxyCandidates);
 
   const latestYmlRaw = await readFile(latestYmlPath, "utf8");
   const latest = parseYaml(latestYmlRaw);

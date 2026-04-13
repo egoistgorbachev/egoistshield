@@ -12,6 +12,8 @@ import {
   applyZapretPlaceholders,
   compareZapretProfileNames,
   isFlowsealRootPayloadEntry,
+  isScAlreadyRunningError,
+  isScNotActiveError,
   isWindowsServiceMissingError,
   parseZapretWinwsArgs,
   splitWindowsCommandLine
@@ -51,6 +53,8 @@ interface ZapretManagerInternals {
   waitForServiceState(serviceName: string, expectedStates: string[], timeoutMs: number): Promise<void>;
   stopStandaloneInternal(clearVpnSuspension: boolean): Promise<void>;
   launchConsoleCommand(executable: string, args: string[], options: { cwd: string }): Promise<void>;
+  readStandaloneState(): Promise<{ pid: number | null; profile: string | null; startedAt: string } | null>;
+  getSourceRuntimeInfo(): Promise<{ sourceDir: string; version: string | null } | null>;
 }
 
 const BASE_STATUS: ZapretStatus = {
@@ -131,6 +135,22 @@ describe("zapret-manager helpers", () => {
     expect(isWindowsServiceMissingError(error)).toBe(true);
   });
 
+  it("распознаёт уже запущенную и неактивную службу по stderr/sc-кодам", () => {
+    const alreadyRunningError = Object.assign(new Error("1056"), {
+      code: 1056,
+      stdout: "",
+      stderr: "An instance of the service is already running."
+    });
+    const notActiveError = Object.assign(new Error("1062"), {
+      code: 1062,
+      stdout: "",
+      stderr: "The service has not been started."
+    });
+
+    expect(isScAlreadyRunningError(alreadyRunningError)).toBe(true);
+    expect(isScNotActiveError(notActiveError)).toBe(true);
+  });
+
   it("собирает план очистки кеша для всех Discord-клиентов без дублей", () => {
     const plan = buildDiscordCacheCleanupPlan("all", {
       APPDATA: "C:\\Users\\test\\AppData\\Roaming",
@@ -149,6 +169,17 @@ describe("zapret-manager helpers", () => {
       "C:\\Users\\test\\AppData\\Roaming\\discordcanary\\Partitions\\discord_voice\\GPUCache"
     );
     expect(new Set(plan.directories).size).toBe(plan.directories.length);
+  });
+
+  it("собирает узкий план очистки только для Vesktop без Discord-процессов", () => {
+    const plan = buildDiscordCacheCleanupPlan("vesktop", {
+      APPDATA: "C:\\Users\\test\\AppData\\Roaming",
+      LOCALAPPDATA: "C:\\Users\\test\\AppData\\Local"
+    });
+
+    expect(plan.labels).toEqual(["Vesktop"]);
+    expect(plan.processNames).toEqual(["vesktop.exe", "Vesktop.exe", "Update.exe"]);
+    expect(plan.directories.every((entry) => entry.toLowerCase().includes("vesktop"))).toBe(true);
   });
 
   it("распознаёт payload-элементы Flowseal из root-layout архива", () => {
@@ -253,6 +284,57 @@ describe("zapret-manager helpers", () => {
 
       await expect(fs.readFile(path.join(workDir, "VERSION.txt"), "utf8")).resolves.toContain("v1.9.7b");
       await expect(fs.readFile(path.join(workDir, "core", "service.bat"), "utf8")).resolves.toContain("updated build");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("readStandaloneState безопасно нормализует битый standalone-state", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "egoist-zapret-standalone-state-"));
+    const userDataDir = path.join(tempRoot, "user-data");
+    const workDir = path.join(userDataDir, "zapret");
+    await fs.mkdir(workDir, { recursive: true });
+
+    try {
+      await fs.writeFile(
+        path.join(workDir, ".egoistshield-standalone.json"),
+        JSON.stringify({ pid: "bad", profile: 42, startedAt: 0 }),
+        "utf8"
+      );
+
+      const manager = new ZapretManagerClass(path.join(tempRoot, "resources"), path.join(tempRoot, "app"), userDataDir);
+      const internal = manager as unknown as ZapretManagerInternals;
+      const state = await internal.readStandaloneState();
+
+      expect(state).not.toBeNull();
+      expect(state?.pid).toBeNull();
+      expect(state?.profile).toBeNull();
+      expect(Date.parse(state?.startedAt ?? "")).not.toBeNaN();
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("getSourceRuntimeInfo подхватывает runtime из appPath, если resourcesPath пуст", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "egoist-zapret-source-runtime-"));
+    const resourcesPath = path.join(tempRoot, "resources");
+    const appPath = path.join(tempRoot, "app");
+    const userDataDir = path.join(tempRoot, "user-data");
+    const appRuntimeDir = path.join(appPath, "runtime", "zapret");
+    await fs.mkdir(path.join(appRuntimeDir, "core"), { recursive: true });
+
+    try {
+      await fs.writeFile(path.join(appRuntimeDir, "core", "service.bat"), "@echo off\r\necho app runtime\r\n", "utf8");
+      await fs.writeFile(path.join(appRuntimeDir, "VERSION.txt"), "v1.9.9\n", "utf8");
+
+      const manager = new ZapretManagerClass(resourcesPath, appPath, userDataDir);
+      const internal = manager as unknown as ZapretManagerInternals;
+      const runtime = await internal.getSourceRuntimeInfo();
+
+      expect(runtime).toMatchObject({
+        sourceDir: appRuntimeDir,
+        version: "v1.9.9"
+      });
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
@@ -390,6 +472,37 @@ describe("ZapretManager service transitions", () => {
 
     expect(restoreStandaloneSpy).toHaveBeenCalledWith("General");
   });
+
+  it("startService принимает 1056 от sc.exe как признак уже запущенной службы", async () => {
+    vi.spyOn(internal, "ensureProvisioned").mockResolvedValue(undefined);
+    vi.spyOn(internal, "queryService").mockResolvedValue({
+      installed: true,
+      running: false,
+      state: "STOP_PENDING"
+    });
+    vi.spyOn(internal, "stopStandaloneInternal").mockResolvedValue(undefined);
+    vi.spyOn(internal, "execSc").mockRejectedValue(
+      Object.assign(new Error("already running"), {
+        code: 1056,
+        stdout: "",
+        stderr: "An instance of the service is already running."
+      })
+    );
+    const waitForServiceStateSpy = vi.spyOn(internal, "waitForServiceState").mockResolvedValue(undefined);
+    vi.spyOn(manager, "status").mockResolvedValue({
+      ...BASE_STATUS,
+      serviceInstalled: true,
+      serviceRunning: true,
+      serviceProfile: "General",
+      winwsRunning: true,
+      currentProfile: "General"
+    });
+
+    const result = await manager.startService();
+
+    expect(waitForServiceStateSpy).toHaveBeenCalledWith("EgoistShieldZapret", ["RUNNING"], 15_000);
+    expect(result.serviceRunning).toBe(true);
+  });
 });
 
 describe("ZapretManager command launchers", () => {
@@ -497,6 +610,23 @@ describe("ZapretManager command launchers", () => {
       await expect(manager.updateIpsetList()).rejects.toThrow(
         "Не удалось выполнить обновление списка IP для Zapret: сервер Flowseal не ответил вовремя."
       );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("updateIpsetList выдаёт понятную ошибку по HTTP-ответу Flowseal", async () => {
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: false,
+          status: 502
+        })
+      );
+      vi.spyOn(internal, "ensureProvisioned").mockResolvedValue(undefined);
+
+      await expect(manager.updateIpsetList()).rejects.toThrow("HTTP 502");
     } finally {
       vi.unstubAllGlobals();
     }

@@ -22,6 +22,7 @@ import {
 import { syncWindowsLoginItemSettings } from "./ipc/login-item-settings";
 import logger, { configureLoggerPaths } from "./ipc/logger";
 import { StateStore } from "./ipc/state-store";
+import { SystemDohManager } from "./ipc/system-doh-manager";
 import { TelegramProxyManager } from "./ipc/telegram-proxy-manager";
 import { VpnRuntimeManager } from "./ipc/vpn-manager";
 import { resolveWindowsExecutable } from "./ipc/windows-system-binaries";
@@ -338,13 +339,21 @@ async function checkManagedComponentUpdates(): Promise<void> {
         info.latestVersion &&
         notifiedComponentVersions.get("telegram-proxy") !== info.latestVersion
       ) {
-        notifiedComponentVersions.set("telegram-proxy", info.latestVersion);
-        if (Notification.isSupported()) {
-          new Notification({
-            title: "EgoistShield: Telegram Proxy",
-            body: `Доступно обновление ${info.latestVersion}`,
-            silent: true
-          }).show();
+        const nextStatus = await globalTelegramProxyManager.installUpdate();
+        if (nextStatus.currentVersion === info.latestVersion) {
+          notifiedComponentVersions.set("telegram-proxy", info.latestVersion);
+          logger.info(`[updates] Telegram Proxy автоматически обновлён до ${info.latestVersion}`);
+          if (Notification.isSupported()) {
+            new Notification({
+              title: "EgoistShield: Telegram Proxy",
+              body: `Прокси Telegram автоматически обновлён до ${info.latestVersion}`,
+              silent: true
+            }).show();
+          }
+        } else {
+          logger.warn(
+            `[updates] Telegram Proxy проверил ${info.latestVersion}, но после установки активна версия ${nextStatus.currentVersion ?? "unknown"}`
+          );
         }
       }
     }
@@ -373,6 +382,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 let mainWindow: BrowserWindow | null = null;
 export let tray: Tray | null = null;
 export let globalRuntimeManager: VpnRuntimeManager | null = null;
+export let globalSystemDohManager: SystemDohManager | null = null;
 export let globalZapretManager: ZapretManager | null = null;
 export let globalTelegramProxyManager: TelegramProxyManager | null = null;
 let trafficInterval: NodeJS.Timeout | null = null;
@@ -681,13 +691,23 @@ async function createMainWindow(): Promise<void> {
   if (!globalRuntimeManager) {
     globalRuntimeManager = new VpnRuntimeManager(process.resourcesPath, USER_DATA_DIR);
   }
+  if (!globalSystemDohManager) {
+    globalSystemDohManager = new SystemDohManager(process.resourcesPath, app.getAppPath(), USER_DATA_DIR);
+  }
   if (!globalZapretManager) {
     globalZapretManager = new ZapretManager(process.resourcesPath, app.getAppPath(), USER_DATA_DIR);
   }
   if (!globalTelegramProxyManager) {
     globalTelegramProxyManager = new TelegramProxyManager(process.resourcesPath, app.getAppPath(), USER_DATA_DIR);
   }
-  await registerIpcHandlers(mainWindow, stateStore, globalRuntimeManager, globalZapretManager, globalTelegramProxyManager);
+  await registerIpcHandlers(
+    mainWindow,
+    stateStore,
+    globalRuntimeManager,
+    globalSystemDohManager,
+    globalZapretManager,
+    globalTelegramProxyManager
+  );
 
   // Auto-connect: если включён autoConnect и есть сохранённый сервер
   const loadedState = await stateStore.load();
@@ -698,6 +718,13 @@ async function createMainWindow(): Promise<void> {
   }
   autoUpdateEnabled = loadedState.settings.autoUpdate;
   logger.info(`[updater] Persisted auto-update = ${autoUpdateEnabled}`);
+  if (globalSystemDohManager) {
+    await globalSystemDohManager.recover({
+      enabled: loadedState.settings.systemDohEnabled,
+      url: loadedState.settings.systemDohUrl,
+      localAddress: loadedState.settings.systemDohLocalAddress
+    });
+  }
   if (loadedState.settings.autoConnect && loadedState.activeNodeId) {
     const activeNodeId = loadedState.activeNodeId;
     // Задержка 3с — дождаться загрузки renderer UI
@@ -708,11 +735,40 @@ async function createMainWindow(): Promise<void> {
     }, 3000);
   }
 
+  mainWindow.webContents.on("did-finish-load", () => {
+    logger.info("[window] Main window renderer finished load");
+  });
+
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      logger.error(
+        `[window] did-fail-load code=${errorCode} mainFrame=${isMainFrame} url=${validatedURL} description=${errorDescription}`
+      );
+    }
+  );
+
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    logger.error(
+      `[window] render-process-gone reason=${details.reason} exitCode=${details.exitCode ?? "unknown"}`
+    );
+  });
+
+  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    if (level >= 2) {
+      logger.warn(`[window] console-message level=${level} ${sourceId}:${line} ${message}`);
+    }
+  });
+
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    logger.info(`[window] Loading dev renderer from ${MAIN_WINDOW_VITE_DEV_SERVER_URL}`);
     await mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools();
   } else {
-    await mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    const rendererFile = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    logger.info(`[window] Loading packaged renderer from ${rendererFile}`);
+    await mainWindow.loadFile(rendererFile);
+    logger.info("[window] loadFile resolved successfully");
   }
 
   mainWindow.webContents.setVisualZoomLevelLimits(1, 1).catch((error: unknown) => {

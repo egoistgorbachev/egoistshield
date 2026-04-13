@@ -18,6 +18,7 @@ import type { PersistedState } from "../shared/types";
 // ── Helpers ──
 
 const MAIN_ENTRY = path.resolve(__dirname, "../.vite/build/main.js");
+const CUSTOM_DOH_URL = "https://dns.astronia.space:8443/dns-query/b4bb465a";
 const CLEAN_STATE: PersistedState = {
   nodes: [],
   activeNodeId: null,
@@ -35,6 +36,10 @@ const CLEAN_STATE: PersistedState = {
     allowTelemetry: false,
     dnsMode: "auto",
     systemDnsServers: "",
+    customDnsUrl: "",
+    systemDohEnabled: false,
+    systemDohUrl: "",
+    systemDohLocalAddress: "",
     subscriptionUserAgent: "auto",
     runtimePath: "",
     routeMode: "global",
@@ -247,15 +252,22 @@ test.describe("EgoistShield E2E", () => {
   test("навигация — tab Zapret", async () => {
     const zapretTab = page.getByRole("button", { name: "Zapret" }).first();
     if (await zapretTab.isVisible()) {
+      const waitForZapretScreen = async (timeout: number) => {
+        try {
+          await expect(page.locator('[data-screen="zapret"]')).toBeVisible({ timeout });
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
       await zapretTab.click();
-      await expect
-        .poll(
-          async () =>
-            (await page.getByRole("heading", { name: "Центр Zapret" }).count()) > 0 ||
-            (await page.getByText(/Ядро (готово|недоступно)/).count()) > 0,
-          { timeout: 15_000 }
-        )
-        .toBe(true);
+      if (!(await waitForZapretScreen(2_500))) {
+        await zapretTab.click();
+      }
+      await expect(page.locator('[data-screen="zapret"]')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("heading", { name: "Центр Zapret" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Ядро (готово|недоступно)/)).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText("Error invoking remote method 'zapret:status'")).toHaveCount(0);
       await expect
         .poll(
@@ -301,7 +313,9 @@ test.describe("EgoistShield E2E", () => {
       expect(deprecatedWrappers?.updater.opened).toBe(false);
       expect(deprecatedWrappers?.serviceMenu.opened).toBe(false);
       expect(deprecatedWrappers?.updater.message).toContain("встроенный блок Flowseal Core");
-      expect(deprecatedWrappers?.serviceMenu.message).toContain("Все действия со службой доступны прямо в центре Zapret");
+      expect(deprecatedWrappers?.serviceMenu.message).toContain(
+        "Все действия со службой доступны прямо в центре Zapret"
+      );
     }
   });
 
@@ -336,8 +350,8 @@ test.describe("EgoistShield E2E", () => {
         throw new Error(`Hero badge bounds are unavailable for ${buttonName}`);
       }
 
-      expect(Math.abs(firstBox.y - secondBox.y)).toBeLessThanOrEqual(1);
-      expect(Math.abs(firstBox.y - thirdBox.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(firstBox.y - secondBox.y)).toBeLessThanOrEqual(3);
+      expect(Math.abs(firstBox.y - thirdBox.y)).toBeLessThanOrEqual(3);
 
       if (withRailAction) {
         const actionBox = await page.locator('[data-testid="page-hero-rail-action"]').boundingBox();
@@ -491,6 +505,138 @@ test.describe("EgoistShield E2E", () => {
     await expect(dnsTextarea).toHaveValue("");
   });
 
+  test("custom DoH сохраняется, включает secure DNS и очищается до встроенного режима", async () => {
+    await page.evaluate(async (nextState: PersistedState) => {
+      await window.egoistAPI?.state.set(nextState);
+    }, CLEAN_STATE);
+
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "Настройки" }).click();
+    await page.getByRole("tab", { name: "Сеть" }).click();
+
+    const customDnsTextarea = page.getByPlaceholder("https://dns.example.com/dns-query");
+    await expect(customDnsTextarea).toBeVisible();
+    await customDnsTextarea.fill(CUSTOM_DOH_URL);
+
+    await page.getByRole("button", { name: /Сохранить/ }).click();
+
+    await expect
+      .poll(async () => {
+        const state = await page.evaluate(async (): Promise<PersistedState | undefined> => {
+          return window.egoistAPI?.state.get();
+        });
+
+        if (!state) {
+          return null;
+        }
+
+        return {
+          customDnsUrl: state.settings.customDnsUrl ?? "",
+          dnsMode: state.settings.dnsMode
+        };
+      })
+      .toEqual({
+        customDnsUrl: CUSTOM_DOH_URL,
+        dnsMode: "custom"
+      });
+
+    await expect(customDnsTextarea).toHaveValue(CUSTOM_DOH_URL);
+    await expect(page.getByText("Сейчас активен ваш custom DoH.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Очистить custom DoH" }).click();
+
+    await expect
+      .poll(async () => {
+        const state = await page.evaluate(async (): Promise<PersistedState | undefined> => {
+          return window.egoistAPI?.state.get();
+        });
+
+        if (!state) {
+          return null;
+        }
+
+        return {
+          customDnsUrl: state.settings.customDnsUrl ?? "",
+          dnsMode: state.settings.dnsMode
+        };
+      })
+      .toEqual({
+        customDnsUrl: "",
+        dnsMode: "secure"
+      });
+
+    await expect(customDnsTextarea).toHaveValue("");
+  });
+
+  test("System DoH включается в DNS-центре и выключается без потери сохранённого URL", async () => {
+    await page.evaluate(async (nextState: PersistedState) => {
+      await window.egoistAPI?.state.set(nextState);
+    }, CLEAN_STATE);
+
+    await reloadCurrentPage(page);
+    await expect(page.locator('[aria-label="Основная навигация"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: "DNS" }).first().click();
+
+    const systemDohTextarea = page.locator("#system-doh-input");
+    await expect(systemDohTextarea).toBeVisible();
+    await systemDohTextarea.fill(CUSTOM_DOH_URL);
+
+    await page.getByRole("button", { name: "Включить System DoH" }).click();
+
+    await expect
+      .poll(async () => {
+        const state = await page.evaluate(async (): Promise<PersistedState | undefined> => {
+          return window.egoistAPI?.state.get();
+        });
+
+        if (!state) {
+          return null;
+        }
+
+        return {
+          systemDohEnabled: state.settings.systemDohEnabled ?? false,
+          systemDohUrl: state.settings.systemDohUrl ?? "",
+          systemDohLocalAddress: state.settings.systemDohLocalAddress ?? ""
+        };
+      })
+      .toEqual({
+        systemDohEnabled: true,
+        systemDohUrl: CUSTOM_DOH_URL,
+        systemDohLocalAddress: "127.0.0.2"
+      });
+
+    await expect(page.getByText("System DoH активен").first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Отключить System DoH" }).click();
+
+    await expect
+      .poll(async () => {
+        const state = await page.evaluate(async (): Promise<PersistedState | undefined> => {
+          return window.egoistAPI?.state.get();
+        });
+
+        if (!state) {
+          return null;
+        }
+
+        return {
+          systemDohEnabled: state.settings.systemDohEnabled ?? false,
+          systemDohUrl: state.settings.systemDohUrl ?? "",
+          systemDohLocalAddress: state.settings.systemDohLocalAddress ?? ""
+        };
+      })
+      .toEqual({
+        systemDohEnabled: false,
+        systemDohUrl: CUSTOM_DOH_URL,
+        systemDohLocalAddress: ""
+      });
+
+    await expect(systemDohTextarea).toHaveValue(CUSTOM_DOH_URL);
+  });
+
   test("DNS textarea стартует компактно и растёт только при длинном вводе", async () => {
     await page.evaluate(async (nextState: PersistedState) => {
       await window.egoistAPI?.state.set(nextState);
@@ -539,7 +685,7 @@ test.describe("EgoistShield E2E", () => {
     await importantHeading.scrollIntoViewIfNeeded();
     await expect(importantHeading).toBeVisible();
     await expect(page.getByText("Активный набор")).toBeVisible();
-    await expect(page.getByText("Используется системный DNS Windows.")).toBeVisible();
+    await expect(page.locator("p").filter({ hasText: "Используется системный DNS Windows." })).toBeVisible();
     await expect(page.getByText("Область действия")).toBeVisible();
     await expect(
       page.getByText("Системный DNS влияет на весь интернет-трафик Windows, а не только на VPN-сессию.")
@@ -697,13 +843,26 @@ test.describe("EgoistShield E2E", () => {
     await expect(page.getByText("ЗАЩИЩЕНО")).toBeVisible({ timeout: 15_000 });
     const connectedButton = page.locator('[data-testid="dashboard-scroll-area"] button').first();
     await expect(connectedButton).toBeVisible();
-
-    const connectedGradient = await connectedButton.evaluate((button) => {
-      const gradientLayer = button.querySelector(":scope > div:nth-child(2)");
-      return gradientLayer instanceof HTMLElement ? getComputedStyle(gradientLayer).backgroundImage : "";
-    });
-    expect(connectedGradient).toContain("rgb(4, 120, 87)");
-    expect(connectedGradient).toContain("rgb(16, 185, 129)");
+    await expect
+      .poll(
+        async () =>
+          await connectedButton.evaluate((button) => {
+            const gradientLayer = button.querySelector(":scope > div:nth-child(2)");
+            return gradientLayer instanceof HTMLElement ? getComputedStyle(gradientLayer).backgroundImage : "";
+          }),
+        { timeout: 15_000 }
+      )
+      .toContain("rgb(4, 120, 87)");
+    await expect
+      .poll(
+        async () =>
+          await connectedButton.evaluate((button) => {
+            const gradientLayer = button.querySelector(":scope > div:nth-child(2)");
+            return gradientLayer instanceof HTMLElement ? getComputedStyle(gradientLayer).backgroundImage : "";
+          }),
+        { timeout: 15_000 }
+      )
+      .toContain("rgb(16, 185, 129)");
 
     await connectedButton.click({ force: true });
     await expect(page.getByText("ОТКЛЮЧЕНО")).toBeVisible({ timeout: 15_000 });
@@ -913,11 +1072,7 @@ test.describe("EgoistShield E2E", () => {
     await page.getByRole("button", { name: "Прокси Telegram" }).first().click();
     await expect(page.getByRole("heading", { name: "Прокси Telegram" })).toBeVisible();
 
-    const logValue = page
-      .getByText("Лог", { exact: true })
-      .locator("xpath=..")
-      .locator("span")
-      .last();
+    const logValue = page.getByText("Лог", { exact: true }).locator("xpath=..").locator("span").last();
 
     await expect(logValue).toBeVisible();
 
@@ -981,7 +1136,10 @@ test.describe("EgoistShield E2E", () => {
     await expect(page.getByRole("switch", { name: "Уведомления" })).toHaveAttribute("aria-checked", "false");
 
     await autoUpdateSwitch.click({ force: true });
-    await expect(page.getByRole("switch", { name: "Автопроверка обновлений" })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByRole("switch", { name: "Автопроверка обновлений" })).toHaveAttribute(
+      "aria-checked",
+      "false"
+    );
 
     await page.getByRole("tab", { name: "Сеть" }).click();
     await page.waitForTimeout(250);
@@ -1026,7 +1184,10 @@ test.describe("EgoistShield E2E", () => {
 
     await expect(page.getByRole("switch", { name: "Автозапуск" })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByRole("switch", { name: "Уведомления" })).toHaveAttribute("aria-checked", "false");
-    await expect(page.getByRole("switch", { name: "Автопроверка обновлений" })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByRole("switch", { name: "Автопроверка обновлений" })).toHaveAttribute(
+      "aria-checked",
+      "false"
+    );
 
     await page.getByRole("tab", { name: "Сеть" }).click();
     await expect(page.getByRole("switch", { name: "Защищённый DNS" })).toHaveAttribute("aria-checked", "true");

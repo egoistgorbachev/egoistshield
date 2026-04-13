@@ -1,6 +1,6 @@
-# EgoistShield 4.0.1 Release Verification & Distribution
+# EgoistShield 4.0.4 Release Verification & Distribution
 
-Эта памятка описывает текущую release-политику для `apps/desktop-electron` на `2026-04-02` и product-version `4.0.1`.
+Эта памятка описывает текущую release-политику для `apps/desktop-electron` на `2026-04-10` и product-version `4.0.4`.
 
 Текущая модель распространения намеренно простая:
 
@@ -42,19 +42,29 @@ latest.yml
    npm run test:e2e
    ```
 
-2. Собрать desktop-релиз:
+2. На выделенной Windows QA-машине при необходимости прогнать packaged smoke harness:
+
+   ```bash
+   npm run test:e2e:packaged
+   ```
+
+   Этот сценарий запускает упакованный `EgoistShield.exe`, ждёт production boot marker и ведёт по ручному checklist для реального `System DoH`, поэтому его не стоит выполнять как обычный быстрый smoke на рабочей машине.
+
+   Детальный checklist: [packaged-smoke.md](./packaged-smoke.md)
+
+3. Собрать desktop-релиз:
 
    ```bash
    npm run dist
    ```
 
-3. Проверить артефакты вручную при необходимости:
+4. Проверить артефакты вручную при необходимости:
 
    ```bash
    npm run release:verify
    ```
 
-4. Загрузить в GitHub Release:
+5. Загрузить в GitHub Release:
    - `EgoistShield-<version>-Setup.exe`
    - `EgoistShield-<version>-Setup.exe.blockmap`
    - `latest.yml`

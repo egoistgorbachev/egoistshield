@@ -1,7 +1,7 @@
 {
   "name": "egoistshield-desktop-electron",
   "productName": "EgoistShield",
-  "version": "4.0.1",
+  "version": "4.0.11",
   "description": "EgoistShield Windows desktop client for node management and system DNS",
   "main": ".vite/build/main.js",
   "private": true,
@@ -25,11 +25,13 @@
     "build:vite": "npm run generate-icons && vite build --config vite.main.config.ts && vite build --config vite.preload.config.ts && vite build --config vite.renderer.config.ts",
     "package": "npm run ensure:runtime && electron-forge package",
     "release:verify": "node ./packaging/scripts/verify-release-artifacts.mjs",
+    "diagnose:telegram-proxy": "node ./scripts/telegram-proxy-lab.mjs",
     "dist": "npm run powershell:run -- -ExecutionPolicy Bypass -File ./packaging/scripts/clean-dist.ps1 && npm run ensure:runtime && npm run build:vite && electron-builder --win --publish never && npm run release:verify",
     "make": "npm run dist",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "npx playwright test",
+    "test:e2e": "npx playwright test --config playwright.config.ts",
+    "test:e2e:packaged": "npm run powershell:run -- -ExecutionPolicy Bypass -File ./packaging/scripts/packaged-smoke.ps1",
     "stress": "vitest run tests/stress.spec.ts",
     "build": "npm run test && npm run stress && npm run dist"
   },

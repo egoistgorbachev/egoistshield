@@ -6,13 +6,19 @@ import {
   buildChecksumCandidateAssetNames,
   buildGitHubAssetDownloadUrl,
   buildGitHubReleasePageUrl,
+  buildGitHubReleaseTagApiUrl,
+  buildGitHubReleaseTagPageUrl,
+  buildGitHubTagsApiUrl,
   compareLooseVersions,
+  extractSha256FromGitHubAssetDigest,
   extractSha256FromChecksumText,
   extractGitHubTagFromReleaseUrl,
+  fetchGitHubTags,
   normalizeAuthenticodeStatusMessage,
   normalizeVersionTag,
   pickGitHubAsset,
   pickGitHubChecksumAsset,
+  pickLatestGitHubTag,
   resolveLatestGitHubRelease,
   verifyFileSha256
 } from "../electron/ipc/github-release";
@@ -80,6 +86,15 @@ describe("github-release helpers", () => {
     expect(buildGitHubReleasePageUrl("https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/latest")).toBe(
       "https://github.com/Flowseal/tg-ws-proxy/releases/latest"
     );
+    expect(buildGitHubTagsApiUrl("https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/latest")).toBe(
+      "https://api.github.com/repos/Flowseal/tg-ws-proxy/tags"
+    );
+    expect(
+      buildGitHubReleaseTagApiUrl("https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/latest", "v1.6.1")
+    ).toBe("https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/tags/v1.6.1");
+    expect(
+      buildGitHubReleaseTagPageUrl("https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/latest", "v1.6.1")
+    ).toBe("https://github.com/Flowseal/tg-ws-proxy/releases/tag/v1.6.1");
     expect(
       buildGitHubAssetDownloadUrl(
         "https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/latest",
@@ -92,6 +107,10 @@ describe("github-release helpers", () => {
   it("extractGitHubTagFromReleaseUrl достаёт tag из releases/tag URL", () => {
     expect(extractGitHubTagFromReleaseUrl("https://github.com/XTLS/Xray-core/releases/tag/v26.3.27")).toBe("v26.3.27");
     expect(extractGitHubTagFromReleaseUrl("https://github.com/SagerNet/sing-box/releases/latest")).toBeNull();
+  });
+
+  it("pickLatestGitHubTag выбирает самый новый tag даже если releases/latest устарел", () => {
+    expect(pickLatestGitHubTag(["v1.4.0", "v1.6.1", "v1.6.0"])).toBe("v1.6.1");
   });
 
   it("buildChecksumCandidateAssetNames добавляет asset-specific и generic checksum варианты", () => {
@@ -125,6 +144,14 @@ describe("github-release helpers", () => {
       extractSha256FromChecksumText(
         "SHA256 (Xray-windows-64.zip) = 9b24ec4c9f2a9f2f08c8a587cb5ff5d3b6b0e2e62ef8f2392d6f2540fc4b3d8c",
         "Xray-windows-64.zip"
+      )
+    ).toBe("9b24ec4c9f2a9f2f08c8a587cb5ff5d3b6b0e2e62ef8f2392d6f2540fc4b3d8c");
+  });
+
+  it("extractSha256FromGitHubAssetDigest читает digest из GitHub Release API", () => {
+    expect(
+      extractSha256FromGitHubAssetDigest(
+        "sha256:9b24ec4c9f2a9f2f08c8a587cb5ff5d3b6b0e2e62ef8f2392d6f2540fc4b3d8c"
       )
     ).toBe("9b24ec4c9f2a9f2f08c8a587cb5ff5d3b6b0e2e62ef8f2392d6f2540fc4b3d8c");
   });
@@ -175,5 +202,22 @@ describe("github-release helpers", () => {
       source: "release-page"
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fetchGitHubTags читает список тегов из GitHub API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [{ name: "v1.6.1" }, { name: "v1.6.0" }, { name: "v1.4.0" }]
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchGitHubTags("https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/latest")).resolves.toEqual([
+      "v1.6.1",
+      "v1.6.0",
+      "v1.4.0"
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

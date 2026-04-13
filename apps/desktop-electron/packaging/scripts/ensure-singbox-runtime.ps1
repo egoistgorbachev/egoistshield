@@ -13,6 +13,29 @@ $packageJsonPath = Join-Path $projectRoot "package.json"
 $releaseVersion = if (Test-Path $packageJsonPath) { ((Get-Content $packageJsonPath -Raw) | ConvertFrom-Json).version } else { $null }
 $buildUserAgent = "EgoistShield-Build/" + $(if ($releaseVersion) { $releaseVersion } else { "dev" })
 
+function Get-ErrorSummary($errorRecord) {
+  $messages = New-Object System.Collections.Generic.List[string]
+  $current = $errorRecord.Exception
+
+  while ($current) {
+    if (-not [string]::IsNullOrWhiteSpace($current.Message)) {
+      [void]$messages.Add($current.Message.Trim())
+    }
+    $current = $current.InnerException
+  }
+
+  return (($messages | Select-Object -Unique) -join " | ")
+}
+
+function Get-RemoteFailureHint($errorRecord) {
+  $summary = Get-ErrorSummary $errorRecord
+  if ($summary -match '403|forbidden|rate limit') {
+    return "GitHub временно отклонил запрос (HTTP 403 / rate limit)."
+  }
+
+  return "Проверка или скачивание свежего runtime завершились ошибкой."
+}
+
 function Get-LatestRelease {
   return Invoke-RestMethod -Uri "https://api.github.com/repos/SagerNet/sing-box/releases/latest" -Headers @{
     "User-Agent" = $buildUserAgent
@@ -67,7 +90,9 @@ try {
 }
 catch {
   if (Test-Path $runtimeExe) {
-    Write-Warning "[runtime] Не удалось обновить sing-box, используем локальный: $($_.Exception.Message)"
+    $reason = Get-ErrorSummary $_
+    $hint = Get-RemoteFailureHint $_
+    Write-Warning "[runtime] sing-box: $hint Оставляем локальный runtime $runtimeExe. Причина: $reason"
     exit 0
   }
   throw

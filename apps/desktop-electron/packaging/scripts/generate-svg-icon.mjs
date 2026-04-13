@@ -19,7 +19,8 @@ async function main() {
 
     if (size === 1024) {
       await fs.writeFile(path.join(assetsDir, "shield-logo.png"), buf);
-      await fs.writeFile(path.join(assetsDir, "egoist-logo.png"), buf);
+      await fs.rm(path.join(assetsDir, "egoist-logo.png"), { force: true });
+      await fs.rm(path.join(assetsDir, "logo-original.png"), { force: true });
       console.log(`✅ Saved ${size}px Ultra HD PNG → assets/`);
     }
     if (size === 512) {

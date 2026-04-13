@@ -16,9 +16,40 @@ $packageJsonPath = Join-Path $projectRoot "package.json"
 $releaseVersion = if (Test-Path $packageJsonPath) { ((Get-Content $packageJsonPath -Raw) | ConvertFrom-Json).version } else { $null }
 $buildUserAgent = "EgoistShield-Build/" + $(if ($releaseVersion) { $releaseVersion } else { "dev" })
 
-if (-not $LocalExePath) {
+function Test-UsablePath([string]$targetPath) {
+  if ([string]::IsNullOrWhiteSpace($targetPath)) {
+    return $false
+  }
+
+  return Test-Path -LiteralPath $targetPath
+}
+
+function Get-ErrorSummary($errorRecord) {
+  $messages = New-Object System.Collections.Generic.List[string]
+  $current = $errorRecord.Exception
+
+  while ($current) {
+    if (-not [string]::IsNullOrWhiteSpace($current.Message)) {
+      [void]$messages.Add($current.Message.Trim())
+    }
+    $current = $current.InnerException
+  }
+
+  return (($messages | Select-Object -Unique) -join " | ")
+}
+
+function Get-RemoteFailureHint($errorRecord) {
+  $summary = Get-ErrorSummary $errorRecord
+  if ($summary -match '403|forbidden|rate limit') {
+    return "GitHub временно отклонил запрос (HTTP 403 / rate limit)."
+  }
+
+  return "Проверка релиза или скачивание Zapret runtime завершились ошибкой."
+}
+
+if ([string]::IsNullOrWhiteSpace($LocalExePath)) {
   $candidate = Join-Path $env:USERPROFILE "Downloads\AyuGram Desktop\ZapretGUI.exe"
-  if (Test-Path $candidate) {
+  if (Test-Path -LiteralPath $candidate) {
     $LocalExePath = $candidate
   }
 }
@@ -54,7 +85,7 @@ try {
   }
 
   $exeUrl = $release.assets | Where-Object { $_.name -eq "ZapretGUI.exe" } | Select-Object -First 1 -ExpandProperty browser_download_url
-  if (-not $exeUrl -and -not (Test-Path $LocalExePath)) {
+  if (-not $exeUrl -and -not (Test-UsablePath $LocalExePath)) {
     throw "Не удалось определить URL релизного ZapretGUI.exe и не найден локальный fallback."
   }
 
@@ -76,7 +107,7 @@ try {
     throw "Не удалось распаковать исходники Zapret GUI."
   }
 
-  if (Test-Path $LocalExePath) {
+  if (Test-UsablePath $LocalExePath) {
     Write-Host "[runtime] Использую локальный ZapretGUI.exe: $LocalExePath"
     Copy-Item -Force $LocalExePath $exeDownloadPath
   }
@@ -97,7 +128,9 @@ try {
 }
 catch {
   if ((Test-Path $runtimeExe) -and (Test-Path $runtimeCoreDir) -and (Test-Path $runtimeFlagsDir)) {
-    Write-Warning "[runtime] Не удалось обновить zapret, используем локальный runtime: $($_.Exception.Message)"
+    $reason = Get-ErrorSummary $_
+    $hint = Get-RemoteFailureHint $_
+    Write-Warning "[runtime] zapret: $hint Оставляем локальный runtime $runtimeDir. Причина: $reason"
     exit 0
   }
   throw

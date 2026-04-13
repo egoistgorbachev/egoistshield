@@ -37,6 +37,10 @@ async function copyMasterPng(inputPath, outputPath) {
   await fs.writeFile(outputPath, buffer);
 }
 
+async function removeIfExists(targetPath) {
+  await fs.rm(targetPath, { force: true });
+}
+
 async function writeInstallerSidebar(masterLogoPath, outputPath) {
   const canvasSize = 512;
   const logoSize = 320;
@@ -100,14 +104,15 @@ export async function main() {
 
   await copyMasterPng(masterLogoPath, path.join(assetsDir, "icon.png"));
   await copyMasterPng(masterLogoPath, path.join(assetsDir, "shield-logo.png"));
-  await copyMasterPng(masterLogoPath, path.join(assetsDir, "egoist-logo.png"));
-  await copyMasterPng(masterLogoPath, path.join(assetsDir, "logo-original.png"));
   await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-icon.png"));
   await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-default.png"));
   await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-connected.png"));
   await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-disconnected.png"));
   await writeResizedPng(masterLogoPath, 32, path.join(assetsDir, "tray-error.png"));
   await writeInstallerSidebar(masterLogoPath, path.join(buildResourcesDir, "installerSidebar.png"));
+
+  await removeIfExists(path.join(assetsDir, "egoist-logo.png"));
+  await removeIfExists(path.join(assetsDir, "logo-original.png"));
 
   await fs.rm(tmpDir, { recursive: true, force: true });
   console.log("✅ Brand assets generated from the cropped master logo.");

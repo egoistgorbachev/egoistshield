@@ -15,6 +15,7 @@ import { registerVpnHandlers } from "./handlers-vpn";
 import { registerZapretHandlers } from "./handlers-zapret";
 import type { IpcContext } from "./ipc-context";
 import type { StateStore } from "./state-store";
+import type { SystemDohManager } from "./system-doh-manager";
 import type { TelegramProxyManager } from "./telegram-proxy-manager";
 import type { VpnRuntimeManager } from "./vpn-manager";
 import type { ZapretManager } from "./zapret-manager";
@@ -23,12 +24,20 @@ export async function registerIpcHandlers(
   window: BrowserWindow,
   stateStore: StateStore,
   runtimeManager: VpnRuntimeManager,
+  systemDohManager: SystemDohManager,
   zapretManager: ZapretManager,
   telegramProxyManager: TelegramProxyManager
 ): Promise<void> {
   await stateStore.load();
 
-  const ctx: IpcContext = { window, stateStore, runtimeManager, zapretManager, telegramProxyManager };
+  const ctx: IpcContext = {
+    window,
+    stateStore,
+    runtimeManager,
+    systemDohManager,
+    zapretManager,
+    telegramProxyManager
+  };
 
   registerSystemHandlers(ctx);
   registerImportHandlers(ctx);

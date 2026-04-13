@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   AlertTriangle,
   Check,
@@ -118,7 +118,7 @@ function InternetFixButton() {
       disabled={status === "loading"}
       onClick={handleFix}
       className={cn(
-        "col-span-2 relative flex items-center justify-center gap-2.5 py-3 px-6 rounded-2xl",
+        "relative flex w-full max-w-[220px] items-center justify-center gap-2.5 rounded-2xl px-5 py-2.5",
         "text-sm font-semibold tracking-wide cursor-pointer backdrop-blur-sm",
         "transition-all duration-300 hover:brightness-110 active:scale-[0.98]",
         btnStyle,
@@ -179,7 +179,17 @@ function InfoCard({
   );
 }
 
+function SummaryPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/[0.04] bg-white/[0.025] px-3 py-3">
+      <span className="block text-[10px] font-bold uppercase tracking-[0.22em] text-muted">{label}</span>
+      <span className="mt-1 block text-sm font-semibold text-white/90">{value}</span>
+    </div>
+  );
+}
+
 export function Dashboard() {
+  const prefersReducedMotion = useReducedMotion();
   useHealthCheck();
   const isConnected = useAppStore((s) => s.isConnected);
   const isConnecting = useAppStore((s) => s.isConnecting);
@@ -194,6 +204,10 @@ export function Dashboard() {
   const connectionMode = useAppStore((s) => s.connectionMode);
   const setConnectionMode = useAppStore((s) => s.setConnectionMode);
   const activePing = useAppStore((s) => s.activePing);
+  const autoStart = useAppStore((s) => s.autoStart);
+  const autoUpdate = useAppStore((s) => s.autoUpdate);
+  const systemDohEnabled = useAppStore((s) => s.systemDohEnabled);
+  const favoriteServerIds = useAppStore((s) => s.favoriteServerIds);
   const [isSmartConnecting, setIsSmartConnecting] = useState(false);
   const [hoveredMode, setHoveredMode] = useState<ConnectionMode | null>(null);
   // Dashboard показывает ФАКТИЧЕСКИ подключённый сервер, а не выбранный в списке
@@ -346,6 +360,21 @@ export function Dashboard() {
         : connectionVisualState === "connected"
           ? "ЗАЩИЩЕНО"
           : "ОТКЛЮЧЕНО";
+  const allowAmbientMotion =
+    !prefersReducedMotion &&
+    (connectionVisualState === "connected" ||
+      connectionVisualState === "connecting" ||
+      connectionVisualState === "disconnecting");
+  const showDisconnectedReadiness = !isConnected && !isConnecting && !isDisconnecting;
+  const quickSummary = [
+    { label: "Узлов", value: String(servers.length) },
+    { label: "Избранных", value: String(favoriteServerIds.length) },
+    { label: "Режим", value: connectionMode === "smart" ? "Smart" : "Default" },
+    { label: "System DoH", value: systemDohEnabled ? "On" : "Off" },
+    { label: "Автозапуск", value: autoStart ? "On" : "Off" },
+    { label: "Обновления", value: autoUpdate ? "Auto" : "Manual" }
+  ];
+  const activeConnectionModeDetails = CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode ?? connectionMode];
 
   // Главная кнопка должна быть предельно читаемой:
   // фирменный оранжевый в off-state и насыщенный зелёный в on-state,
@@ -396,7 +425,8 @@ export function Dashboard() {
       >
         <div
           className={cn(
-            "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-[100px] animate-aurora mix-blend-screen",
+            "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-[100px] mix-blend-screen",
+            allowAmbientMotion && "animate-aurora",
             isConnected ? "bg-emerald-500/25" : "bg-[#FF4C29]/20"
           )}
         />
@@ -407,12 +437,15 @@ export function Dashboard() {
         data-testid="dashboard-scroll-area"
         className="relative z-10 h-full w-full overflow-y-auto overflow-x-hidden custom-scrollbar"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-[36rem] flex-col items-center justify-center gap-4 px-5 py-4 sm:px-6">
+        <div className="mx-auto flex min-h-full w-full max-w-[34rem] flex-col items-center justify-start gap-3 px-4 py-5 sm:px-5 sm:py-6">
           {/* ═══ CONNECT BUTTON ═══ */}
-          <div className="relative flex items-center justify-center w-full mt-2" style={NO_DRAG_REGION_STYLE}>
+          <div className="relative flex w-full items-center justify-center pt-1" style={NO_DRAG_REGION_STYLE}>
             {/* Ambient glow — CSS-only, zero JS overhead */}
             <div
-              className="absolute w-44 h-44 rounded-full pointer-events-none animate-glow-pulse-slow"
+              className={cn(
+                "absolute h-40 w-40 rounded-full pointer-events-none",
+                allowAmbientMotion && "animate-glow-pulse-slow"
+              )}
               style={{
                 background: isConnected
                   ? "radial-gradient(circle, rgba(16,185,129,0.35) 0%, transparent 65%)"
@@ -421,7 +454,7 @@ export function Dashboard() {
             />
 
             {/* Connecting pulse rings — CSS keyframes for compositor thread */}
-            {isConnecting && (
+            {!prefersReducedMotion && isConnecting && (
               <>
                 <div className="absolute w-36 h-36 rounded-full border-2 border-brand/40 pointer-events-none animate-connect-ring" />
                 <div
@@ -458,7 +491,8 @@ export function Dashboard() {
             )}
 
             {/* VPN data flow particles — orbit around button when connected */}
-            {isConnected &&
+            {!prefersReducedMotion &&
+              isConnected &&
               ORBIT_PARTICLES.map((particle) => (
                 <div
                   key={particle.id}
@@ -483,14 +517,14 @@ export function Dashboard() {
             {/* Power Button */}
             <motion.button
               onClick={handleConnectClick}
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.88 }}
+              whileHover={prefersReducedMotion ? undefined : { scale: 1.03 }}
+              whileTap={prefersReducedMotion ? undefined : { scale: 0.94 }}
               transition={MOTION.spring.bouncy}
               aria-label={powerButtonLabel}
               data-connection-state={connectionVisualState}
               disabled={connectionVisualState === "connecting" || connectionVisualState === "disconnecting"}
               className={cn(
-                "relative w-36 h-36 rounded-full focus:outline-none z-10 group",
+                "relative z-10 h-32 w-32 rounded-full focus:outline-none group",
                 connectionVisualState === "connecting" || connectionVisualState === "disconnecting"
                   ? "cursor-progress"
                   : "cursor-pointer",
@@ -520,8 +554,12 @@ export function Dashboard() {
               <div className="relative z-10 flex items-center justify-center w-full h-full">
                 {connectionVisualState === "connecting" || connectionVisualState === "disconnecting" ? (
                   <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
+                    animate={prefersReducedMotion ? undefined : { rotate: 360 }}
+                    transition={
+                      prefersReducedMotion
+                        ? undefined
+                        : { duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }
+                    }
                   >
                     <Loader2 className="w-10 h-10 text-white" strokeWidth={2} />
                   </motion.div>
@@ -533,14 +571,14 @@ export function Dashboard() {
           </div>
 
           {/* ═══ STATUS TEXT ═══ */}
-          <div className="flex flex-col items-center gap-2 z-10 shrink-0">
+          <div className="z-10 flex shrink-0 flex-col items-center gap-1.5">
             <motion.h1
               key={connectionVisualState}
-              initial={{ opacity: 0, y: 8, scale: 0.95 }}
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 8, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              transition={prefersReducedMotion ? { duration: 0.12 } : { type: "spring", stiffness: 300, damping: 25 }}
               className={cn(
-                "text-2xl font-display font-bold tracking-[0.25em] uppercase",
+                "text-[1.7rem] font-display font-bold uppercase tracking-[0.22em] sm:text-[1.85rem]",
                 connectionVisualState === "connected" ? "text-emerald-400" : "text-brand"
               )}
               style={{
@@ -557,7 +595,7 @@ export function Dashboard() {
               <motion.div
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-3"
+                className="flex items-center gap-2.5"
               >
                 {/* Server name + flag during connecting */}
                 {(isConnecting || isDisconnecting) && (
@@ -586,10 +624,10 @@ export function Dashboard() {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               style={NO_DRAG_REGION_STYLE}
-              className="relative z-20 flex flex-col items-center gap-3 shrink-0"
+              className="relative z-20 flex w-full shrink-0 flex-col items-center gap-2"
             >
-              <div className="relative flex w-[248px] max-w-[calc(100vw-112px)] flex-col items-center pb-[70px]">
-                <div className="relative flex items-center gap-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-1 backdrop-blur-sm">
+              <div className="flex w-full max-w-[280px] flex-col items-center gap-2">
+                <div className="relative flex w-full items-center justify-center gap-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-1 backdrop-blur-sm">
                   <button
                     type="button"
                     onClick={() => setConnectionMode("smart")}
@@ -631,32 +669,30 @@ export function Dashboard() {
                   </button>
                 </div>
 
-                <div className="pointer-events-none absolute inset-x-0 top-full flex justify-center pt-3">
-                  <AnimatePresence mode="wait">
-                    {hoveredMode && (
-                      <motion.div
-                        key={hoveredMode}
-                        data-testid="connection-mode-tooltip"
-                        initial={{ opacity: 0, y: -4, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                        transition={{ duration: 0.16, ease: "easeOut" }}
-                        className="rounded-2xl border bg-[#2C394B]/96 px-3 py-2.5 text-center text-[10px] leading-tight text-white/90 shadow-[0_12px_36px_rgba(0,0,0,0.42)] backdrop-blur-md"
-                        style={{ ...NO_DRAG_REGION_STYLE, width: 248, maxWidth: "calc(100vw - 112px)" }}
-                      >
-                        <span
-                          className={cn(
-                            "mb-1 block border-b pb-1 font-bold",
-                            CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].accentClass
-                          )}
-                        >
-                          {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].title}
-                        </span>
-                        {CONNECTION_MODE_TOOLTIP_CONTENT[hoveredMode].description}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={hoveredMode ?? connectionMode}
+                    data-testid="connection-mode-tooltip"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.16, ease: "easeOut" }}
+                    className="w-full rounded-2xl border border-white/[0.08] bg-[#11283B]/88 px-3.5 py-2.5 text-center shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-md"
+                    style={NO_DRAG_REGION_STYLE}
+                  >
+                    <span
+                      className={cn(
+                        "mb-1 block text-[10px] font-bold uppercase tracking-[0.16em]",
+                        activeConnectionModeDetails.accentClass
+                      )}
+                    >
+                      {activeConnectionModeDetails.title}
+                    </span>
+                    <span className="block text-[11px] leading-4 text-white/72">
+                      {activeConnectionModeDetails.description}
+                    </span>
+                  </motion.div>
+                </AnimatePresence>
               </div>
             </motion.div>
           )}
@@ -678,15 +714,17 @@ export function Dashboard() {
 
           {/* ═══ STATS GRID ═══ */}
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="z-10 flex w-full max-w-[480px] shrink-0 flex-col gap-2.5 overflow-visible"
+            transition={
+              prefersReducedMotion ? { duration: 0.12 } : { delay: 0.15, duration: 0.6, ease: [0.16, 1, 0.3, 1] }
+            }
+            className="z-10 flex w-full max-w-[480px] shrink-0 flex-col gap-2 overflow-visible"
             style={NO_DRAG_REGION_STYLE}
           >
             {/* Quick-stats strip (Connected) */}
             {isConnected && (
-              <InfoCard className="w-full py-3 px-4 flex-row items-center justify-between !cursor-default backdrop-blur-md bg-white/[0.04]">
+              <InfoCard className="w-full flex-row items-center justify-between bg-white/[0.04] px-4 py-2.5 !cursor-default backdrop-blur-md">
                 <div
                   className="flex items-center gap-2 text-white/90 font-mono-metric text-[13px] font-medium"
                   title="Узел"
@@ -718,7 +756,7 @@ export function Dashboard() {
             )}
 
             {/* Cards Row */}
-            <div data-testid="dashboard-cards-grid" className="grid grid-cols-2 gap-2.5 w-full">
+            <div data-testid="dashboard-cards-grid" className="grid w-full grid-cols-2 gap-2">
               {/* IP Card */}
               {!realIp && !isConnected ? (
                 <InfoCard
@@ -839,7 +877,7 @@ export function Dashboard() {
                     <span className="text-[11px] font-bold uppercase tracking-widest text-muted leading-tight">
                       Узел
                     </span>
-                    <span className="text-lg font-semibold truncate text-white/75 group-hover:text-brand transition-colors">
+                    <span className="truncate text-[15px] font-semibold leading-tight text-white/78 transition-colors group-hover:text-brand">
                       {currentServer ? currentServer.name : "Выбрать"}
                     </span>
                   </div>
@@ -872,12 +910,60 @@ export function Dashboard() {
             )}
 
             {/* Internet Fix */}
-            <div className="w-full mt-1 flex justify-center">
+            <div className="mt-1 flex w-full justify-center">
               <InternetFixButton />
             </div>
 
+            {showDisconnectedReadiness && (
+              <InfoCard className="flex-col items-stretch gap-3 px-4 py-3.5 !cursor-default">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="block text-[11px] font-bold uppercase tracking-[0.2em] text-muted">
+                      Готовность
+                    </span>
+                    <h2 className="mt-1 text-[15px] font-semibold leading-tight text-white/92">
+                      Всё готово к следующему подключению
+                    </h2>
+                  </div>
+                  <div className="rounded-full border border-brand/15 bg-brand/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-brand">
+                    Idle
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {quickSummary.map((item) => (
+                    <SummaryPill key={item.label} label={item.label} value={item.value} />
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScreen("servers")}
+                    className="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-xs font-semibold tracking-wide text-white/80 transition-colors hover:bg-white/[0.06] hover:text-white"
+                  >
+                    Узлы
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScreen("dns")}
+                    className="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-xs font-semibold tracking-wide text-white/80 transition-colors hover:bg-white/[0.06] hover:text-white"
+                  >
+                    DNS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScreen("settings")}
+                    className="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-xs font-semibold tracking-wide text-white/80 transition-colors hover:bg-white/[0.06] hover:text-white"
+                  >
+                    Настройки
+                  </button>
+                </div>
+              </InfoCard>
+            )}
+
             {/* Usage Insights - Only when disconnected to save space, or always? Let's show always but at the bottom */}
-            {!isConnected && !isConnecting && !isDisconnecting && <UsageInsights className="mt-2" />}
+            {!isConnected && !isConnecting && !isDisconnecting && <UsageInsights className="mt-1" />}
           </motion.div>
         </div>
       </div>

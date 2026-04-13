@@ -6,344 +6,374 @@
  */
 
 export type NodeProtocol =
-  | "vless"
-  | "vmess"
-  | "trojan"
-  | "shadowsocks"
-  | "socks"
-  | "http"
-  | "hysteria2"
-  | "tuic"
-  | "wireguard";
+	| "vless"
+	| "vmess"
+	| "trojan"
+	| "shadowsocks"
+	| "socks"
+	| "http"
+	| "hysteria2"
+	| "tuic"
+	| "wireguard";
 export type RuleMode = "vpn" | "direct" | "block";
 export type RouteMode = "global" | "selected";
 export type SubscriptionUserAgent =
-  | "auto"
-  | "egoistshield"
-  | "v2rayn"
-  | "singbox"
-  | "nekobox"
-  | "mihomo"
-  | "clash-verge"
-  | "clash-for-windows"
-  | "shadowrocket"
-  | "loon"
-  | "quantumultx"
-  | "surge"
-  | "curl";
+	| "auto"
+	| "egoistshield"
+	| "v2rayn"
+	| "singbox"
+	| "nekobox"
+	| "mihomo"
+	| "clash-verge"
+	| "clash-for-windows"
+	| "shadowrocket"
+	| "loon"
+	| "quantumultx"
+	| "surge"
+	| "curl";
 
 export interface VpnNode {
-  id: string;
-  name: string;
-  protocol: NodeProtocol;
-  server: string;
-  port: number;
-  uri: string;
-  metadata: Record<string, string>;
-  /** ID подписки, из которой был импортирован узел. Undefined для вручную добавленных. */
-  subscriptionId?: string;
+	id: string;
+	name: string;
+	protocol: NodeProtocol;
+	server: string;
+	port: number;
+	uri: string;
+	metadata: Record<string, string>;
+	/** ID подписки, из которой был импортирован узел. Undefined для вручную добавленных. */
+	subscriptionId?: string;
 }
 
 export interface ProcessRule {
-  id: string;
-  process: string;
-  mode: RuleMode;
+	id: string;
+	process: string;
+	mode: RuleMode;
 }
 
 export interface DomainRule {
-  id: string;
-  domain: string;
-  mode: RuleMode;
+	id: string;
+	domain: string;
+	mode: RuleMode;
 }
 
 export interface SubscriptionItem {
-  id: string;
-  url: string;
-  name?: string | null;
-  enabled: boolean;
-  lastUpdated: string | null;
-  upload?: number;
-  download?: number;
-  total?: number;
-  expire?: number;
+	id: string;
+	url: string;
+	name?: string | null;
+	enabled: boolean;
+	lastUpdated: string | null;
+	upload?: number;
+	download?: number;
+	total?: number;
+	expire?: number;
 }
 
 export interface AppSettings {
-  autoStart: boolean;
-  startMinimized: boolean;
-  autoUpdate: boolean;
-  autoConnect: boolean;
-  notifications: boolean;
-  useTunMode: boolean;
-  killSwitch: boolean;
-  allowTelemetry: boolean;
-  dnsMode: "auto" | "secure" | "system" | "custom";
-  systemDnsServers?: string;
-  subscriptionUserAgent: SubscriptionUserAgent;
-  runtimePath: string;
-  routeMode: RouteMode;
-  zapretProfile: string;
-  zapretSuspendDuringVpn: boolean;
+	autoStart: boolean;
+	startMinimized: boolean;
+	autoUpdate: boolean;
+	autoConnect: boolean;
+	notifications: boolean;
+	useTunMode: boolean;
+	killSwitch: boolean;
+	allowTelemetry: boolean;
+	dnsMode: "auto" | "secure" | "system" | "custom";
+	systemDnsServers?: string;
+	customDnsUrl?: string;
+	systemDohEnabled?: boolean;
+	systemDohUrl?: string;
+	systemDohLocalAddress?: string;
+	subscriptionUserAgent: SubscriptionUserAgent;
+	runtimePath: string;
+	routeMode: RouteMode;
+	zapretProfile: string;
+	zapretSuspendDuringVpn: boolean;
 }
 
 export interface UsageRecord {
-  id: string; // уникальный ID записи сессии
-  timestamp: number; // время конца сессии
-  serverId: string;
-  ping: number; // средний пинг или последний
-  down: number; // скачано байт
-  up: number; // отдано байт
-  durationSec: number; // длительность сессии в сек
+	id: string; // уникальный ID записи сессии
+	timestamp: number; // время конца сессии
+	serverId: string;
+	ping: number; // средний пинг или последний
+	down: number; // скачано байт
+	up: number; // отдано байт
+	durationSec: number; // длительность сессии в сек
 }
 
 export interface PersistedState {
-  nodes: VpnNode[];
-  activeNodeId: string | null;
-  subscriptions: SubscriptionItem[];
-  processRules: ProcessRule[];
-  domainRules: DomainRule[];
-  settings: AppSettings;
-  usageHistory: UsageRecord[];
+	nodes: VpnNode[];
+	activeNodeId: string | null;
+	subscriptions: SubscriptionItem[];
+	processRules: ProcessRule[];
+	domainRules: DomainRule[];
+	settings: AppSettings;
+	usageHistory: UsageRecord[];
 }
 
 export type RuntimeKind = "xray" | "sing-box";
+export interface SystemDohStatus {
+	available: boolean;
+	running: boolean;
+	pid: number | null;
+	startedAt: string | null;
+	runtimePath: string | null;
+	configPath: string;
+	logPath: string;
+	localAddress: string | null;
+	localPort: number | null;
+	currentUrl: string | null;
+	lastError: string | null;
+	mocked?: boolean;
+}
+
+export interface SystemDohCommandResult {
+	ok: boolean;
+	message: string;
+	status: SystemDohStatus;
+}
+
 export type IntegritySource = "authenticode" | "sha256" | "none";
 export type AppUpdateStatus = "up-to-date" | "update-available" | "local-newer";
 export type RuntimeLifecycle =
-  | "idle"
-  | "probing"
-  | "connecting"
-  | "warmup"
-  | "active"
-  | "degraded"
-  | "reconnecting"
-  | "failed";
+	| "idle"
+	| "probing"
+	| "connecting"
+	| "warmup"
+	| "active"
+	| "degraded"
+	| "reconnecting"
+	| "failed";
 
 export type RuntimeFailureReason =
-  | "config_write_failed"
-  | "runtime_install_failed"
-  | "runtime_not_found"
-  | "runtime_start_failed"
-  | "runtime_crashed"
-  | "runtime_port_unreachable"
-  | "dns_failed"
-  | "tcp_timeout"
-  | "tls_handshake_failed"
-  | "quic_blocked"
-  | "auth_rejected"
-  | "server_unreachable"
-  | "kill_switch_failed"
-  | "system_proxy_failed"
-  | "unknown";
+	| "config_write_failed"
+	| "runtime_install_failed"
+	| "runtime_not_found"
+	| "runtime_start_failed"
+	| "runtime_crashed"
+	| "runtime_port_unreachable"
+	| "dns_failed"
+	| "tcp_timeout"
+	| "tls_handshake_failed"
+	| "quic_blocked"
+	| "auth_rejected"
+	| "server_unreachable"
+	| "kill_switch_failed"
+	| "system_proxy_failed"
+	| "unknown";
 
 export interface RuntimeDiagnostic {
-  reason: RuntimeFailureReason | null;
-  details: string | null;
-  updatedAt: string | null;
-  fallbackAttempted: boolean;
-  fallbackTarget: RuntimeKind | null;
+	reason: RuntimeFailureReason | null;
+	details: string | null;
+	updatedAt: string | null;
+	fallbackAttempted: boolean;
+	fallbackTarget: RuntimeKind | null;
 }
 
 export interface RuntimeLogSummary {
-  timestamp: string;
-  level: "info" | "warn" | "error" | "debug";
-  lifecycle: RuntimeLifecycle;
-  reason: RuntimeFailureReason | null;
-  message: string;
-  nodeId: string | null;
-  runtimeKind: RuntimeKind | null;
-  proxyPort: number | null;
+	timestamp: string;
+	level: "info" | "warn" | "error" | "debug";
+	lifecycle: RuntimeLifecycle;
+	reason: RuntimeFailureReason | null;
+	message: string;
+	nodeId: string | null;
+	runtimeKind: RuntimeKind | null;
+	proxyPort: number | null;
 }
 
 export interface RuntimeStatus {
-  connected: boolean;
-  isMock: boolean;
-  pid: number | null;
-  startedAt: string | null;
-  activeNodeId: string | null;
-  lastError: string | null;
-  isAdmin: boolean;
-  resolvedRuntimePath: string | null;
-  runtimeKind: RuntimeKind | null;
-  processRulesApplied: boolean;
-  proxyPort: number | null;
-  lifecycle: RuntimeLifecycle;
-  diagnostic: RuntimeDiagnostic;
+	connected: boolean;
+	isMock: boolean;
+	pid: number | null;
+	startedAt: string | null;
+	activeNodeId: string | null;
+	lastError: string | null;
+	isAdmin: boolean;
+	resolvedRuntimePath: string | null;
+	runtimeKind: RuntimeKind | null;
+	processRulesApplied: boolean;
+	proxyPort: number | null;
+	lifecycle: RuntimeLifecycle;
+	diagnostic: RuntimeDiagnostic;
 }
 
 export interface RuntimeInstallResult {
-  ok: boolean;
-  message: string;
-  runtimePath: string | null;
-  runtimeKind: RuntimeKind;
-  version: string | null;
-  updated: boolean;
-  verified?: boolean;
-  verificationMessage?: string | null;
-  integritySource?: IntegritySource | null;
+	ok: boolean;
+	message: string;
+	runtimePath: string | null;
+	runtimeKind: RuntimeKind;
+	version: string | null;
+	updated: boolean;
+	verified?: boolean;
+	verificationMessage?: string | null;
+	integritySource?: IntegritySource | null;
 }
 
 export interface RuntimeUpdateInfo {
-  runtimeKind: RuntimeKind;
-  displayName: string;
-  currentVersion: string | null;
-  latestVersion: string | null;
-  updateAvailable: boolean;
-  releaseUrl: string;
-  message: string;
-  verified?: boolean;
-  verificationMessage?: string | null;
-  integritySource?: IntegritySource | null;
+	runtimeKind: RuntimeKind;
+	displayName: string;
+	currentVersion: string | null;
+	latestVersion: string | null;
+	updateAvailable: boolean;
+	releaseUrl: string;
+	message: string;
+	verified?: boolean;
+	verificationMessage?: string | null;
+	integritySource?: IntegritySource | null;
 }
 
 export interface RuntimeUpdateSummary {
-  ok: boolean;
-  message: string;
-  results: RuntimeInstallResult[];
+	ok: boolean;
+	message: string;
+	results: RuntimeInstallResult[];
 }
 
 export interface DiagnosticResult {
-  ok: boolean;
-  latencyMs: number;
-  jitterMs: number;
-  lossPercent: number;
-  runtimeReachable: boolean;
-  message: string;
-  lifecycle?: RuntimeLifecycle;
-  failureReason?: RuntimeFailureReason | null;
+	ok: boolean;
+	latencyMs: number;
+	jitterMs: number;
+	lossPercent: number;
+	runtimeReachable: boolean;
+	message: string;
+	lifecycle?: RuntimeLifecycle;
+	failureReason?: RuntimeFailureReason | null;
 }
 
 export interface RouteProbeResult {
-  bypassDetected: boolean;
-  directIp: string | null;
-  vpnIp: string | null;
-  error: string | null;
+	bypassDetected: boolean;
+	directIp: string | null;
+	vpnIp: string | null;
+	error: string | null;
 }
 
 export interface StressResult {
-  iterations: number;
-  connectSuccess: number;
-  connectFailed: number;
-  disconnectSuccess: number;
-  disconnectFailed: number;
-  errors: string[];
+	iterations: number;
+	connectSuccess: number;
+	connectFailed: number;
+	disconnectSuccess: number;
+	disconnectFailed: number;
+	errors: string[];
 }
 
 export interface ImportResult {
-  added: number;
-  subscriptionsAdded: number;
-  issues: string[];
+	added: number;
+	subscriptionsAdded: number;
+	issues: string[];
 }
 
 export interface ZapretProfile {
-  name: string;
-  fileName: string;
+	name: string;
+	fileName: string;
 }
 
-export type ZapretDiscordCacheTarget = "all" | "discord" | "discord-ptb" | "discord-canary" | "vesktop";
+export type ZapretDiscordCacheTarget =
+	| "all"
+	| "discord"
+	| "discord-ptb"
+	| "discord-canary"
+	| "vesktop";
 export type ZapretGameFilterMode = "disabled" | "all" | "tcp" | "udp";
 export type ZapretIpsetMode = "loaded" | "none" | "any";
 export type ZapretHealthState = "ok" | "warn" | "error";
 
 export interface ZapretDriverStatus {
-  name: string;
-  installed: boolean;
-  running: boolean;
+	name: string;
+	installed: boolean;
+	running: boolean;
 }
 
 export interface ZapretUpdateInfo {
-  currentVersion: string | null;
-  latestVersion: string | null;
-  updateAvailable: boolean;
-  releaseUrl: string;
-  message: string;
+	currentVersion: string | null;
+	latestVersion: string | null;
+	updateAvailable: boolean;
+	releaseUrl: string;
+	message: string;
 }
 
 export interface TelegramProxyConfig {
-  host: string;
-  port: number;
-  secret: string;
-  dcIp: string[];
-  verbose: boolean;
-  bufKb: number;
-  poolSize: number;
-  logMaxMb: number;
-  checkUpdates: boolean;
+	host: string;
+	port: number;
+	secret: string;
+	dcIp: string[];
+	verbose: boolean;
+	bufKb: number;
+	poolSize: number;
+	logMaxMb: number;
+	checkUpdates: boolean;
 }
 
 export interface TelegramProxyUpdateInfo {
-  currentVersion: string | null;
-  latestVersion: string | null;
-  updateAvailable: boolean;
-  releaseUrl: string;
-  message: string;
+	currentVersion: string | null;
+	latestVersion: string | null;
+	updateAvailable: boolean;
+	releaseUrl: string;
+	message: string;
 }
 
 export interface TelegramProxyCommandResult {
-  ok: boolean;
-  opened: boolean;
-  message: string;
-  output: string;
+	ok: boolean;
+	opened: boolean;
+	message: string;
+	output: string;
 }
 
 export interface TelegramProxyStatus {
-  available: boolean;
-  running: boolean;
-  pid: number | null;
-  runtimePath: string | null;
-  configPath: string;
-  logPath: string;
-  currentVersion: string | null;
-  connectionUrl: string | null;
-  updateChecksEnabled: boolean;
-  config: TelegramProxyConfig;
-  lastError: string | null;
+	available: boolean;
+	running: boolean;
+	pid: number | null;
+	runtimePath: string | null;
+	configPath: string;
+	logPath: string;
+	currentVersion: string | null;
+	connectionUrl: string | null;
+	updateChecksEnabled: boolean;
+	config: TelegramProxyConfig;
+	lastError: string | null;
 }
 
 export interface ZapretDiagnosticsItem {
-  key: string;
-  title: string;
-  state: ZapretHealthState;
-  details: string;
+	key: string;
+	title: string;
+	state: ZapretHealthState;
+	details: string;
 }
 
 export interface ZapretDiagnosticsReport {
-  generatedAt: string;
-  summary: string;
-  items: ZapretDiagnosticsItem[];
+	generatedAt: string;
+	summary: string;
+	items: ZapretDiagnosticsItem[];
 }
 
 export interface ZapretAutoSelectResult {
-  bestProfile: string | null;
-  goodProfiles: string[];
-  badProfiles: string[];
-  testedProfiles: string[];
+	bestProfile: string | null;
+	goodProfiles: string[];
+	badProfiles: string[];
+	testedProfiles: string[];
 }
 
 export interface ZapretCommandResult {
-  ok: boolean;
-  opened: boolean;
-  message: string;
-  output: string;
+	ok: boolean;
+	opened: boolean;
+	message: string;
+	output: string;
 }
 
 export interface ZapretStatus {
-  available: boolean;
-  provisioned: boolean;
-  workDir: string;
-  serviceName: string;
-  serviceInstalled: boolean;
-  serviceRunning: boolean;
-  serviceProfile: string | null;
-  standaloneRunning: boolean;
-  standalonePid: number | null;
-  standaloneProfile: string | null;
-  winwsRunning: boolean;
-  drivers: ZapretDriverStatus[];
-  gameFilterMode: ZapretGameFilterMode;
-  ipsetMode: ZapretIpsetMode;
-  updateChecksEnabled: boolean;
-  coreVersion: string | null;
-  currentProfile: string | null;
-  lastError: string | null;
+	available: boolean;
+	provisioned: boolean;
+	workDir: string;
+	serviceName: string;
+	serviceInstalled: boolean;
+	serviceRunning: boolean;
+	serviceProfile: string | null;
+	standaloneRunning: boolean;
+	standalonePid: number | null;
+	standaloneProfile: string | null;
+	winwsRunning: boolean;
+	drivers: ZapretDriverStatus[];
+	gameFilterMode: ZapretGameFilterMode;
+	ipsetMode: ZapretIpsetMode;
+	updateChecksEnabled: boolean;
+	coreVersion: string | null;
+	currentProfile: string | null;
+	lastError: string | null;
 }

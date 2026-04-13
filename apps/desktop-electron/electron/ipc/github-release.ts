@@ -12,12 +12,17 @@ const execFileAsync = promisify(execFile);
 export interface GitHubAsset {
   name: string;
   browser_download_url: string;
+  digest?: string | null;
 }
 
 export interface GitHubRelease {
   html_url?: string;
   tag_name?: string;
   assets?: GitHubAsset[];
+}
+
+export interface GitHubTag {
+  name: string;
 }
 
 export interface ResolvedGitHubRelease {
@@ -57,6 +62,33 @@ function parseGitHubReleaseApiUrl(releaseApiUrl: string): { owner: string; repo:
     owner: match[1],
     repo: match[2]
   };
+}
+
+export function buildGitHubTagsApiUrl(releaseApiUrl: string): string | null {
+  const parsed = parseGitHubReleaseApiUrl(releaseApiUrl);
+  if (!parsed) {
+    return null;
+  }
+
+  return `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/tags`;
+}
+
+export function buildGitHubReleaseTagApiUrl(releaseApiUrl: string, tagName: string): string | null {
+  const parsed = parseGitHubReleaseApiUrl(releaseApiUrl);
+  if (!parsed) {
+    return null;
+  }
+
+  return `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/releases/tags/${encodeURIComponent(tagName)}`;
+}
+
+export function buildGitHubReleaseTagPageUrl(releaseApiUrl: string, tagName: string): string | null {
+  const parsed = parseGitHubReleaseApiUrl(releaseApiUrl);
+  if (!parsed) {
+    return null;
+  }
+
+  return `https://github.com/${parsed.owner}/${parsed.repo}/releases/tag/${encodeURIComponent(tagName)}`;
 }
 
 export function normalizeVersionTag(value: string | null | undefined): string | null {
@@ -132,6 +164,53 @@ export async function fetchLatestGitHubRelease(
   return (await response.json()) as GitHubRelease;
 }
 
+export async function fetchGitHubReleaseByTag(
+  releaseApiUrl: string,
+  tagName: string,
+  headers: HeadersInit = DEFAULT_GITHUB_HEADERS
+): Promise<GitHubRelease> {
+  const releaseTagApiUrl = buildGitHubReleaseTagApiUrl(releaseApiUrl, tagName);
+  if (!releaseTagApiUrl) {
+    throw new Error("Unsupported GitHub release API URL.");
+  }
+
+  const response = await fetch(releaseTagApiUrl, {
+    headers,
+    signal: AbortSignal.timeout(15_000)
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub HTTP ${response.status}`);
+  }
+
+  return (await response.json()) as GitHubRelease;
+}
+
+export async function fetchGitHubTags(
+  releaseApiUrl: string,
+  headers: HeadersInit = DEFAULT_GITHUB_HEADERS,
+  limit = 20
+): Promise<string[]> {
+  const tagsApiUrl = buildGitHubTagsApiUrl(releaseApiUrl);
+  if (!tagsApiUrl) {
+    throw new Error("Unsupported GitHub release API URL.");
+  }
+
+  const response = await fetch(`${tagsApiUrl}?per_page=${Math.max(1, Math.min(limit, 100))}`, {
+    headers,
+    signal: AbortSignal.timeout(15_000)
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub HTTP ${response.status}`);
+  }
+
+  const tags = (await response.json()) as GitHubTag[];
+  return tags
+    .map((item) => item.name?.trim())
+    .filter((item): item is string => Boolean(item));
+}
+
 export function buildGitHubReleasePageUrl(releaseApiUrl: string): string | null {
   const parsed = parseGitHubReleaseApiUrl(releaseApiUrl);
   if (!parsed) {
@@ -157,6 +236,18 @@ export function buildGitHubAssetDownloadUrl(
 export function extractGitHubTagFromReleaseUrl(url: string): string | null {
   const match = url.match(/\/releases\/tag\/([^/?#]+)/i);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+export function pickLatestGitHubTag(tags: Array<string | null | undefined>): string | null {
+  const normalized = tags
+    .map((tag) => tag?.trim())
+    .filter((tag): tag is string => Boolean(tag));
+
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  return normalized.sort((left, right) => compareLooseVersions(right, left))[0] ?? null;
 }
 
 async function fetchLatestGitHubReleasePageMeta(
@@ -406,6 +497,16 @@ export function extractSha256FromChecksumText(checksumText: string, assetName: s
   return null;
 }
 
+export function extractSha256FromGitHubAssetDigest(digest: string | null | undefined): string | null {
+  if (!digest) {
+    return null;
+  }
+
+  const trimmed = digest.trim();
+  const match = trimmed.match(/^(?:sha256:)?([a-f0-9]{64})$/i);
+  return match?.[1] ? match[1].toLowerCase() : null;
+}
+
 export async function computeFileSha256(filePath: string): Promise<string> {
   const hash = createHash("sha256");
 
@@ -443,9 +544,15 @@ export async function verifyGitHubReleaseAssetChecksum(options: {
   releaseApiUrl: string;
   tagName: string;
   release?: GitHubRelease | null;
+  assetDigest?: string | null;
   headers?: HeadersInit;
 }): Promise<IntegrityVerificationResult> {
-  const { assetName, filePath, headers = DEFAULT_GITHUB_HEADERS, release, releaseApiUrl, tagName } = options;
+  const { assetDigest, assetName, filePath, headers = DEFAULT_GITHUB_HEADERS, release, releaseApiUrl, tagName } = options;
+  const expectedSha256FromDigest = extractSha256FromGitHubAssetDigest(assetDigest);
+  if (expectedSha256FromDigest) {
+    return verifyFileSha256(filePath, expectedSha256FromDigest);
+  }
+
   const checksumCandidates = buildChecksumCandidateAssetNames(assetName);
   const checksumUrls: string[] = [];
 

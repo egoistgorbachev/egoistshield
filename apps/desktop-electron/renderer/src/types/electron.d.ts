@@ -3,6 +3,8 @@
  * Устраняет все `window as any` в renderer-коде.
  */
 import type {
+  SystemDohCommandResult,
+  SystemDohStatus,
   AppUpdateStatus,
   DiagnosticResult,
   IntegritySource,
@@ -78,6 +80,9 @@ export interface EgoistAPI {
     readClipboard(): Promise<string>;
     setDnsServers(dnsServers: string): Promise<{ ok: boolean; message: string; servers: string[] }>;
     resetDnsServers(): Promise<{ ok: boolean; message: string; servers: string[] }>;
+    systemDohStatus(): Promise<SystemDohStatus>;
+    applySystemDoh(url: string): Promise<SystemDohCommandResult>;
+    resetSystemDoh(): Promise<SystemDohCommandResult>;
     getMyIp(): Promise<{ ip: string | null; countryCode: string | null; error: string | null }>;
     routeProbe(): Promise<RouteProbeResult>;
     dnsLeakTest(): Promise<RouteProbeResult>;

@@ -59,10 +59,14 @@
   ; Reinstall/repair не должен молча сносить настройки, подписки и логи.
   RMDir /r "$TEMP\EgoistShield"
 
-  ; После выхода uninstaller дочищаем пустой каталог установки отдельным cmd-процессом.
-  ; Это снимает lock на Uninstall *.exe и убирает пустой $INSTDIR без ожидания reboot.
-  Exec '"$SYSDIR\cmd.exe" /C cd /d "$TEMP" & ping 127.0.0.1 -n 5 >NUL & rmdir /S /Q "$INSTDIR"'
+  ; При обновлении electron-builder сам переводит старый $INSTDIR во временный old-install.
+  ; Если здесь отдельно планировать delayed rmdir для $INSTDIR, можно снести уже свежеразложенный билд.
+  ${ifNot} ${isUpdated}
+    ; После выхода uninstaller дочищаем пустой каталог установки отдельным cmd-процессом.
+    ; Это снимает lock на Uninstall *.exe и убирает пустой $INSTDIR без ожидания reboot.
+    Exec '"$SYSDIR\cmd.exe" /C cd /d "$TEMP" & ping 127.0.0.1 -n 5 >NUL & rmdir /S /Q "$INSTDIR"'
 
-  ; Дополнительный fallback на случай, если директория останется занята.
-  RMDir /r /REBOOTOK "$INSTDIR"
+    ; Дополнительный fallback на случай, если директория останется занята.
+    RMDir /r /REBOOTOK "$INSTDIR"
+  ${endif}
 !macroend

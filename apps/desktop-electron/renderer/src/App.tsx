@@ -8,11 +8,13 @@ import { Sidebar } from "./components/Sidebar";
 import { SplashScreen } from "./components/SplashScreen";
 import { TitleBar } from "./components/TitleBar";
 import { getAPI } from "./lib/api";
-import { pageTransition } from "./lib/motion";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
+import { Zapret } from "./screens/Zapret";
 import { useAppStore } from "./store/useAppStore";
 
 const ACTIVE_PROXY_PING_INTERVAL_MS = 2_500;
+const SPLASH_MIN_VISIBLE_MS = 320;
+const SPLASH_MAX_VISIBLE_MS = 700;
 
 // Code splitting — экраны грузятся отложенно
 const Dashboard = React.lazy(() => import("./screens/Dashboard").then((m) => ({ default: m.Dashboard })));
@@ -20,15 +22,17 @@ const DnsControl = React.lazy(() => import("./screens/DnsControl").then((m) => (
 const Settings = React.lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 const ServerList = React.lazy(() => import("./screens/ServerList").then((m) => ({ default: m.ServerList })));
 const Onboarding = React.lazy(() => import("./screens/Onboarding").then((m) => ({ default: m.Onboarding })));
-const Zapret = React.lazy(() => import("./screens/Zapret").then((m) => ({ default: m.Zapret })));
 const TelegramProxy = React.lazy(() =>
   import("./screens/TelegramProxy").then((m) => ({ default: m.TelegramProxy }))
 );
 
 // Fallback для Suspense — минимальный лоадер
-function ScreenLoader() {
+function ScreenLoader({ screen }: { screen?: string }) {
   return (
-    <div className="w-full h-full flex items-center justify-center bg-surface-app">
+    <div
+      data-screen-loading={screen ?? "unknown"}
+      className="w-full h-full flex items-center justify-center bg-surface-app"
+    >
       <div className="w-8 h-8 border-2 border-brand-light/30 border-t-brand-light rounded-full animate-spin" />
     </div>
   );
@@ -46,14 +50,34 @@ export function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateVersion, setUpdateVersion] = useState("");
   const [updateReleaseUrl, setUpdateReleaseUrl] = useState("");
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(() => !useAppStore.persist.hasHydrated());
   const [isStoreHydrated, setIsStoreHydrated] = useState(() => useAppStore.persist.hasHydrated());
 
   useEffect(() => {
     checkFirstRun();
-    // Splash screen timer
-    const timer = setTimeout(() => setShowSplash(false), 2400);
-    return () => clearTimeout(timer);
+
+    if (useAppStore.persist.hasHydrated()) {
+      setShowSplash(false);
+      return;
+    }
+
+    const startedAt = Date.now();
+    const maxTimer = setTimeout(() => {
+      setShowSplash(false);
+    }, SPLASH_MAX_VISIBLE_MS);
+    const unsubscribe = useAppStore.persist.onFinishHydration(() => {
+      const elapsedMs = Date.now() - startedAt;
+      const remainingMs = Math.max(SPLASH_MIN_VISIBLE_MS - elapsedMs, 0);
+
+      window.setTimeout(() => {
+        setShowSplash(false);
+      }, remainingMs);
+    });
+
+    return () => {
+      clearTimeout(maxTimer);
+      unsubscribe();
+    };
   }, [checkFirstRun]);
 
   useEffect(() => {
@@ -223,7 +247,7 @@ export function App() {
   // Если первый старт, сразу рендерим онбординг (без сплеша)
   if (isFirstRun) {
     return (
-      <Suspense fallback={<ScreenLoader />}>
+      <Suspense fallback={<ScreenLoader screen="onboarding" />}>
         <Onboarding />
       </Suspense>
     );
@@ -274,18 +298,9 @@ export function App() {
 
         <div id="main-content" className="flex-1 relative overflow-hidden">
           <ErrorBoundary>
-            <Suspense fallback={<ScreenLoader />}>
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={currentScreen}
-                  {...pageTransition}
-                  data-screen={currentScreen}
-                  className="absolute inset-0 bg-surface-app/95 backdrop-blur-md"
-                >
-                  {activeScreen}
-                </motion.div>
-              </AnimatePresence>
-            </Suspense>
+            <div key={currentScreen} data-screen={currentScreen} className="absolute inset-0 bg-surface-app/95 backdrop-blur-md">
+              <Suspense fallback={<ScreenLoader screen={currentScreen} />}>{activeScreen}</Suspense>
+            </div>
           </ErrorBoundary>
         </div>
 

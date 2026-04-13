@@ -302,6 +302,29 @@ describe("VpnRuntimeManager", () => {
     await manager.disconnect();
   });
 
+  it("rollbackPendingHandoff возвращает false, если handoff уже завершён или отсутствует", async () => {
+    const result = await internal.rollbackPendingHandoff(999, "runtime_crashed", "No pending handoff.");
+
+    expect(result).toBe(false);
+    expect(internal.pendingHandoff).toBeNull();
+  });
+
+  it("rollbackPendingHandoff не трогает активную сессию при несовпадении generation", async () => {
+    await manager.connect(node, [], [], settings);
+    await manager.connect(secondNode, [], [], settings);
+
+    const statusBefore = await manager.status();
+    const result = await internal.rollbackPendingHandoff(999_999, "runtime_crashed", "Wrong generation.");
+    const statusAfter = await manager.status();
+
+    expect(result).toBe(false);
+    expect(statusBefore.activeNodeId).toBe(secondNode.id);
+    expect(statusAfter.activeNodeId).toBe(secondNode.id);
+    expect(statusAfter.lifecycle).toBe("active");
+
+    await manager.disconnect();
+  });
+
   it("disconnect после connect → disconnected", async () => {
     await manager.connect(node, [], [], settings);
     const status = await manager.disconnect();

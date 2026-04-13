@@ -10,15 +10,30 @@ import type {
   TelegramProxyStatus,
   TelegramProxyUpdateInfo
 } from "../../shared/types";
-import { compareLooseVersions, readVersionFile } from "./github-release";
+import {
+  compareLooseVersions,
+  readVersionFile,
+} from "./github-release";
 import { resolveWindowsExecutable } from "./windows-system-binaries";
 
 const execFileAsync = promisify(execFile);
 
+const TG_WS_PROXY_RELEASE_API_URL = "https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/latest";
 const TG_WS_PROXY_RELEASE_PAGE_URL = "https://github.com/Flowseal/tg-ws-proxy/releases/latest";
-const TG_WS_PROXY_EXE_NAME = "TgWsProxy_windows_7_64bit.exe";
+const TG_WS_PROXY_MANAGED_EXE_NAME = "egoistshield-tg-ws-proxy.exe";
+const TG_WS_PROXY_BUNDLED_ASSET_NAME = "egoistshield-tg-ws-proxy.bin";
+const TG_WS_PROXY_LEGACY_EXE_NAME = "TgWsProxy_windows_7_64bit.exe";
 const TG_WS_PROXY_VERSION_FILE = "VERSION.txt";
+const TG_WS_PROXY_FLAVOR_FILE = "RUNTIME_FLAVOR.txt";
 const TG_WS_PROXY_INTERNAL_DIR = "telegram-proxy";
+const TG_WS_PROXY_HEADLESS_FLAVOR_PREFIX = "headless";
+const TG_WS_PROXY_DESIRED_FLAVOR = "headless-windowless";
+const TG_WS_PROXY_MANAGED_CANDIDATES = [TG_WS_PROXY_MANAGED_EXE_NAME, TG_WS_PROXY_LEGACY_EXE_NAME] as const;
+const TG_WS_PROXY_BUNDLED_CANDIDATES = [
+  TG_WS_PROXY_BUNDLED_ASSET_NAME,
+  TG_WS_PROXY_MANAGED_EXE_NAME,
+  TG_WS_PROXY_LEGACY_EXE_NAME
+] as const;
 
 interface TelegramProxyRawConfig {
   host?: string;
@@ -36,11 +51,7 @@ interface SourceRuntimeInfo {
   sourceDir: string;
   runtimePath: string;
   version: string | null;
-}
-
-interface ManagedState {
-  pid: number | null;
-  startedAt: string;
+  flavor: string | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -147,6 +158,11 @@ function buildCommandResult(message: string, options: Partial<TelegramProxyComma
   };
 }
 
+interface ManagedState {
+  pid: number | null;
+  startedAt: string;
+}
+
 export class TelegramProxyManager {
   private readonly runtimeDir: string;
   private readonly appDataDir: string;
@@ -181,7 +197,7 @@ export class TelegramProxyManager {
       await this.clearManagedState();
     }
 
-    const runtime = await this.getSourceRuntimeInfo();
+    const runtime = (await this.getManagedRuntimeInfo()) ?? (await this.getBundledRuntimeInfo());
     return {
       available: Boolean(runtime),
       running,
@@ -204,7 +220,7 @@ export class TelegramProxyManager {
   }
 
   public async start(): Promise<TelegramProxyStatus> {
-    const runtime = await this.getSourceRuntimeInfo();
+    const runtime = await this.ensureManagedRuntimeInstalled();
     if (!runtime) {
       throw new Error("Бинарь TG WS Proxy не найден. Сначала подготовьте runtime/tg-ws-proxy.");
     }
@@ -259,56 +275,47 @@ export class TelegramProxyManager {
   }
 
   public async checkForUpdates(): Promise<TelegramProxyUpdateInfo> {
-    const runtime = await this.getSourceRuntimeInfo();
+    const managedRuntime = await this.getManagedRuntimeInfo();
     const bundledRuntime = await this.getBundledRuntimeInfo();
-    const currentVersion = runtime?.version ?? null;
-    const latestVersion = bundledRuntime?.version ?? currentVersion;
+    const currentVersion = managedRuntime?.version ?? bundledRuntime?.version ?? null;
+    const bundledVersion = bundledRuntime?.version ?? null;
+    const managedNeedsHeadlessRepair = this.needsManagedRuntimeRepair(bundledRuntime, managedRuntime);
+    const latestVersion = bundledVersion ?? currentVersion;
     const updateAvailable =
-      Boolean(
-        bundledRuntime &&
-          runtime &&
-          runtime.sourceDir !== bundledRuntime.sourceDir &&
-          latestVersion &&
-          currentVersion &&
-          compareLooseVersions(latestVersion, currentVersion) > 0
-      );
+      managedNeedsHeadlessRepair ||
+      (latestVersion === null
+        ? false
+        : currentVersion === null
+          ? true
+          : compareLooseVersions(latestVersion, currentVersion) > 0);
 
     return {
       currentVersion,
       latestVersion,
       updateAvailable,
       releaseUrl: TG_WS_PROXY_RELEASE_PAGE_URL,
-      message: latestVersion
-        ? updateAvailable
-          ? `Доступен managed runtime TG WS Proxy: ${latestVersion}`
-          : `TG WS Proxy уже актуален (${currentVersion ?? latestVersion}).`
-        : "Bundled runtime TG WS Proxy не найден."
+      message: managedNeedsHeadlessRepair
+        ? "Будет применён встроенный hidden headless TG WS Proxy, чтобы прокси работал без отдельного окна, консоли и значка в трее."
+        : latestVersion
+          ? updateAvailable
+            ? `Доступно встроенное обновление TG WS Proxy: ${latestVersion}`
+            : `TG WS Proxy уже актуален (${currentVersion ?? latestVersion}).`
+          : "Встроенный TG WS Proxy пока недоступен."
     };
   }
 
   public async installUpdate(): Promise<TelegramProxyStatus> {
-    const bundledRuntime = await this.getBundledRuntimeInfo();
-    if (!bundledRuntime) {
-      throw new Error("Bundled runtime TG WS Proxy не найден.");
-    }
-
     const wasRunning = await this.isStateRunning(await this.readManagedState());
     if (wasRunning) {
       await this.stop();
     }
 
-    await fs.mkdir(this.runtimeDir, { recursive: true });
-    const runtimePath = path.join(this.runtimeDir, TG_WS_PROXY_EXE_NAME);
-    await fs.copyFile(bundledRuntime.runtimePath, runtimePath);
-    const bundledVersionPath = path.join(bundledRuntime.sourceDir, TG_WS_PROXY_VERSION_FILE);
-    if (await this.pathExists(bundledVersionPath)) {
-      await fs.copyFile(bundledVersionPath, path.join(this.runtimeDir, TG_WS_PROXY_VERSION_FILE));
-    } else {
-      await fs.writeFile(
-        path.join(this.runtimeDir, TG_WS_PROXY_VERSION_FILE),
-        `${bundledRuntime.version ?? "bundled"}\n`,
-        "utf8"
-      );
+    const managedRuntime = await this.getManagedRuntimeInfo();
+    const bundledRuntime = await this.getBundledRuntimeInfo();
+    const needsHeadlessRepair = this.needsManagedRuntimeRepair(bundledRuntime, managedRuntime);
+    const runtime = await this.ensureManagedRuntimeInstalled({ force: needsHeadlessRepair });
+    if (!runtime) {
+      throw new Error("Bundled runtime TG WS Proxy не найден.");
     }
 
     if (wasRunning) {
@@ -426,47 +433,211 @@ export class TelegramProxyManager {
     }
   }
 
-  private async getSourceRuntimeInfo(): Promise<SourceRuntimeInfo | null> {
+  private async ensureManagedRuntimeInstalled(options?: { force?: boolean }): Promise<SourceRuntimeInfo | null> {
+    const managedRuntime = await this.getManagedRuntimeInfo();
+    const bundledRuntime = await this.getBundledRuntimeInfo();
+    const managedRuntimePath = path.join(this.runtimeDir, TG_WS_PROXY_MANAGED_EXE_NAME);
+
+    if (!bundledRuntime) {
+      return managedRuntime;
+    }
+
+    const shouldCopy =
+      options?.force === true ||
+      !managedRuntime ||
+      managedRuntime.runtimePath !== managedRuntimePath ||
+      this.isIncomingVersionNewer(bundledRuntime.version, managedRuntime.version) ||
+      this.needsManagedRuntimeRepair(bundledRuntime, managedRuntime);
+
+    if (!shouldCopy) {
+      return managedRuntime;
+    }
+
+    await fs.mkdir(this.runtimeDir, { recursive: true });
+    await this.prepareManagedRuntimeDestination(managedRuntimePath);
+    await this.copyRuntimeWithRetries(bundledRuntime.runtimePath, managedRuntimePath);
+    await fs.writeFile(
+      path.join(this.runtimeDir, TG_WS_PROXY_VERSION_FILE),
+      `${bundledRuntime.version ?? "bundled"}\n`,
+      "utf8"
+    );
+    if (this.isHeadlessRuntime(bundledRuntime)) {
+      await fs.writeFile(path.join(this.runtimeDir, TG_WS_PROXY_FLAVOR_FILE), `${bundledRuntime.flavor ?? TG_WS_PROXY_DESIRED_FLAVOR}\n`, "utf8");
+    }
+
+    return {
+      sourceDir: this.runtimeDir,
+      runtimePath: managedRuntimePath,
+      version: bundledRuntime.version,
+      flavor: bundledRuntime.flavor
+    };
+  }
+
+  private async prepareManagedRuntimeDestination(runtimePath: string): Promise<void> {
+    await this.stopProcessesUsingManagedRuntime(runtimePath);
+    await fs.rm(runtimePath, { force: true });
+  }
+
+  private async copyRuntimeWithRetries(sourcePath: string, targetPath: string): Promise<void> {
+    const retryableCodes = new Set(["EBUSY", "EPERM"]);
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await fs.copyFile(sourcePath, targetPath);
+        return;
+      } catch (error) {
+        lastError = error;
+        const code = error instanceof Error && "code" in error ? String((error as NodeJS.ErrnoException).code ?? "") : "";
+        if (!retryableCodes.has(code) || attempt === 4) {
+          throw error;
+        }
+
+        await this.stopProcessesUsingManagedRuntime(targetPath);
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Не удалось скопировать runtime TG WS Proxy.");
+  }
+
+  private async stopProcessesUsingManagedRuntime(runtimePath: string): Promise<void> {
+    const normalizedRuntimePath = path.win32.normalize(runtimePath);
+    const escapedRuntimePath = normalizedRuntimePath.replace(/'/g, "''");
+    const runtimeName = path.win32.basename(normalizedRuntimePath);
+    const powershellScript = [
+      `$target = [System.IO.Path]::GetFullPath('${escapedRuntimePath}')`,
+      `$processes = Get-CimInstance Win32_Process -Filter "Name='${runtimeName}'" -ErrorAction SilentlyContinue | Where-Object {`,
+      "  $_.ExecutablePath -and [string]::Equals([System.IO.Path]::GetFullPath($_.ExecutablePath), $target, [System.StringComparison]::OrdinalIgnoreCase)",
+      "}",
+      "foreach ($proc in $processes) {",
+      "  Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue",
+      "}"
+    ].join("; ");
+
+    try {
+      await execFileAsync(
+        resolveWindowsExecutable("powershell.exe"),
+        ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", powershellScript],
+        {
+          windowsHide: true,
+          timeout: 8_000
+        }
+      );
+    } catch {
+      try {
+        await execFileAsync(resolveWindowsExecutable("taskkill.exe"), ["/IM", runtimeName, "/T", "/F"], {
+          windowsHide: true,
+          timeout: 8_000
+        });
+      } catch {
+        // Best-effort cleanup: copyRuntimeWithRetries will retry and surface the real error if the file stays locked.
+      }
+    }
+
+    await this.clearManagedState();
+  }
+
+  private async getManagedRuntimeInfo(): Promise<SourceRuntimeInfo | null> {
+    return this.findRuntimeInfo([this.runtimeDir], TG_WS_PROXY_MANAGED_CANDIDATES);
+  }
+
+  private async getBundledRuntimeInfo(): Promise<SourceRuntimeInfo | null> {
+    const execResourcesPath = path.join(path.dirname(process.execPath), "resources");
     const candidates = [
-      this.runtimeDir,
       path.join(this.resourcesPath, "runtime", "tg-ws-proxy"),
+      path.join(this.resourcesPath, "app.asar.unpacked", "runtime", "tg-ws-proxy"),
       path.join(this.appPath, "runtime", "tg-ws-proxy"),
+      path.join(this.appPath, "app.asar.unpacked", "runtime", "tg-ws-proxy"),
+      path.join(execResourcesPath, "runtime", "tg-ws-proxy"),
+      path.join(execResourcesPath, "app.asar.unpacked", "runtime", "tg-ws-proxy"),
       path.join(process.cwd(), "runtime", "tg-ws-proxy")
     ];
 
-    for (const candidate of candidates) {
-      const runtimePath = path.join(candidate, TG_WS_PROXY_EXE_NAME);
-      if (await this.pathExists(runtimePath)) {
-        return {
-          sourceDir: candidate,
-          runtimePath,
-          version: await readVersionFile(path.join(candidate, TG_WS_PROXY_VERSION_FILE))
-        };
+    return this.findRuntimeInfo(candidates, TG_WS_PROXY_BUNDLED_CANDIDATES);
+  }
+
+  private async findRuntimeInfo(
+    candidateDirs: string[],
+    candidateFiles: readonly string[]
+  ): Promise<SourceRuntimeInfo | null> {
+    const uniqueDirs = Array.from(new Set(candidateDirs));
+    for (const candidateDir of uniqueDirs) {
+      for (const candidateFile of candidateFiles) {
+        const runtimePath = path.join(candidateDir, candidateFile);
+        if (await this.pathExists(runtimePath)) {
+          const explicitFlavor = await this.readRuntimeFlavor(candidateDir);
+          return {
+            sourceDir: candidateDir,
+            runtimePath,
+            version: await readVersionFile(path.join(candidateDir, TG_WS_PROXY_VERSION_FILE)),
+            flavor: explicitFlavor ?? (candidateFile === TG_WS_PROXY_BUNDLED_ASSET_NAME ? TG_WS_PROXY_DESIRED_FLAVOR : null)
+          };
+        }
       }
     }
 
     return null;
   }
 
-  private async getBundledRuntimeInfo(): Promise<SourceRuntimeInfo | null> {
-    const candidates = [
-      path.join(this.resourcesPath, "runtime", "tg-ws-proxy"),
-      path.join(this.appPath, "runtime", "tg-ws-proxy"),
-      path.join(process.cwd(), "runtime", "tg-ws-proxy")
-    ];
+  private isIncomingVersionNewer(nextVersion: string | null, currentVersion: string | null): boolean {
+    if (!nextVersion) {
+      return false;
+    }
+    if (!currentVersion) {
+      return true;
+    }
+    return compareLooseVersions(nextVersion, currentVersion) > 0;
+  }
 
-    for (const candidate of candidates) {
-      const runtimePath = path.join(candidate, TG_WS_PROXY_EXE_NAME);
-      if (await this.pathExists(runtimePath)) {
-        return {
-          sourceDir: candidate,
-          runtimePath,
-          version: await readVersionFile(path.join(candidate, TG_WS_PROXY_VERSION_FILE))
-        };
-      }
+  private pickNewerVersion(left: string | null, right: string | null): string | null {
+    if (!left) {
+      return right;
+    }
+    if (!right) {
+      return left;
+    }
+    return compareLooseVersions(left, right) >= 0 ? left : right;
+  }
+
+  private isHeadlessRuntime(runtime: SourceRuntimeInfo | null): boolean {
+    return this.isHeadlessFlavor(runtime?.flavor);
+  }
+
+  private isHeadlessFlavor(flavor: string | null | undefined): boolean {
+    return flavor?.trim().toLowerCase().startsWith(TG_WS_PROXY_HEADLESS_FLAVOR_PREFIX) ?? false;
+  }
+
+  private normalizeFlavor(flavor: string | null | undefined): string | null {
+    const normalized = flavor?.trim().toLowerCase();
+    return normalized ? normalized : null;
+  }
+
+  private needsManagedRuntimeRepair(
+    bundledRuntime: SourceRuntimeInfo | null,
+    managedRuntime: SourceRuntimeInfo | null
+  ): boolean {
+    if (!bundledRuntime || !managedRuntime) {
+      return false;
     }
 
-    return null;
+    const bundledFlavor = this.normalizeFlavor(bundledRuntime.flavor);
+    const managedFlavor = this.normalizeFlavor(managedRuntime.flavor);
+    if (bundledFlavor && bundledFlavor !== managedFlavor) {
+      return true;
+    }
+
+    return this.isHeadlessRuntime(bundledRuntime) && !this.isHeadlessRuntime(managedRuntime);
+  }
+
+  private async readRuntimeFlavor(runtimeDir: string): Promise<string | null> {
+    try {
+      const raw = await fs.readFile(path.join(runtimeDir, TG_WS_PROXY_FLAVOR_FILE), "utf8");
+      const normalized = raw.trim();
+      return normalized || null;
+    } catch {
+      return null;
+    }
   }
 
   private buildRuntimeArgs(config: TelegramProxyConfig): string[] {

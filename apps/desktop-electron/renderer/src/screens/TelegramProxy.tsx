@@ -152,7 +152,7 @@ export function TelegramProxy() {
           eyebrow="Фоновый режим"
           title="Прокси Telegram"
           icon={<Send className="h-7 w-7 text-brand-light" />}
-          description="Фоновый `tg-ws-proxy`, которым полностью управляет EgoistShield: конфиг, ссылка, логи и встроенные обновления без отдельного окна в трее."
+          description="Фоновый `tg-ws-proxy`, которым полностью управляет EgoistShield: конфиг, ссылка, логи и встроенный hidden headless runtime без отдельного окна, консоли и значка в трее."
           badgeLayout="balanced"
           badges={[
             {
@@ -441,7 +441,7 @@ export function TelegramProxy() {
                 <div className="mt-1">Последняя версия: {updates?.latestVersion ?? "—"}</div>
                 <div className="mt-2 text-xs text-muted leading-relaxed">
                   {updates?.message ??
-                    "Проверяется встроенный компонент внутри EgoistShield. Если в поставке есть более свежий бинарь, он будет применён локально без GitHub API и без отдельного окна в трее."}
+                    "EgoistShield проверяет upstream TG WS Proxy на GitHub, скачивает более новый Windows runtime и применяет его локально. Если сеть недоступна, остаётся встроенный bundled runtime."}
                 </div>
               </div>
               <ActionButton

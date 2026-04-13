@@ -2,7 +2,7 @@
 
 Desktop-клиент `EgoistShield` для Windows 10/11.
 
-Текущая ветка документации соответствует подготовке product-release **4.0.1** от **2026-04-02**.
+Текущая ветка документации соответствует подготовке product-release **4.0.4** от **2026-04-10**.
 
 ## Что есть в desktop-версии
 
@@ -18,14 +18,14 @@ Desktop-клиент `EgoistShield` для Windows 10/11.
 - **Диагностика**: structured logs, runtime lifecycle, route probe маршрута, runtime diagnostics, connection logs.
 - **UI**: dashboard, server list, 3D-globe, usage insights, command palette, polished dark design system.
 
-## Что вошло в 4.0.1
+## Что вошло в 4.0.4
 
-- **Manual desktop updates**: desktop updater показывает статус релиза и открывает страницу релиза для ручного скачивания установщика.
-- **Checksum-verified runtime updates**: `Xray` и `sing-box` обновляются только при совпадении опубликованного `SHA-256`.
-- **Honest release-channel UX**: Settings теперь различает актуальную версию, доступное обновление и локальную сборку, которая опережает публичный канал.
-- **Preserve-data uninstall**: uninstall/reinstall больше не должен молча уничтожать настройки, подписки и логи пользователя.
-- **Release verification**: `npm run dist` теперь прогоняет post-build проверку release-артефактов и их согласованности с `latest.yml`.
-- **Adaptive Globe3D**: карта серверов использует кэш текстуры, более дешёвый профиль рендера для dense/low-end сценариев и меньше постоянных country labels.
+- **Faster startup shell**: splash больше не держит искусственную паузу на каждый запуск и скрывается сразу после гидрации store.
+- **Cheaper dashboard idle motion**: в off-state убраны самые дорогие постоянные анимации, сохранив визуальный характер при активном соединении.
+- **Readiness dashboard block**: отключённый dashboard теперь показывает полезную сводку состояния и быстрые переходы вместо пустого воздуха.
+- **Lean brand asset generation**: packaging больше не генерирует и не хранит лишние дубли PNG-логотипов.
+- **Packaged smoke harness**: добавлен отдельный ручной `npm run test:e2e:packaged` для QA-проверки упакованного `EgoistShield.exe`, production-shell и реального `System DoH` lifecycle.
+- **Coverage hardening**: расширены тесты для `system-doh-manager`, `zapret-manager` и `vpn-manager` вокруг recovery, runtime install и handoff edge-cases.
 
 ## Стек
 
@@ -58,6 +58,7 @@ npm install
 npm run test
 npm run stress
 npm run test:e2e
+npm run test:e2e:packaged
 npm run build:vite
 npm run release:verify
 npm run dist
@@ -98,7 +99,9 @@ npm run release:verify
 
 `release:verify` проверяет наличие installer, `.blockmap`, `latest.yml`, совпадение версии, размеры файлов и обязательные поля release metadata.
 
-Подробный сценарий проверки и публикации 4.0.1: [docs/release-signing.md](./docs/release-signing.md)
+Подробный сценарий проверки и публикации 4.0.4: [docs/release-signing.md](./docs/release-signing.md)
+
+Отдельный runbook для packaged smoke: [docs/packaged-smoke.md](./docs/packaged-smoke.md)
 
 ## Лицензия
 

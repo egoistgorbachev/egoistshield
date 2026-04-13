@@ -2,11 +2,13 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Globe2, ShieldCheck, Sparkles, Wifi } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { parseDnsServers } from "../../../shared/system-dns";
+import { parseSystemDohUrl } from "../../../shared/system-doh";
+import type { SystemDohStatus } from "../../../shared/types";
 import { PageHero } from "../components/PageHero";
 import { getAPI } from "../lib/api";
 import { cn } from "../lib/cn";
 import { useAppStore } from "../store/useAppStore";
+import { parseDnsServers } from "../../../shared/system-dns";
 
 const DNS_PRESETS = [
   {
@@ -81,22 +83,47 @@ function getPresetId(serversValue: string): string | null {
   return preset?.id ?? null;
 }
 
+function getSystemDohSummary(status: SystemDohStatus | null, storedUrl: string, storedLocalAddress: string): string {
+  const localAddress = status?.localAddress ?? storedLocalAddress;
+  const currentUrl = status?.currentUrl ?? storedUrl;
+
+  if (!currentUrl) {
+    return "System DoH пока не настроен.";
+  }
+
+  if (!localAddress) {
+    return currentUrl;
+  }
+
+  return `${localAddress}:53 → ${currentUrl}`;
+}
+
 export function DnsControl() {
   const systemDnsServers = useAppStore((state) => state.systemDnsServers);
   const fakeDns = useAppStore((state) => state.fakeDns);
-  const updateSetting = useAppStore((state) => state.updateSetting);
+  const systemDohEnabled = useAppStore((state) => state.systemDohEnabled);
+  const systemDohUrl = useAppStore((state) => state.systemDohUrl);
+  const systemDohLocalAddress = useAppStore((state) => state.systemDohLocalAddress);
 
   const [draft, setDraft] = useState(systemDnsServers);
+  const [systemDohDraft, setSystemDohDraft] = useState(systemDohUrl);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(() => getPresetId(systemDnsServers));
   const [isApplying, setIsApplying] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isApplyingSystemDoh, setIsApplyingSystemDoh] = useState(false);
+  const [isResettingSystemDoh, setIsResettingSystemDoh] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [systemDohStatus, setSystemDohStatus] = useState<SystemDohStatus | null>(null);
   const dnsTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     setDraft(systemDnsServers);
     setSelectedPresetId(getPresetId(systemDnsServers));
   }, [systemDnsServers]);
+
+  useEffect(() => {
+    setSystemDohDraft(systemDohUrl);
+  }, [systemDohUrl]);
 
   useEffect(() => {
     const api = getAPI();
@@ -109,6 +136,33 @@ export function DnsControl() {
       .isAdmin()
       .then((value) => setIsAdmin(value))
       .catch(() => setIsAdmin(false));
+  }, []);
+
+  useEffect(() => {
+    const api = getAPI();
+    if (!api?.system?.systemDohStatus) {
+      setSystemDohStatus(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    void api.system
+      .systemDohStatus()
+      .then((status) => {
+        if (isMounted) {
+          setSystemDohStatus(status);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSystemDohStatus(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -128,14 +182,67 @@ export function DnsControl() {
     }
   }, [draft]);
 
+  const systemDohValidationMessage = useMemo(() => {
+    if (!systemDohDraft.trim()) {
+      return null;
+    }
+
+    try {
+      parseSystemDohUrl(systemDohDraft);
+      return null;
+    } catch (error: unknown) {
+      return getErrorMessage(error, "Проверьте DoH URL.");
+    }
+  }, [systemDohDraft]);
+
   const activeDnsServers = useMemo(() => splitDnsServers(systemDnsServers), [systemDnsServers]);
-  const activeModeLabel = activeDnsServers.length > 0 ? "Пользовательский DNS" : "DNS по умолчанию";
-  const activeDnsSummary =
-    activeDnsServers.length > 0 ? activeDnsServers.join(" • ") : "Используется системный DNS Windows.";
+  const isSystemDohActive = Boolean(systemDohEnabled || systemDohStatus?.running);
+  const activeModeLabel = isSystemDohActive
+    ? "System DoH"
+    : activeDnsServers.length > 0
+      ? "Пользовательский DNS"
+      : "DNS по умолчанию";
+  const activeDnsSummary = isSystemDohActive
+    ? getSystemDohSummary(systemDohStatus, systemDohUrl, systemDohLocalAddress)
+    : activeDnsServers.length > 0
+      ? activeDnsServers.join(" • ")
+      : "Используется системный DNS Windows.";
   const applyStateSummary =
     isAdmin === false
       ? "Для реального применения нужен запуск приложения от имени администратора."
-      : "Приложение готово применять DNS-конфигурацию сразу после нажатия.";
+      : isSystemDohActive
+        ? "Система направлена на локальный DoH-канал без VPN."
+        : "Приложение готово применять DNS-конфигурацию сразу после нажатия.";
+  const manualDnsProfileSummary =
+    activeDnsServers.length > 0
+      ? activeDnsServers.join(" • ")
+      : "После отключения System DoH вернётся стандартный DNS Windows.";
+  const systemDohStatusLabel =
+    systemDohStatus?.running
+      ? `Локальный канал: ${systemDohStatus.localAddress}:${systemDohStatus.localPort ?? 53}`
+      : systemDohStatus?.available === false
+        ? "Xray runtime для System DoH пока недоступен"
+        : "System DoH сейчас не активен";
+  const systemDohScopeSummary = isSystemDohActive
+    ? "Windows использует локальный loopback-адрес, а запросы уходят в ваш DoH без отдельного VPN-сервера."
+    : "Режим поднимает локальный DNS-канал на loopback и переключает систему на него только при включении.";
+
+  const refreshSystemDohStatus = async (): Promise<SystemDohStatus | null> => {
+    const api = getAPI();
+    if (!api?.system?.systemDohStatus) {
+      setSystemDohStatus(null);
+      return null;
+    }
+
+    try {
+      const nextStatus = await api.system.systemDohStatus();
+      setSystemDohStatus(nextStatus);
+      return nextStatus;
+    } catch {
+      setSystemDohStatus(null);
+      return null;
+    }
+  };
 
   const applySystemDns = async (): Promise<void> => {
     const api = getAPI();
@@ -161,9 +268,14 @@ export function DnsControl() {
       }
 
       const normalizedValue = result.servers.join(", ");
-      updateSetting("systemDnsServers", normalizedValue);
+      useAppStore.setState({
+        systemDnsServers: normalizedValue,
+        systemDohEnabled: false,
+        systemDohLocalAddress: ""
+      });
       setDraft(normalizedValue);
       setSelectedPresetId(getPresetId(normalizedValue));
+      await refreshSystemDohStatus();
       toast.success(result.message);
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "Не удалось применить системный DNS."));
@@ -187,14 +299,87 @@ export function DnsControl() {
         return;
       }
 
-      updateSetting("systemDnsServers", "");
+      useAppStore.setState({
+        systemDnsServers: "",
+        systemDohEnabled: false,
+        systemDohLocalAddress: ""
+      });
       setDraft("");
       setSelectedPresetId(null);
+      await refreshSystemDohStatus();
       toast.success(result.message);
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "Не удалось вернуть DNS по умолчанию."));
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  const applySystemDoh = async (): Promise<void> => {
+    const api = getAPI();
+    if (!api?.system?.applySystemDoh) {
+      toast.error("System DoH недоступен.");
+      return;
+    }
+
+    let parsedUrl: string;
+    try {
+      parsedUrl = parseSystemDohUrl(systemDohDraft).url;
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Проверьте DoH URL."));
+      return;
+    }
+
+    setIsApplyingSystemDoh(true);
+    try {
+      const result = await api.system.applySystemDoh(parsedUrl);
+      setSystemDohStatus(result.status);
+
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+
+      useAppStore.setState({
+        systemDohEnabled: true,
+        systemDohUrl: parsedUrl,
+        systemDohLocalAddress: result.status.localAddress ?? ""
+      });
+      setSystemDohDraft(parsedUrl);
+      toast.success(result.message);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Не удалось включить System DoH."));
+    } finally {
+      setIsApplyingSystemDoh(false);
+    }
+  };
+
+  const resetSystemDoh = async (): Promise<void> => {
+    const api = getAPI();
+    if (!api?.system?.resetSystemDoh) {
+      toast.error("Выключение System DoH недоступно.");
+      return;
+    }
+
+    setIsResettingSystemDoh(true);
+    try {
+      const result = await api.system.resetSystemDoh();
+      setSystemDohStatus(result.status);
+
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+
+      useAppStore.setState({
+        systemDohEnabled: false,
+        systemDohLocalAddress: ""
+      });
+      toast.success(result.message);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Не удалось отключить System DoH."));
+    } finally {
+      setIsResettingSystemDoh(false);
     }
   };
 
@@ -206,13 +391,13 @@ export function DnsControl() {
             eyebrow="Центр DNS"
             title="Управление DNS"
             icon={<Globe2 className="h-7 w-7 text-brand-light" />}
-            description="Системный DNS, пресеты, ручной ввод и быстрый сброс в одном компактном экране."
+            description="Системный DNS по IP, отдельный System DoH без VPN, пресеты и быстрый сброс в одном экране."
             badgeLayout="balanced"
             badges={[
               {
-                label: activeDnsServers.length > 0 ? "Свой DNS" : "DNS Windows",
+                label: isSystemDohActive ? "System DoH" : activeDnsServers.length > 0 ? "Свой DNS" : "DNS Windows",
                 icon: <Sparkles className="h-3.5 w-3.5" />,
-                tone: activeDnsServers.length > 0 ? "brand" : "neutral"
+                tone: isSystemDohActive || activeDnsServers.length > 0 ? "brand" : "neutral"
               },
               {
                 label: isAdmin === false ? "Нужны права" : "Готово",
@@ -228,10 +413,7 @@ export function DnsControl() {
             actions={
               <div className="grid gap-3 sm:grid-cols-3 xl:max-w-[620px]">
                 <HeroMetric label="Режим" value={activeModeLabel} />
-                <HeroMetric
-                  label="Серверы"
-                  value={activeDnsServers.length > 0 ? activeDnsServers.join(" · ") : "DNS Windows"}
-                />
+                <HeroMetric label="Активно" value={activeDnsSummary} />
                 <HeroMetric label="Применение" value={isAdmin === false ? "Нужны права" : "Готово"} />
               </div>
             }
@@ -244,14 +426,16 @@ export function DnsControl() {
             <div className="relative flex flex-col gap-5">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-[0.24em] text-white/45">Системный профиль</span>
-                  <h2 className="text-xl font-display font-semibold text-white/95">{activeModeLabel}</h2>
+                  <span className="text-xs font-bold uppercase tracking-[0.24em] text-white/45">Ручной DNS по IP</span>
+                  <h2 className="text-xl font-display font-semibold text-white/95">
+                    {activeDnsServers.length > 0 ? "Сохранённый IP-профиль" : "DNS Windows по умолчанию"}
+                  </h2>
                   <p className="max-w-xl text-sm leading-relaxed text-muted">
-                    Настройка применяется ко всей системе Windows. Для защищённого DNS внутри самого VPN используйте
-                    переключатель «Защищённый DNS» на экране настроек.
+                    Настройка применяется ко всей системе Windows. Этот профиль сохраняется отдельно и может быть
+                    автоматически возвращён после отключения System DoH.
                   </p>
                 </div>
-                <div className="flex w-full max-w-[420px] flex-col gap-3 xl:items-end">
+                <div className="flex w-full max-w-[440px] flex-col gap-3 xl:items-end">
                   <div className="flex flex-nowrap gap-2 overflow-x-auto xl:justify-end [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     <StatusChip
                       icon={<ShieldCheck className="h-3.5 w-3.5" />}
@@ -260,8 +444,8 @@ export function DnsControl() {
                     />
                     <StatusChip
                       icon={<Wifi className="h-3.5 w-3.5" />}
-                      label={fakeDns ? "DNS в VPN включён" : "DNS в VPN выключен"}
-                      tone={fakeDns ? "success" : "neutral"}
+                      label={isSystemDohActive ? "System DoH сейчас активен" : "Ручной профиль активируется отдельно"}
+                      tone={isSystemDohActive ? "warning" : "neutral"}
                     />
                   </div>
                 </div>
@@ -318,6 +502,117 @@ export function DnsControl() {
                 >
                   {isResetting ? "Сбрасываем..." : "Сбросить по умолчанию"}
                 </button>
+              </div>
+
+              <div className="rounded-[22px] border border-white/8 bg-black/10 px-4 py-4 backdrop-blur-xl">
+                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/40">Ручной профиль</div>
+                <p className="mt-2 text-sm leading-relaxed text-white/76">
+                  {isSystemDohActive
+                    ? "Если сейчас включён System DoH, установка IP-DNS отключит его и оставит этот профиль как активный системный режим."
+                    : "Этот профиль применяется напрямую к сетевым интерфейсам Windows и не зависит от VPN."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(7,24,37,0.96),rgba(10,28,44,0.92))] p-6 shadow-[0_18px_80px_rgba(0,0,0,0.26)]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.12),transparent_40%)] pointer-events-none" />
+            <div className="relative flex flex-col gap-5">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.24em] text-white/45">System DoH без VPN</span>
+                  <h2 className="text-xl font-display font-semibold text-white/95">
+                    Отдельный защищённый DNS-канал поверх Windows
+                  </h2>
+                  <p className="max-w-2xl text-sm leading-relaxed text-muted">
+                    Приложение поднимает локальный DNS-сервис на loopback-адресе и переводит Windows на него. DNS-запросы
+                    уходят в ваш DoH напрямую, без подключения VPN-сервера.
+                  </p>
+                </div>
+                <div className="flex w-full max-w-[520px] flex-col gap-3 xl:items-end">
+                  <div className="flex flex-wrap gap-2 xl:justify-end">
+                    <StatusChip
+                      icon={<ShieldCheck className="h-3.5 w-3.5" />}
+                      label={systemDohStatus?.running ? "System DoH активен" : "System DoH выключен"}
+                      tone={systemDohStatus?.running ? "success" : "neutral"}
+                    />
+                    <StatusChip
+                      icon={<Sparkles className="h-3.5 w-3.5" />}
+                      label={systemDohStatus?.available === false ? "Runtime не найден" : "Runtime готов"}
+                      tone={systemDohStatus?.available === false ? "warning" : "success"}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[26px] border border-white/10 bg-black/10 p-4 backdrop-blur-xl">
+                <label htmlFor="system-doh-input" className="mb-3 block text-sm font-semibold text-white/90">
+                  DoH URL
+                </label>
+                <textarea
+                  id="system-doh-input"
+                  value={systemDohDraft}
+                  onChange={(event) => setSystemDohDraft(event.target.value)}
+                  rows={3}
+                  placeholder="https://dns.example.com:443/dns-query"
+                  className="w-full resize-none rounded-[24px] border border-white/10 bg-[#081B2B]/85 px-4 py-2.5 text-sm leading-[1.5] text-white/90 outline-none transition-all focus:border-emerald-400/35 focus:ring-2 focus:ring-emerald-400/20"
+                />
+                <div className="mt-2 flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.035] px-3.5 py-2">
+                  <div
+                    className="min-w-0 flex-1 truncate text-[11px] leading-none text-muted"
+                    title="Формат: https://host[:port]/dns-query. При включении Windows переключается на локальный loopback-адрес."
+                  >
+                    Формат: https://host[:port]/dns-query. При включении Windows переключается на локальный loopback-адрес.
+                  </div>
+                  {systemDohValidationMessage ? (
+                    <div
+                      className="shrink-0 truncate text-[11px] font-semibold text-amber-300"
+                      title={systemDohValidationMessage}
+                    >
+                      {systemDohValidationMessage}
+                    </div>
+                  ) : (
+                    <div className="shrink-0 text-[11px] font-semibold text-emerald-300">DoH URL корректен</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-3 xl:grid-cols-3">
+                <HeroMetric label="Статус" value={systemDohStatusLabel} />
+                <HeroMetric
+                  label="Текущий канал"
+                  value={getSystemDohSummary(systemDohStatus, systemDohUrl, systemDohLocalAddress)}
+                />
+                <HeroMetric label="Ручной откат" value={manualDnsProfileSummary} />
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={applySystemDoh}
+                  disabled={
+                    isApplyingSystemDoh ||
+                    isResettingSystemDoh ||
+                    !!systemDohValidationMessage ||
+                    !systemDohDraft.trim()
+                  }
+                  className="flex-1 rounded-3xl border border-emerald-400/35 bg-[linear-gradient(135deg,rgba(16,185,129,0.22),rgba(110,231,183,0.08))] px-5 py-4 text-sm font-bold text-emerald-100 transition-all hover:border-emerald-300/50 hover:shadow-[0_12px_30px_rgba(16,185,129,0.16)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isApplyingSystemDoh ? "Запускаем System DoH..." : "Включить System DoH"}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetSystemDoh}
+                  disabled={isApplyingSystemDoh || isResettingSystemDoh || !isSystemDohActive}
+                  className="flex-1 rounded-3xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-bold text-white/80 transition-all hover:bg-white/8 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isResettingSystemDoh ? "Выключаем..." : "Отключить System DoH"}
+                </button>
+              </div>
+
+              <div className="rounded-[22px] border border-white/8 bg-black/10 px-4 py-4 backdrop-blur-xl">
+                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/40">Как это работает</div>
+                <p className="mt-2 text-sm leading-relaxed text-white/76">{systemDohScopeSummary}</p>
               </div>
             </div>
           </div>
@@ -377,7 +672,11 @@ export function DnsControl() {
             <BottomNote label="Активный набор" value={activeDnsSummary} />
             <BottomNote
               label="Область действия"
-              value="Системный DNS влияет на весь интернет-трафик Windows, а не только на VPN-сессию."
+              value={
+                isSystemDohActive
+                  ? "System DoH меняет системный DNS Windows и работает без VPN-сессии, пока режим включён."
+                  : "Системный DNS влияет на весь интернет-трафик Windows, а не только на VPN-сессию."
+              }
             />
             <BottomNote label="Применение" value={applyStateSummary} />
           </div>
