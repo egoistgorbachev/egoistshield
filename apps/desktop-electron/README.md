@@ -1,31 +1,29 @@
 # EgoistShield Desktop
 
-Desktop-клиент `EgoistShield` для Windows 10/11.
+Desktop-сетевой хаб `EgoistShield` для Windows 10/11.
 
-Текущая ветка документации соответствует подготовке product-release **4.0.4** от **2026-04-10**.
+Текущая ветка документации соответствует product-release **4.0.11** от **2026-04-13**.
 
 ## Что есть в desktop-версии
 
-- **Импорт и подключение поддерживаемых конфигураций узлов**.
+- **Импорт и локальное управление сетевыми профилями**.
 - **Встроенные сетевые компоненты** для исполнения конфигураций и маршрутов приложения.
-- **Smart Connect + safer handoff**: adaptive health-score выбор узлов, ranking, make-before-break cutover и rollback на предыдущую сессию при срыве нового runtime.
+- **Smart Connect + safer handoff**: adaptive health-score выбор рабочих сценариев, ranking, make-before-break cutover и rollback на предыдущую сессию при срыве нового runtime.
 - **Отдельный экран сервисного управления**: профили, автоподбор, диагностика, maintenance-инструменты и очистка Discord-кеша.
 - **System DNS Center**: установка и сброс системного DNS Windows с валидацией ввода.
-- **Kill Switch**: управление firewall-правилами Windows для защиты при обрыве соединения.
 - **Автозапуск и автоматическое восстановление рабочего состояния** с синхронизацией Windows login item при старте приложения.
 - **Updater**: реальная проверка релизного канала и ручной переход на GitHub Releases для скачивания installer.
-- **Дополнительный фоновый компонент**: отдельный headless-экран для локальной конфигурации, служебных логов и встроенного обновления совместимого фонового модуля.
+- **Дополнительный фоновый компонент**: скрытый встроенный runtime для локальной конфигурации, служебных логов и встроенного обновления совместимого фонового модуля.
 - **Диагностика**: structured logs, runtime lifecycle, route probe маршрута, runtime diagnostics, connection logs.
 - **UI**: dashboard, server list, 3D-globe, usage insights, command palette, polished dark design system.
 
-## Что вошло в 4.0.4
+## Что вошло в 4.0.11
 
-- **Faster startup shell**: splash больше не держит искусственную паузу на каждый запуск и скрывается сразу после гидрации store.
-- **Cheaper dashboard idle motion**: в off-state убраны самые дорогие постоянные анимации, сохранив визуальный характер при активном соединении.
-- **Readiness dashboard block**: отключённый dashboard теперь показывает полезную сводку состояния и быстрые переходы вместо пустого воздуха.
-- **Lean brand asset generation**: packaging больше не генерирует и не хранит лишние дубли PNG-логотипов.
-- **Packaged smoke harness**: добавлен отдельный ручной `npm run test:e2e:packaged` для QA-проверки упакованного `EgoistShield.exe`, production-shell и реального `System DoH` lifecycle.
-- **Coverage hardening**: расширены тесты для `system-doh-manager`, `zapret-manager` и `vpn-manager` вокруг recovery, runtime install и handoff edge-cases.
+- **Hidden background runtime**: встроенный сетевой модуль больше не должен появляться отдельным окном, консолью или элементом в трее.
+- **Managed runtime self-heal**: старые фоновые сборки автоматически заменяются скрытым runtime при запуске приложения.
+- **GitHub release sync**: `Setup.exe`, `.blockmap` и `latest.yml` синхронизированы с release-каналом `4.0.11`.
+- **Packaged smoke harness**: отдельный `npm run test:e2e:packaged` закрепляет QA-проверку production-shell и реального `System DoH` lifecycle.
+- **Coverage hardening**: расширены тесты для `system-doh-manager`, сетевых runtime manager-ов и release/update edge-cases.
 
 ## Стек
 
@@ -68,7 +66,7 @@ npm run dist
 
 - `System DNS Center` работает с системными DNS Windows и ожидает корректные IP-адреса DNS-серверов.
 - Форматы `sdns://` и некоторые hostname-based secure DNS-схемы нельзя применять напрямую как системный DNS Windows без дополнительного локального DNS-сервиса.
-- `Kill Switch`, системный DNS и часть сетевых операций требуют соответствующих прав в Windows.
+- Системный DNS и часть сетевых операций требуют соответствующих прав в Windows.
 - Публичное описание продукта намеренно не использует формулировки, которые можно трактовать как обещание доступа к ресурсам с особыми ограничениями доступа.
 
 ## Сборка релиза
@@ -99,7 +97,7 @@ npm run release:verify
 
 `release:verify` проверяет наличие installer, `.blockmap`, `latest.yml`, совпадение версии, размеры файлов и обязательные поля release metadata.
 
-Подробный сценарий проверки и публикации 4.0.4: [docs/release-signing.md](./docs/release-signing.md)
+Подробный сценарий проверки и публикации 4.0.11: [docs/release-signing.md](./docs/release-signing.md)
 
 Отдельный runbook для packaged smoke: [docs/packaged-smoke.md](./docs/packaged-smoke.md)
 
