@@ -47,3 +47,5 @@ For support, use the Issues section of this repository and include:
 - what action was attempted
 - visible error text
 - relevant diagnostic output with personal data removed
+
+_Last public metadata refresh: 2026-05-11 05:24:03 UTC._
