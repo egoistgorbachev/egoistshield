@@ -1,0 +1,43 @@
+EGOIST SHIELD 3.5.0 — THIRD-PARTY NOTICES
+
+This product includes third-party software. The Egoist Shield personal-use
+license does not replace or restrict the licenses listed below.
+
+Desktop application dependencies
+--------------------------------
+Electron — MIT — https://github.com/electron/electron
+React / React DOM — MIT — https://github.com/facebook/react
+Motion (Framer Motion) — MIT — https://github.com/motiondivision/motion
+Lucide — ISC, with some Feather-derived icons under MIT —
+https://github.com/lucide-icons/lucide
+Inter font package — SIL Open Font License 1.1 —
+https://github.com/rsms/inter
+
+Bundled network runtimes
+------------------------
+Xray Core — Mozilla Public License 2.0 —
+https://github.com/XTLS/Xray-core
+
+sing-box — GNU General Public License version 3 or later, with the additional
+upstream naming/association notice — https://github.com/SagerNet/sing-box
+The bundled version is recorded in resources/runtime/manifest.json.
+Corresponding source for v1.13.12:
+https://github.com/SagerNet/sing-box/tree/v1.13.12
+Source archive:
+https://github.com/SagerNet/sing-box/archive/refs/tags/v1.13.12.tar.gz
+
+dnscrypt-proxy — ISC — https://github.com/DNSCrypt/dnscrypt-proxy
+
+Telegram WS Proxy — MIT — https://github.com/Flowseal/tg-ws-proxy
+
+Zapret / Flowseal profile bundle —
+https://github.com/Flowseal/zapret-discord-youtube
+MIT — Copyright (c) 2016-2026 bol-van; Copyright (c) 2024-2026 Flowseal.
+The upstream license file is named LICENSE.txt and also preserves the WinDivert
+dual-license notice.
+
+WinDivert — GNU Lesser General Public License v3 (library) and GPLv2 (driver),
+subject to the upstream project terms — https://github.com/basil00/WinDivert
+
+The complete JavaScript dependency inventory and declared package licenses are
+available in the CycloneDX SBOM shipped with the release.

@@ -1,0 +1,49 @@
+name: Sign release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing prerelease tag (vX.Y.Z)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require an existing prerelease without signed metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --json isPrerelease --jq .isPrerelease)" = "true"
+          ! gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -Fx release-manifest.json
+      - name: Download exact Setup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release download "$RELEASE_TAG" --pattern 'EgoistShield-Setup-*.exe' --dir candidate
+      - name: Sign exact manifest bytes
+        env:
+          EGOISTSHIELD_RELEASE_PRIVATE_KEY_PEM: ${{ secrets.EGOISTSHIELD_RELEASE_PRIVATE_KEY_PEM }}
+          EGOISTSHIELD_RELEASE_KEY_ID: release-2026-01
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: node scripts/sign-release-candidate.mjs candidate "$RELEASE_TAG"
+      - name: Upload immutable signed metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: >-
+          gh release upload "$RELEASE_TAG"
+          candidate/release-manifest.json
+          candidate/release-manifest.json.sig
+          candidate/stable-channel.json
+          candidate/stable-channel.json.sig
+          candidate/EgoistShield-Setup-*.exe.sha256
+

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-08T23:38:04.436Z",
+  "keys": [
+    {
+      "id": "release-2026-01",
+      "algorithm": "Ed25519",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA8HiE6pK6WUn+nokG+9dMRJ+RaEXMhcq8hLrxQX4/BJQ=\n-----END PUBLIC KEY-----\n",
+      "status": "trusted",
+      "notBefore": "2026-01-01T00:00:00.000Z",
+      "notAfter": "2036-01-01T00:00:00.000Z"
+    }
+  ]
+}

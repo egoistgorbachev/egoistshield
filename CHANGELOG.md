@@ -1,11 +1,14 @@
 # Changelog
 
-## 5.4.0
+## 3.5.0 — 2026-08-09
 
-- Refined the desktop interface for a cleaner, more compact user experience.
-- Improved release integrity checks for installer downloads.
-- Stabilized clean installation, background service setup, and update packaging.
-- Added a public release-only repository layout with neutral product positioning.
+- Канонический публичный updater channel перенесён на `egoist-ai1/egoistshield`.
+- Добавлена атомарная операция check → download → verify → install → restart.
+- Manifest schema v2 подписывает точные UTF-8 bytes branded Setup.
+- Добавлены key registry/revocation, anti-rollback, `.partial` resume и TOCTOU recheck.
+- Сетевые, HTTP 404 и trust-ошибки больше не отображаются как «версия актуальна».
+- Setup перезапускает новую версию после commit и восстановленную версию после rollback.
+- Интерфейс показывает реальную фазу и процент без raw HTTP/.NET/PowerShell текста.
 
-Older release assets remain available from GitHub Releases.
+Старые релизы до 3.5.0 считаются legacy и не участвуют в доверенном one-click channel.
 

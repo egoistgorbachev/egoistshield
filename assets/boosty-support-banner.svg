@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1520" height="240" viewBox="0 0 1520 240" role="img" aria-labelledby="title desc">
+  <title id="title">Поддержать Egoist Ai One на Boosty</title>
+  <desc id="desc">Тёмно-красный фирменный баннер поддержки разработки Egoist Shield</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#09090b"/>
+      <stop offset="0.55" stop-color="#170609"/>
+      <stop offset="1" stop-color="#39070c"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#c40710"/>
+      <stop offset="1" stop-color="#ff3038"/>
+    </linearGradient>
+  </defs>
+  <rect width="1520" height="240" rx="32" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1518" height="238" rx="31" fill="none" stroke="#ff3038" stroke-opacity=".3" stroke-width="2"/>
+  <circle cx="128" cy="120" r="64" fill="#ff3038" fill-opacity=".1" stroke="#ff3038" stroke-opacity=".5" stroke-width="2"/>
+  <path d="M92 139h35c22 0 37-10 37-27 0-14-10-23-27-25l8-20h-26l-11 31h21c8 0 12 4 12 10 0 8-7 12-18 12h-19l-12 19Z" fill="url(#accent)"/>
+  <text x="230" y="104" fill="#fff" font-family="Inter,Segoe UI,sans-serif" font-size="38" font-weight="750">Поддержать Egoist Shield</text>
+  <text x="230" y="151" fill="#b8b8c0" font-family="Inter,Segoe UI,sans-serif" font-size="25">Новые функции, тестовые стенды и независимая разработка</text>
+  <rect x="1204" y="76" width="246" height="88" rx="22" fill="url(#accent)"/>
+  <text x="1327" y="130" fill="#fff" font-family="Inter,Segoe UI,sans-serif" font-size="28" font-weight="750" text-anchor="middle">Boosty</text>
+</svg>
+

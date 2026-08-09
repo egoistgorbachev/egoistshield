@@ -1,11 +1,3 @@
 .DS_Store
 Thumbs.db
-*.log
-*.tmp
-*.bak
-node_modules/
-dist/
-build/
-release/
-release-*/
-
+release-assets/

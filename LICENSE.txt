@@ -1,0 +1,22 @@
+EGOIST SHIELD — FREEWARE PERSONAL USE LICENSE 1.0
+
+Copyright (c) 2026 EGOIST. All rights reserved.
+
+Permission is granted to an individual to install and use an unmodified copy of
+Egoist Shield free of charge on devices that the individual owns or is
+authorized to administer, solely for personal, non-commercial purposes.
+
+You may not sell, sublicense, rent, redistribute, repack, publish modified
+installers, remove product attribution, or represent an unofficial build as an
+official Egoist Shield release without prior written permission from EGOIST.
+
+This license does not grant access to or rights in the private source code.
+
+Third-party components remain governed by their own licenses and notices. If a
+third-party license grants broader rights for that component, those rights are
+not reduced by this license.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, TO THE MAXIMUM
+EXTENT PERMITTED BY APPLICABLE LAW. THE USER IS RESPONSIBLE FOR REVIEWING AND
+CONFIRMING SYSTEM AND NETWORK CHANGES PERFORMED ON THEIR DEVICE.
+
