@@ -1,4 +1,4 @@
-EGOIST SHIELD 3.5.2 — THIRD-PARTY NOTICES
+EGOIST SHIELD 3.5.3 — THIRD-PARTY NOTICES
 
 This product includes third-party software. The Egoist Shield personal-use
 license does not replace or restrict the licenses listed below.
